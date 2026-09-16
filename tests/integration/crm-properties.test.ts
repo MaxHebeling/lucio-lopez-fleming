@@ -3,7 +3,8 @@ import sharp from "sharp";
 import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
 import { createLocation } from "@/server/properties/locations";
-import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE } from "@/server/properties/media";
+import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
+import { consumeDirectUpload, createUploadIntent, verifyUploadToken } from "@/server/storage/direct-upload";
 import { authorizeFileAccess } from "@/server/files/access";
 import { setStorageForTests } from "@/server/storage";
 import { AppError } from "@/server/errors";
@@ -292,5 +293,34 @@ describe("multimedia", () => {
     await deletePropertyMedia(db, admin, p.id, m.mediaId);
     expect(await authorizeFileAccess(db, anon, media.file_id!)).toEqual({ ok: false, reason: "not_found" });
     expect(await authorizeFileAccess(db, anon, "../../etc/passwd")).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("subida directa: intent firmado → objeto temporal → complete procesa la foto y borra el temporal (también si es inválida)", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const p = await createProperty(db, admin, input(hood.id));
+    process.env.UPLOAD_SIGNING_SECRET = "secreto-de-prueba-de-al-menos-32-caracteres-ok";
+    store.direct = true;
+    try {
+      const bytes = await jpeg(64, 48);
+      const intent = await createUploadIntent({ userId: admin.userId, entity: p.id, purpose: "property-media", contentType: "image/jpeg", size: bytes.byteLength });
+      if (intent.mode !== "direct") throw new Error("se esperaba subida directa");
+      expect(intent.uploadUrl).toMatch(/^https:\/\/storage\.test\/private\/uploads\/tmp\//);
+      const key = verifyUploadToken(intent.token, { userId: admin.userId, entity: p.id, purpose: "property-media" }).k;
+      await store.put("private", key, bytes, "image/jpeg"); // lo que haría el navegador con el PUT firmado
+      const r = await consumeDirectUpload(key, MAX_IMAGE_BYTES, (b) => addPropertyImage(db, admin, p.id, b, { kind: "image" }));
+      expect(r.width).toBe(64);
+      expect(store.objects.has(`private/${key}`)).toBe(false);
+
+      const bad = await createUploadIntent({ userId: admin.userId, entity: p.id, purpose: "property-media", contentType: "image/png", size: 10 });
+      if (bad.mode !== "direct") throw new Error("se esperaba subida directa");
+      const badKey = verifyUploadToken(bad.token, { userId: admin.userId, entity: p.id, purpose: "property-media" }).k;
+      await store.put("private", badKey, new TextEncoder().encode("<script>no es una imagen</script>"), "image/png");
+      await expect(consumeDirectUpload(badKey, MAX_IMAGE_BYTES, (b) => addPropertyImage(db, admin, p.id, b, { kind: "image" }))).rejects.toThrow();
+      expect(store.objects.has(`private/${badKey}`)).toBe(false);
+      await expect(createUploadIntent({ userId: admin.userId, entity: p.id, purpose: "property-media", contentType: "application/x-msdownload", size: 10 })).rejects.toThrow(/Formato/);
+    } finally {
+      store.direct = false;
+    }
   });
 });

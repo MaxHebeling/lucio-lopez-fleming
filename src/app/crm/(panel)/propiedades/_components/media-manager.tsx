@@ -26,30 +26,56 @@ const KIND_LABEL: Record<string, string> = { image: "Foto", floor_plan: "Plano",
 
 type Upload = { key: string; name: string; progress: number; state: "queued" | "uploading" | "done" | "error"; error?: string };
 
-function uploadOne(url: string, file: File, kind: string, onProgress: (pct: number) => void): Promise<{ ok: true } | { ok: false; error: string }> {
+function xhrSend(method: string, url: string, body: XMLHttpRequestBodyInit, headers: Record<string, string>, onProgress: (pct: number) => void): Promise<{ status: number; text: string }> {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("kind", kind);
-    xhr.open("POST", url);
+    xhr.open(method, url);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve({ ok: true });
-      let message = "No se pudo subir la foto.";
-      try {
-        const body = JSON.parse(xhr.responseText) as { error?: { message?: string } };
-        if (body.error?.message) message = body.error.message;
-      } catch {
-        // Respuesta no JSON (p. ej. límite del proxy): queda el mensaje genérico.
-      }
-      resolve({ ok: false, error: message });
-    };
-    xhr.onerror = () => resolve({ ok: false, error: "Error de red al subir. Probá de nuevo." });
-    xhr.send(fd);
+    xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => resolve({ status: 0, text: "" });
+    xhr.send(body);
   });
+}
+
+function errorMessage(text: string, fallback: string): string {
+  try {
+    const body = JSON.parse(text) as { error?: { message?: string } };
+    return body.error?.message ?? fallback;
+  } catch {
+    // Respuesta no JSON (p. ej. límite del proxy): queda el mensaje genérico.
+    return fallback;
+  }
+}
+
+/**
+ * Subida de una foto. Con storage S3 va directo al bucket (URL firmada) y el servidor la procesa después:
+ * así no aplica el límite de ~4,5 MB por request de la plataforma. Con storage local usa la ruta clásica.
+ */
+async function uploadOne(propertyId: string, file: File, kind: string, onProgress: (pct: number) => void): Promise<{ ok: true } | { ok: false; error: string }> {
+  const base = `/api/crm/propiedades/${propertyId}/multimedia`;
+  const intentRes = await fetch(`${base}/intent`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contentType: file.type, size: file.size }) });
+  const intentText = await intentRes.text();
+  if (!intentRes.ok) return { ok: false, error: errorMessage(intentText, "No se pudo preparar la subida.") };
+  const intent = (JSON.parse(intentText) as { data: { mode: "direct"; uploadUrl: string; token: string } | { mode: "proxy" } }).data;
+
+  if (intent.mode === "direct") {
+    const put = await xhrSend("PUT", intent.uploadUrl, file, { "content-type": file.type }, (pct) => onProgress(Math.min(95, pct)));
+    if (put.status < 200 || put.status >= 300) return { ok: false, error: put.status === 0 ? "Error de red al subir. Probá de nuevo." : "El almacenamiento rechazó la foto." };
+    const done = await fetch(`${base}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: intent.token, kind, name: file.name }) });
+    if (!done.ok) return { ok: false, error: errorMessage(await done.text(), "No se pudo procesar la foto.") };
+    onProgress(100);
+    return { ok: true };
+  }
+
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("kind", kind);
+  const r = await xhrSend("POST", base, fd, {}, onProgress);
+  if (r.status >= 200 && r.status < 300) return { ok: true };
+  return { ok: false, error: r.status === 0 ? "Error de red al subir. Probá de nuevo." : errorMessage(r.text, "No se pudo subir la foto.") };
 }
 
 export function MediaManager({ propertyId, media, canManage }: { propertyId: string; media: MediaItem[]; canManage: boolean }) {
@@ -87,7 +113,7 @@ export function MediaManager({ propertyId, media, canManage }: { propertyId: str
       const u = batch[i]!;
       if (u.state === "error") continue;
       setUploads((prev) => prev.map((x) => (x.key === u.key ? { ...x, state: "uploading" } : x)));
-      const r = await uploadOne(`/api/crm/propiedades/${propertyId}/multimedia`, file, kind, (pct) => setUploads((prev) => prev.map((x) => (x.key === u.key ? { ...x, progress: pct } : x))));
+      const r = await uploadOne(propertyId, file, kind, (pct) => setUploads((prev) => prev.map((x) => (x.key === u.key ? { ...x, progress: pct } : x))));
       setUploads((prev) => prev.map((x) => (x.key === u.key ? (r.ok ? { ...x, state: "done", progress: 100 } : { ...x, state: "error", error: r.error }) : x)));
       if (r.ok) uploaded++;
     }

@@ -37,6 +37,8 @@ export function memoryStorage(opts: { publicBase?: string | null } = {}): Storag
       objects.delete(`${bucket}/${key}`);
     },
     url: async (_bucket, key, _v, fileId) => (base ? `${base}/${key}` : `/api/files/${fileId}`),
+    presignPut: async () => null,
+    directUploadOrigin: () => null,
   };
 }
 

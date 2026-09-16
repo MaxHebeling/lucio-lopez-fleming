@@ -18,6 +18,14 @@ export class MemoryStorage implements StorageDriver {
   async remove(bucket: string, key: string) {
     this.objects.delete(`${bucket}/${key}`);
   }
+  /** Con `direct` simula un bucket S3 que acepta subidas firmadas. */
+  direct = false;
+  async presignPut(bucket: string, key: string) {
+    return this.direct ? `https://storage.test/${bucket}/${key}?firmado=1` : null;
+  }
+  directUploadOrigin() {
+    return this.direct ? "https://storage.test" : null;
+  }
   async url(_b: string, _k: string, _v: Visibility, fileId: string) {
     return `/api/files/${fileId}`;
   }

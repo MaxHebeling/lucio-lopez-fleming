@@ -20,6 +20,10 @@ export interface StorageDriver {
   remove(bucket: string, key: string): Promise<void>;
   /** URL para leer. Públicos: estable. Privados: firmada y temporal (s3) o ruta autorizada (local). */
   url(bucket: string, key: string, visibility: Visibility, fileId: string, expiresSeconds?: number): Promise<string>;
+  /** URL firmada para que el navegador suba directo (evita el límite de body de la plataforma). null = no soportado. */
+  presignPut(bucket: string, key: string, contentType: string, expiresSeconds?: number): Promise<string | null>;
+  /** Origen (scheme+host) al que sube el navegador, para la CSP. null si no hay subida directa. */
+  directUploadOrigin(): string | null;
 }
 
 const LOCAL_ROOT = resolve(process.cwd(), ".storage");
@@ -47,6 +51,12 @@ class LocalDriver implements StorageDriver {
   }
   async remove(bucket: string, key: string) {
     await rm(this.path(bucket, key), { force: true });
+  }
+  async presignPut() {
+    return null;
+  }
+  directUploadOrigin() {
+    return null;
   }
   async url(_bucket: string, _key: string, _v: Visibility, fileId: string) {
     return `/api/files/${fileId}`;
@@ -98,6 +108,15 @@ class S3Driver implements StorageDriver {
   }
   async remove(bucket: string, key: string) {
     await this.send("DELETE", this.objectUrl(bucket, key));
+  }
+  async presignPut(bucket: string, key: string, contentType: string, expiresSeconds = 600) {
+    const u = new URL(this.objectUrl(bucket, key));
+    u.searchParams.set("X-Amz-Expires", String(Math.min(expiresSeconds, 3600)));
+    const signed = await this.client.sign(u.toString(), { method: "PUT", headers: { "content-type": contentType }, aws: { signQuery: true, allHeaders: true } });
+    return signed.url;
+  }
+  directUploadOrigin() {
+    return new URL(this.endpoint).origin;
   }
   async url(bucket: string, key: string, visibility: Visibility, _fileId: string, expiresSeconds = 300) {
     if (visibility === "public" && this.publicBaseUrl) return `${this.publicBaseUrl.replace(/\/$/, "")}/${safeKey(key)}`;

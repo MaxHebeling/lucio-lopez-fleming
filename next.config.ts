@@ -10,7 +10,8 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https://static1.adinco.net https://*.tile.openstreetmap.org${storagePublic ? ` ${storagePublic.origin}` : ""}`,
   "font-src 'self'",
-  "connect-src 'self'",
+  // Subida directa de fotos al storage (URL firmada): el navegador hace PUT al endpoint S3.
+  `connect-src 'self'${process.env.STORAGE_DRIVER === "s3" && process.env.STORAGE_ENDPOINT ? ` ${new URL(process.env.STORAGE_ENDPOINT).origin}` : ""}`,
   "media-src 'self' blob:" + (storagePublic ? ` ${storagePublic.origin}` : ""),
   "frame-src https://www.openstreetmap.org",
   "frame-ancestors 'none'",
