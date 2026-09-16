@@ -53,7 +53,8 @@ export function StaticMap({
 
   return (
     <figure className={className}>
-      <div className="osm-map h-72 rounded-[var(--radius-lg)] sm:h-96" role="img" aria-label={label}>
+      <div className="osm-map h-72 rounded-[var(--radius-lg)] sm:h-96">
+        <div className="absolute inset-0" role="img" aria-label={label}>
         <div className="osm-tiles" style={{ gridTemplateColumns: `repeat(${GRID}, ${TILE}px)`, marginLeft: -(half * TILE + px), marginTop: -(half * TILE + py) }} aria-hidden>
           {/* Tiles de 256 px ya optimizados por OSM: pasarlos por next/image solo duplicaría el tráfico. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -73,6 +74,7 @@ export function StaticMap({
             </svg>
           </span>
         )}
+        </div>
         <span className="absolute bottom-0 right-0 bg-paper/90 px-2 py-0.5 text-[11px] text-ink-2">
           ©{" "}
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">

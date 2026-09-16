@@ -44,3 +44,7 @@ next-env.d.ts
 
 # storage local de desarrollo
 /.storage
+
+# playwright
+/test-results/
+/playwright-report/

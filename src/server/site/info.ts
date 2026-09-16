@@ -4,6 +4,7 @@
  */
 import "server-only";
 import { cache } from "react";
+import { connection } from "next/server";
 import type { Executor } from "../db";
 import { ORG_SLUG } from "../org";
 
@@ -76,8 +77,9 @@ export async function loadSiteInfo(db: Executor): Promise<SiteInfo> {
   };
 }
 
-/** Memoizado por request (header, footer y página lo piden a la vez). */
+/** Memoizado por request (header, footer y página lo piden a la vez). Siempre en request: el build no toca la base. */
 export const getSiteInfo = cache(async () => {
+  await connection();
   const { getDb } = await import("../db");
   return loadSiteInfo(getDb());
 });

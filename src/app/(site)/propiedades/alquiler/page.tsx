@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ListingView, type ListingPreset } from "@/components/site/listing/ListingView";
-import { listingMetadata, resolveListing } from "@/components/site/listing/listing-page";
+import { listingMetadata, normalizeListingUrl, resolveListing } from "@/components/site/listing/listing-page";
 
 const PRESET: ListingPreset = { basePath: "/propiedades/alquiler", lock: ["operacion"], eyebrow: "Alquiler" };
 
@@ -9,6 +9,7 @@ export function generateMetadata({ searchParams }: PageProps<"/propiedades/alqui
 }
 
 export default async function AlquilerPage({ searchParams }: PageProps<"/propiedades/alquiler">) {
-  const { filters, view } = await resolveListing(searchParams, { operacion: "alquiler" });
+  const { filters, view, sp } = await resolveListing(searchParams, { operacion: "alquiler" });
+  normalizeListingUrl(PRESET.basePath, sp, filters, PRESET.lock, view);
   return <ListingView filters={filters} preset={PRESET} view={view} />;
 }
