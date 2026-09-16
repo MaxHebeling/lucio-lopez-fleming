@@ -23,7 +23,10 @@ export async function enqueueScheduled(db: Database, now = new Date()): Promise<
   const day = now.toISOString().slice(0, 10);
   for (const s of schedule) {
     const period = s.every === "hourly" ? hour : day;
-    if (await enqueue(db, { type: s.type, dedupeKey: `scheduled:${s.type}:${period}`, timeoutMs: s.timeoutMs ?? 60_000, maxAttempts: 3 })) n++;
+    const dedupeKey = `scheduled:${s.type}:${period}`;
+    // El índice único de jobs solo cubre jobs vivos: sin este chequeo, una tarea ya terminada se reencolaría en cada pasada del cron.
+    if (await db.selectFrom("jobs").select("id").where("dedupe_key", "=", dedupeKey).executeTakeFirst()) continue;
+    if (await enqueue(db, { type: s.type, dedupeKey, timeoutMs: s.timeoutMs ?? 60_000, maxAttempts: 3 })) n++;
   }
   return n;
 }
