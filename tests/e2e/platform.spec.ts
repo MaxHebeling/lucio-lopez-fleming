@@ -152,3 +152,21 @@ test("un usuario del equipo no entra por el login de propietarios y el portal ex
   await expect(page.locator("form [role=alert]")).toBeVisible();
   await expect(page).toHaveURL(/\/propietarios\/login/);
 });
+
+test("API pública v1: listado y ficha sin datos privados; no publicadas 404; filtros inválidos no rompen", async ({ request }) => {
+  const list = await request.get("/api/v1/properties?operacion=venta&tipo=casa&pagina=abc");
+  expect(list.status()).toBe(200);
+  const body = await list.json();
+  expect(body.apiVersion).toBe("v1");
+  expect(body.data.items.length).toBeGreaterThan(0);
+  const text = JSON.stringify(body);
+  for (const leak of ["protected_fields", "owner", "document", "password", "contact_id", "@hotmail", "@gmail"]) expect(text).not.toContain(leak);
+  const code = body.data.items[0].code;
+  const one = await request.get(`/api/v1/properties/${code}`);
+  expect(one.status()).toBe(200);
+  const hidden = await pool.query<{ code: number }>("select code from properties where not is_published limit 1");
+  if (hidden.rows[0]) expect((await request.get(`/api/v1/properties/${hidden.rows[0].code}`)).status()).toBe(404);
+  expect((await request.get("/api/v1/properties/abc")).status()).toBe(404);
+  expect((await request.get("/api/v1/facets?operacion=alquiler")).status()).toBe(200);
+});
+
