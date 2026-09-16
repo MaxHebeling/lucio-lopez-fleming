@@ -13,6 +13,8 @@ export function StatusForm({ propertyId, current, transitions, labels, isPublish
   const [to, setTo] = useState(transitions[0] ?? "");
   const [reason, setReason] = useState("");
   const { run, pending, error, ok, reset } = useAction(changeStatusAction);
+  // Tras cambiar de estado cambian las transiciones posibles: la selección se ajusta sin perder el aviso de éxito.
+  if (transitions.length && !transitions.includes(to)) setTo(transitions[0]!);
   if (!transitions.length) return <p className="text-sm text-stone">No hay transiciones disponibles desde {labels[current]}.</p>;
   const willUnpublish = isPublished && !["available", "reserved", "sold", "rented"].includes(to);
   return (

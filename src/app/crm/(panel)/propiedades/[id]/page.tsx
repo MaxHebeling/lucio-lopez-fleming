@@ -291,7 +291,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
         <section id="estado" className="scroll-mt-28">
           <Card title="Estado">
             <div className="flex flex-col gap-5">
-              {canStatus ? <StatusForm key={`${p.status}-${p.updated_at.toISOString()}`} propertyId={p.id} current={p.status} transitions={transitions} labels={STATUS_LABEL} isPublished={p.is_published} /> : null}
+              {canStatus ? <StatusForm propertyId={p.id} current={p.status} transitions={transitions} labels={STATUS_LABEL} isPublished={p.is_published} /> : null}
               <div>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone">Historial de estados</h3>
                 <ol className="flex flex-col divide-y divide-line text-sm">

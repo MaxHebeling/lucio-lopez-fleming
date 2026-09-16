@@ -69,7 +69,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/crm">) {
       ) : null}
 
       <form method="get" action="/crm" className="mb-5 grid gap-3 rounded-[var(--radius-lg)] border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end" aria-label="Filtros del tablero">
-        <Field label="Sucursal" htmlFor="d-branch" hint="Filtra propiedades, leads, visitas y contratos.">
+        <Field label="Sucursal" htmlFor="d-branch">
           <Select id="d-branch" name="branchId" defaultValue={d.branchId ?? ""}>
             <option value="">Todas</option>
             {branches.map((b) => (
@@ -93,6 +93,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/crm">) {
             Últimos 30 días
           </Link>
         </div>
+        <p className="text-xs text-stone sm:col-span-2 lg:col-span-4">La sucursal filtra propiedades, leads, visitas y contratos; el período, las altas y los leads nuevos.</p>
       </form>
 
       <div className="grid gap-4 lg:grid-cols-2">
