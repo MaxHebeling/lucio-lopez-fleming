@@ -214,9 +214,11 @@ export async function changePrice(
   });
 }
 
-export async function changeStatus(db: Database, actor: Actor, id: string, to: PropertyStatus, reason?: string | null): Promise<void> {
+/** Acepta una transacción en curso (p. ej. activar un contrato de alquiler) para que ambos cambios sean atómicos. */
+export async function changeStatus(db: Database | Tx, actor: Actor, id: string, to: PropertyStatus, reason?: string | null): Promise<void> {
   requirePermission(actor, "properties.change_status");
-  await db.transaction().execute(async (trx) => {
+  const run = <T>(fn: (trx: Tx) => Promise<T>): Promise<T> => (db.isTransaction ? fn(db as Tx) : db.transaction().execute(fn));
+  await run(async (trx) => {
     const current = await loadForUpdate(trx, id);
     const from = current.status as PropertyStatus;
     if (from === to) return;

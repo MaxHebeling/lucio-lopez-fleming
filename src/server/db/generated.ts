@@ -354,6 +354,9 @@ export interface IndexValues {
   index_key: string;
   period_date: string;
   source: string;
+  /**
+   * Diarios (ICL/CER): valor publicado del día. Mensuales (IPC/CASA_PROPIA): coeficiente 1 + variación mensual/100, period_date = día 1.
+   */
   value: Numeric;
 }
 
@@ -857,6 +860,7 @@ export interface RentAdjustments {
   applied_by: string | null;
   calculated_at: Generated<Timestamp>;
   calculated_by: string | null;
+  calculation: Generated<Json>;
   contract_id: string;
   effective_date: string;
   factor: Numeric;
@@ -870,7 +874,22 @@ export interface RentAdjustments {
   new_amount: Numeric;
   note: string | null;
   previous_amount: Numeric;
+  rejected_at: Timestamp | null;
+  rejected_by: string | null;
+  rejected_reason: string | null;
   status: Generated<string>;
+}
+
+export interface RentalContractDocuments {
+  contract_id: string;
+  created_at: Generated<Timestamp>;
+  deleted_at: Timestamp | null;
+  file_id: string;
+  id: Generated<string>;
+  kind: string;
+  title: string;
+  uploaded_by: string | null;
+  visible_to_owner: Generated<boolean>;
 }
 
 export interface RentalContractParties {
@@ -881,7 +900,9 @@ export interface RentalContractParties {
 }
 
 export interface RentalContracts {
+  adjustment_checked_at: Timestamp | null;
   adjustment_index_key: string | null;
+  adjustment_pending_note: string | null;
   adjustment_period_months: number | null;
   code: string;
   commission_amount: Numeric | null;
@@ -892,6 +913,7 @@ export interface RentalContracts {
   deposit_amount: Numeric | null;
   deposit_currency: string | null;
   end_date: string;
+  ended_reason: string | null;
   id: Generated<string>;
   initial_rent: Numeric;
   late_fee_daily_pct: Numeric | null;
@@ -1148,6 +1170,7 @@ export interface DB {
   rent_adjustments: RentAdjustments;
   rent_obligations: RentObligations;
   rent_payments: RentPayments;
+  rental_contract_documents: RentalContractDocuments;
   rental_contract_parties: RentalContractParties;
   rental_contracts: RentalContracts;
   role_permissions: RolePermissions;
