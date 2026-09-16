@@ -7,7 +7,7 @@ import { conflict, invalid, notFound } from "../../errors";
 import { isEnabled } from "../../flags";
 import { enqueuePortalSync } from "./sync";
 
-const retrySchema = z.object({ publicationId: z.uuid() });
+export const retrySchema = z.object({ publicationId: z.uuid() });
 
 export async function retryPublication(db: Database, actor: Actor, raw: unknown): Promise<{ queued: boolean }> {
   requirePermission(actor, "publications.manage");
@@ -39,7 +39,7 @@ export async function retryPublication(db: Database, actor: Actor, raw: unknown)
   });
 }
 
-const channelSchema = z.object({ channelKey: z.string().regex(/^[a-z0-9_]{2,40}$/), enabled: z.boolean() });
+export const channelSchema = z.object({ channelKey: z.string().regex(/^[a-z0-9_]{2,40}$/), enabled: z.boolean() });
 
 export async function setPortalChannelEnabled(db: Database, actor: Actor, raw: unknown): Promise<{ changed: boolean; queued: number }> {
   requirePermission(actor, "publications.manage");

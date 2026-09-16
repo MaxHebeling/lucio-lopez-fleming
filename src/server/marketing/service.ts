@@ -26,7 +26,7 @@ function backToDraft(status: string) {
     : {};
 }
 
-const captionSchema = z.object({ postId: z.uuid(), caption: z.string().trim().min(10, "El texto es muy corto").max(CAPTION_MAX.facebook) });
+export const captionSchema = z.object({ postId: z.uuid(), caption: z.string().trim().min(10, "El texto es muy corto").max(CAPTION_MAX.facebook) });
 
 export async function updatePostCaption(db: Database, actor: Actor, raw: unknown): Promise<void> {
   requirePermission(actor, "marketing.create");
@@ -46,7 +46,7 @@ export async function updatePostCaption(db: Database, actor: Actor, raw: unknown
   });
 }
 
-const assetsSchema = z.object({ postId: z.uuid(), mediaIds: z.array(z.uuid()).min(1, "Elegí al menos una foto").max(MAX_POST_ASSETS, `Máximo ${MAX_POST_ASSETS} fotos`) });
+export const assetsSchema = z.object({ postId: z.uuid(), mediaIds: z.array(z.uuid()).min(1, "Elegí al menos una foto").max(MAX_POST_ASSETS, `Máximo ${MAX_POST_ASSETS} fotos`) });
 
 export async function setPostAssets(db: Database, actor: Actor, raw: unknown): Promise<void> {
   requirePermission(actor, "marketing.create");
@@ -76,7 +76,7 @@ export async function setPostAssets(db: Database, actor: Actor, raw: unknown): P
   });
 }
 
-const idSchema = z.object({ postId: z.uuid() });
+export const idSchema = z.object({ postId: z.uuid() });
 
 export async function approvePost(db: Database, actor: Actor, raw: unknown): Promise<void> {
   requirePermission(actor, "marketing.approve");
@@ -93,7 +93,7 @@ export async function approvePost(db: Database, actor: Actor, raw: unknown): Pro
   });
 }
 
-const rejectSchema = z.object({ postId: z.uuid(), reason: z.string().trim().min(3, "Indicá el motivo").max(500) });
+export const rejectSchema = z.object({ postId: z.uuid(), reason: z.string().trim().min(3, "Indicá el motivo").max(500) });
 
 export async function rejectPost(db: Database, actor: Actor, raw: unknown): Promise<void> {
   requirePermission(actor, "marketing.approve");
@@ -110,7 +110,7 @@ export async function rejectPost(db: Database, actor: Actor, raw: unknown): Prom
   });
 }
 
-const scheduleSchema = z.object({ postId: z.uuid(), localDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Fecha y hora inválidas") });
+export const scheduleSchema = z.object({ postId: z.uuid(), localDateTime: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Fecha y hora inválidas") });
 
 export async function schedulePost(db: Database, actor: Actor, raw: unknown, now = new Date()): Promise<{ scheduledAt: Date }> {
   requirePermission(actor, "marketing.approve");
