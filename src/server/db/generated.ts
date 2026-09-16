@@ -46,18 +46,25 @@ export interface AdjustmentIndices {
 }
 
 export interface AiInteractions {
+  cache_creation_input_tokens: number | null;
+  cache_read_input_tokens: number | null;
   conversation_id: string | null;
   cost_usd_micros: Int8 | null;
   created_at: Generated<Timestamp>;
   error: string | null;
+  guard_violations: Generated<Json>;
+  handoff_reason: string | null;
   id: Generated<string>;
   input_tokens: number | null;
   latency_ms: number | null;
+  message_id: string | null;
   model: string;
   output_tokens: number | null;
   prompt_version: string;
   purpose: string;
+  rounds: number | null;
   status: string;
+  stop_reason: string | null;
   tool_calls: Generated<Json>;
 }
 
@@ -261,22 +268,34 @@ export interface ContentTemplates {
 }
 
 export interface ConversationMessages {
+  attempts: Generated<number>;
   body: string | null;
   conversation_id: string;
   created_at: Generated<Timestamp>;
+  delivered_at: Timestamp | null;
   direction: string;
   error: string | null;
+  error_code: string | null;
   external_message_id: string | null;
+  failed_at: Timestamp | null;
   id: Generated<string>;
+  idempotency_key: string | null;
+  kind: Generated<string>;
   payload: Generated<Json>;
+  read_at: Timestamp | null;
+  reply_to_message_id: string | null;
   sender_kind: string;
   sender_user_id: string | null;
+  sent_at: Timestamp | null;
   status: Generated<string>;
+  status_updated_at: Timestamp | null;
 }
 
 export interface Conversations {
+  ai_failures: Generated<number>;
   assigned_user_id: string | null;
   channel: string;
+  closed_at: Timestamp | null;
   collected: Generated<Json>;
   contact_id: string | null;
   created_at: Generated<Timestamp>;
@@ -286,6 +305,7 @@ export interface Conversations {
   id: Generated<string>;
   last_inbound_at: Timestamp | null;
   last_message_at: Timestamp | null;
+  last_outbound_at: Timestamp | null;
   mode: Generated<string>;
   summary: string | null;
   updated_at: Generated<Timestamp>;
