@@ -12,6 +12,7 @@ import { fetchBcraNowAction, manualIndexAction } from "../actions";
 
 export const metadata: Metadata = { title: "Índices de ajuste" };
 
+const INTEGRATION_STATUS: Record<string, string> = { active: "Operativa", degraded: "Con fallas", error: "Con error", disabled: "Desactivada", awaiting_credentials: "Sin credenciales" };
 const SOURCE_LABEL: Record<string, string> = { bcra_api: "API BCRA", manual: "Carga manual", import: "Importación" };
 
 export default async function IndicesPage() {
@@ -60,7 +61,7 @@ export default async function IndicesPage() {
           }
         >
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Badge tone={bcra?.status === "active" ? "success" : bcra?.status === "degraded" ? "warning" : "danger"}>{bcra?.status ?? "sin configurar"}</Badge>
+            <Badge tone={bcra?.status === "active" ? "success" : bcra?.status === "degraded" ? "warning" : "danger"}>{bcra ? (INTEGRATION_STATUS[bcra.status] ?? bcra.status) : "Sin configurar"}</Badge>
             <Badge tone={data.fetchEnabled ? "success" : "neutral"}>{data.fetchEnabled ? "Descarga diaria activa" : "Descarga diaria desactivada (flag rent_index_fetch)"}</Badge>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -146,7 +147,7 @@ export default async function IndicesPage() {
       </div>
 
       {data.recentDaily.length ? (
-        <Card title="ICL y CER: valores alrededor de hoy" className="mt-5">
+        <Card title="ICL y CER: una semana antes y después de hoy" className="mt-5">
           <Table>
             <thead>
               <tr>

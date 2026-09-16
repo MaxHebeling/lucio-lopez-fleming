@@ -160,7 +160,7 @@ export function ReportView({ data, publicBaseUrl }: { data: ReportData; publicBa
             <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-2">Liquidaciones</h3>
             {data.rentals.settlements.length ? (
               <div className="mt-1 overflow-x-auto">
-                <table className="w-full min-w-[520px] text-left text-sm">
+                <table className="w-full min-w-[560px] text-left text-sm [&_td]:px-2 [&_th]:px-2 [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
                   <thead className="text-xs text-stone">
                     <tr>
                       <th className="py-1">Mes</th>

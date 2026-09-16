@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Alert, Button, Input, Select } from "@/components/ui";
 import type { FormState } from "@/components/rentals/form-state";
 import { registerPaymentAction } from "./actions";
@@ -12,6 +12,19 @@ import { registerPaymentAction } from "./actions";
 export function PaymentForm({ obligationId, remaining, currency, today, initialKey }: { obligationId: string; remaining: string; currency: string; today: string; initialKey: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(registerPaymentAction, {});
   const key = state.nonce ?? initialKey;
+  // Tras un cobro confirmado el formulario se oculta: registrar otro requiere un clic explícito
+  // (evita un segundo cobro accidental por el saldo restante).
+  const [reopenedFor, setReopenedFor] = useState<string | undefined>();
+  if (state.ok && reopenedFor !== state.nonce) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Alert tone="success">{state.message}</Alert>
+        <Button variant="secondary" size="sm" onClick={() => setReopenedFor(state.nonce)}>
+          Registrar otro cobro
+        </Button>
+      </div>
+    );
+  }
   return (
     <form action={action} className="flex flex-wrap items-end gap-2" noValidate>
       <input type="hidden" name="obligationId" value={obligationId} />
@@ -47,11 +60,6 @@ export function PaymentForm({ obligationId, remaining, currency, today, initialK
             {state.error}
             {state.fieldErrors ? ` ${Object.values(state.fieldErrors).flat().join(" · ")}` : ""}
           </Alert>
-        </div>
-      ) : null}
-      {state.ok ? (
-        <div className="basis-full">
-          <Alert tone="success">{state.message}</Alert>
         </div>
       ) : null}
     </form>

@@ -31,7 +31,7 @@ export default async function OwnerContractPage({ params }: PageProps<"/propieta
       <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone">
         Contrato {c.code} <ContractStatus status={c.status} />
       </p>
-      <dl className="mt-4 grid grid-cols-2 gap-3 rounded-[var(--radius-lg)] border border-line bg-white p-4 text-sm sm:grid-cols-4">
+      <dl className="mb-8 mt-4 grid grid-cols-2 gap-3 rounded-[var(--radius-lg)] border border-line bg-white p-4 text-sm sm:grid-cols-4">
         <div>
           <dt className="text-xs text-stone">Vigencia</dt>
           <dd>

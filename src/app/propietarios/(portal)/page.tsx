@@ -4,7 +4,7 @@ import { getDb } from "@/server/db";
 import { ownerDashboard } from "@/server/owners/portal";
 import { monthLabel } from "@/server/rentals/dates";
 import { Badge, formatDate, formatMoney } from "@/components/ui";
-import { ContractStatus, PROPERTY_STATUS_LABEL, ReportStatus, SettlementStatus } from "@/components/rentals/status";
+import { ContractStatus, PROPERTY_STATUS_LABEL, SettlementStatus } from "@/components/rentals/status";
 import { Empty, Section } from "./ui";
 
 export default async function OwnerHome() {
@@ -119,7 +119,7 @@ export default async function OwnerHome() {
                       {formatDate(r.period_start)} al {formatDate(r.period_end)}
                       <span className="block text-xs text-stone">{r.property_title ?? "Todas tus propiedades"}</span>
                     </span>
-                    <ReportStatus status={r.status} />
+                    <span className="text-xs font-semibold text-ink-2">Ver</span>
                   </Link>
                 </li>
               ))}

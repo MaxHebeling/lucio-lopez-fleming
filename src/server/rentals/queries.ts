@@ -238,8 +238,8 @@ export async function indicesOverview(db: Database, actor: Actor) {
       .selectFrom("index_values")
       .select(["index_key", "period_date", "value", "source"])
       .where("index_key", "in", ["ICL", "CER"])
-      .where("period_date", ">=", addDays(todayInSalta(), -14))
-      .where("period_date", "<=", addDays(todayInSalta(), 14))
+      .where("period_date", ">=", addDays(todayInSalta(), -7))
+      .where("period_date", "<=", addDays(todayInSalta(), 7))
       .orderBy("period_date", "desc")
       .execute(),
     db
