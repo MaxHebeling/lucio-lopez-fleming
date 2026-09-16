@@ -38,7 +38,6 @@ const SECRET = {
 
 type Ids = { published: string; unpublished: string; sold: string; archived: string; land: string };
 let ids: Ids;
-let loc: { salta: string; tresCerritos: string; vsl: string; praderas: string };
 
 async function insertProperty(o: {
   code: number;
@@ -106,7 +105,7 @@ beforeAll(async () => {
   const tresCerritos = await ins("neighborhood", "Tres Cerritos", "tres-cerritos", salta);
   const vsl = await ins("locality", "Villa San Lorenzo", "villa-san-lorenzo", prov);
   const praderas = await ins("gated_community", "Praderas San Lorenzo", "praderas-san-lorenzo", vsl);
-  loc = { salta: saltaN, tresCerritos, vsl, praderas };
+  void saltaN; // barrio comodín con el mismo nombre que la localidad (como crea el importador)
 
   const published = await insertProperty({ code: 9001, slug: "casa-venta-tres-cerritos-9001", title: "CASA EN VENTA", location: tresCerritos, featured: true });
   const unpublished = await insertProperty({ code: 9002, slug: "casa-borrador-9002", title: "Casa borrador", status: "draft", published: false, location: tresCerritos });

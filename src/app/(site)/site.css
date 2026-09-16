@@ -636,7 +636,7 @@
     position: fixed;
     inset: 0;
     z-index: var(--z-modal);
-    background: rgb(12 11 10 / 0.97);
+    background: rgb(12 11 10);
     color: var(--paper);
   }
   html[data-motion="on"] .gallery-dialog {
@@ -717,12 +717,14 @@
     }
   }
 
-  html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-mono,
-  html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-tag {
-    color: var(--paper);
-  }
   /* Un ancestro con backdrop-filter se vuelve contenedor de los `position: fixed`: con el menú abierto se quita. */
   .site-header[data-menu-open="true"] {
     backdrop-filter: none;
   }
+}
+
+/* Fuera de la capa: debe ganarle a las utilidades de color del logo (text-brick) mientras el header está sobre la foto. */
+html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-mono,
+html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-tag {
+  color: var(--paper);
 }
