@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens — Lucio López Fleming.
+ * Marca: monograma LLF en rojo ladrillo, wordmark en tinta, "Buenos negocios".
+ * Paleta: papel cal · tinta · ladrillo (acento, con moderación) · siena · piedra.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f4f0ea;
+  --paper-2: #ebe5dc;
+  --ink: #141312;
+  --ink-2: #3a3734;
+  --stone: #77716a;
+  --line: #d9d1c6;
+  --brick: #ae2c25;
+  --brick-deep: #8c211b;
+  --siena: #b8643f;
+  --white: #ffffff;
+  --success: #2f6b3f;
+  --warning: #9a6b12;
+  --danger: #a3261f;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --shadow-soft: 0 1px 2px rgb(20 19 18 / 0.06), 0 8px 24px rgb(20 19 18 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(20 19 18 / 0.08), 0 18px 48px rgb(20 19 18 / 0.12);
+
+  /* Movimiento: pocas duraciones y pocas curvas, en todo el sitio */
+  --motion-fast: 140ms;
+  --motion-ui: 240ms;
+  --motion-reveal: 800ms;
+  --motion-cinematic: 1400ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --z-header: 40;
+  --z-drawer: 60;
+  --z-modal: 80;
+  --z-toast: 100;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-stone: var(--stone);
+  --color-line: var(--line);
+  --color-brick: var(--brick);
+  --color-brick-deep: var(--brick-deep);
+  --color-siena: var(--siena);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-display: var(--font-display), "Times New Roman", serif;
+  --font-sans: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ease-out: var(--ease-out);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brick);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
