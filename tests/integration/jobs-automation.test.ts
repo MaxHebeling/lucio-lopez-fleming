@@ -73,6 +73,8 @@ describe("motor de automatizaciones", () => {
     const system = await testSystemActor(db);
     const leadId = "00000000-0000-4000-8000-000000000001";
     await emitEvent(db, system, { type: "lead.created", aggregateType: "lead", aggregateId: leadId, payload: { assignedUserId: agent.userId, summary: "Consulta web" } });
+    // Solo la automatización bajo prueba: otros módulos agregan las suyas sobre lead.created.
+    await sql`update automation_definitions set is_enabled = (key = 'lead_notify_and_followup') where trigger_event = 'lead.created'`.execute(db);
     const d = await dispatchPendingEvents(db);
     expect(d.events).toBe(1);
     expect(d.jobs).toBe(1);
