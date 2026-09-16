@@ -21,7 +21,7 @@ export const viewport: Viewport = { themeColor: "#f4f0ea", colorScheme: "light" 
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es-AR" className={`${display.variable} ${sans.variable}`}>
+    <html lang="es-AR" className={`${display.variable} ${sans.variable}`} suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

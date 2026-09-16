@@ -1,0 +1,730 @@
+/*
+ * Sitio público · composición editorial + sistema de movimiento (docs/WEB_EXPERIENCE.md §3 y §5).
+ * Reglas del movimiento:
+ *  · Todo lo que oculta o desplaza contenido cuelga de html[data-motion="on"] (lo fija un script inline antes
+ *    del primer paint y solo sin prefers-reduced-motion). Sin JS o con reduced motion, el sitio queda quieto y completo.
+ *  · Solo transform y opacity. La foto del hero (LCP) nunca parte de opacity 0: solo escala.
+ *  · Jerarquía: 1 hero · 2 story · 3 revelados · 4 UI · 5 crítico (búsqueda, fichas, formularios: casi estático).
+ */
+
+/* En la capa components: las utilidades de Tailwind (hidden, min-h-*, etc.) siempre pueden ajustar estos estilos. */
+@layer components {
+  .site {
+    --gutter: clamp(1.25rem, 4vw, 3rem);
+    --container: 1440px;
+    --header-h: 64px;
+    --section-y: clamp(4.5rem, 10vw, 9rem);
+    --text-hero: clamp(3.1rem, 9vw, 10rem);
+    --text-macro: clamp(3.25rem, 11vw, 12rem);
+    --text-h2: clamp(2.25rem, 5.2vw, 4.75rem);
+    --text-h3: clamp(1.6rem, 2.6vw, 2.35rem);
+    --ease-reveal: var(--ease-out);
+    overflow-x: clip;
+  }
+  @media (min-width: 1024px) {
+    .site {
+      --header-h: 76px;
+    }
+  }
+
+  .container-site {
+    width: 100%;
+    max-width: var(--container);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 2rem;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.55;
+  }
+  .display {
+    font-family: var(--font-display), "Times New Roman", serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 0.95;
+  }
+  .h2 {
+    font-size: var(--text-h2);
+  }
+  .h3 {
+    font-size: var(--text-h3);
+    line-height: 1.02;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -100px;
+    z-index: 200;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+  }
+  .skip-link:focus {
+    top: 1rem;
+  }
+
+  /* ── Nivel 4 · UI: botones y enlaces con la misma respuesta en todo el sitio ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: 48px;
+    padding: 0 1.4rem;
+    border-radius: 999px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      transform var(--motion-ui) var(--ease-out),
+      background-color var(--motion-ui),
+      border-color var(--motion-ui),
+      color var(--motion-ui);
+  }
+  .btn:active {
+    transform: translateY(1px) scale(0.985);
+  }
+  .btn-primary {
+    background: var(--brick);
+    color: var(--white);
+  }
+  .btn-primary:hover {
+    background: var(--brick-deep);
+  }
+  .btn-ink {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .btn-ink:hover {
+    background: var(--ink-2);
+  }
+  .btn-outline {
+    border: 1px solid currentColor;
+  }
+  .btn-outline:hover {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+  .on-dark .btn-outline:hover {
+    background: var(--paper);
+    border-color: var(--paper);
+    color: var(--ink);
+  }
+  .btn-icon,
+  .link-arrow svg {
+    transition: transform var(--motion-ui) var(--ease-out);
+  }
+  .link-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    text-underline-offset: 6px;
+  }
+  @media (hover: hover) {
+    .btn:hover .btn-icon,
+    .link-arrow:hover svg {
+      transform: translateX(3px);
+    }
+    .link-arrow:hover {
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+    }
+  }
+  [data-magnetic] {
+    transition:
+      transform 0.35s var(--ease-out),
+      background-color var(--motion-ui);
+  }
+
+  .field-control {
+    width: 100%;
+    min-height: 48px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    background: var(--white);
+    padding: 0.65rem 0.9rem;
+    font-size: 1rem;
+    color: var(--ink);
+    transition: border-color var(--motion-fast);
+  }
+  .field-control:focus {
+    outline: 2px solid var(--brick);
+    outline-offset: 1px;
+    border-color: var(--ink);
+  }
+  .field-control[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+  select.field-control {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath stroke='%23141312' stroke-width='1.5' d='m1 1.5 5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.9rem center;
+    padding-right: 2.25rem;
+  }
+  .field-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  /* ── Cabecera: sólida por defecto; sobre el hero (solo con JS) transparente hasta hacer scroll ── */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    height: var(--header-h);
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+    transition:
+      background-color 0.35s var(--ease-out),
+      border-color 0.35s var(--ease-out),
+      color 0.35s var(--ease-out);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .site-header {
+      backdrop-filter: saturate(1.2) blur(12px);
+    }
+  }
+  html[data-motion] .site-header[data-tone="hero"] {
+    position: fixed;
+    inset-inline: 0;
+  }
+  html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) {
+    background: transparent;
+    border-color: transparent;
+    color: var(--paper);
+    backdrop-filter: none;
+  }
+  .header-nav a {
+    position: relative;
+  }
+  .header-nav a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--motion-ui) var(--ease-out);
+  }
+  .header-nav a[aria-current="page"]::after,
+  .header-nav a:hover::after {
+    transform: scaleX(1);
+  }
+
+  .mobile-menu {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-drawer);
+    background: var(--ink);
+    color: var(--paper);
+    overflow-y: auto;
+  }
+  html[data-motion="on"] .mobile-menu[data-state="open"] {
+    animation: menu-in 0.42s var(--ease-out) both;
+  }
+  html[data-motion="on"] .mobile-menu[data-state="open"] .menu-item {
+    animation: fade-up 0.5s var(--ease-out) both;
+    animation-delay: calc(80ms + var(--i, 0) * 40ms);
+  }
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* ── Monograma que se dibuja (trazos de agrimensura) ── */
+  .mono-stroke {
+    transform-box: fill-box;
+  }
+  html[data-motion="on"] .mono-draw .mono-stroke {
+    animation: stroke-grow 0.7s var(--ease-out) both;
+    animation-delay: calc(var(--s, 0) * 70ms + var(--mono-delay, 0ms));
+  }
+  @keyframes stroke-grow {
+    from {
+      opacity: 0;
+      transform: scale(var(--sx, 1), var(--sy, 0));
+    }
+    30% {
+      opacity: 1;
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Líneas finas que se trazan (motivo gráfico de transición) */
+  .survey-line {
+    display: block;
+    height: 1px;
+    background: currentColor;
+    transform-origin: left center;
+  }
+  html[data-motion="on"] .reveal-wait .survey-line,
+  html[data-motion="on"] [data-reveal].reveal-wait.survey-line {
+    transform: scaleX(0);
+  }
+  html[data-motion="on"] .reveal-in .survey-line,
+  html[data-motion="on"] .survey-line.reveal-in {
+    transform: none;
+    transition: transform 1.1s var(--ease-in-out) var(--reveal-delay, 0ms);
+  }
+
+  /* ── Nivel 1 · Hero cinematográfico ── */
+  .hero {
+    position: relative;
+    isolation: isolate;
+    min-height: min(100svh, 980px);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    color: var(--paper);
+    background: var(--ink);
+  }
+  @media (max-height: 620px) and (orientation: landscape) {
+    .hero {
+      min-height: 640px;
+    }
+  }
+  html[data-motion] .hero {
+    padding-top: var(--header-h);
+  }
+  .hero-media,
+  .hero-zoom {
+    position: absolute;
+    inset: -12px;
+    z-index: -2;
+  }
+  .hero-img {
+    object-fit: cover;
+  }
+  .hero-veil {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      linear-gradient(180deg, rgb(20 19 18 / 0.55) 0%, rgb(20 19 18 / 0.08) 26%, rgb(20 19 18 / 0.18) 48%, rgb(20 19 18 / 0.86) 100%),
+      linear-gradient(90deg, rgb(20 19 18 / 0.45) 0%, transparent 60%);
+  }
+  html[data-motion="on"] .hero-img {
+    animation: hero-img-in var(--motion-cinematic) var(--ease-out) both;
+  }
+  html[data-motion="on"] .hero-line {
+    animation: hero-line-up 1s var(--ease-out) both;
+    animation-delay: calc(360ms + var(--l, 0) * 110ms);
+  }
+  html[data-motion="on"] .hero-enter {
+    animation: fade-up 0.8s var(--ease-out) both;
+    animation-delay: var(--d, 700ms);
+  }
+  html[data-motion="on"] body:has([data-hero]) .header-enter {
+    animation: fade-down 0.6s var(--ease-out) 1s both;
+  }
+  @keyframes hero-img-in {
+    from {
+      transform: scale(1.1);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes hero-line-up {
+    from {
+      transform: translate3d(0, 0.4em, 0);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 16px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes fade-down {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -8px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .hero-title {
+    font-size: var(--text-hero);
+    line-height: 0.9;
+    letter-spacing: -0.035em;
+  }
+  .hero-line {
+    display: block;
+  }
+  [data-depth] {
+    will-change: transform;
+  }
+
+  /* Escala lenta del hero ligada al scroll (desktop, navegadores con scroll-driven animations) */
+  @keyframes hero-scroll-zoom {
+    to {
+      transform: scale(1.08);
+    }
+  }
+  @supports (animation-timeline: view()) {
+    @media (min-width: 1024px) {
+      html[data-motion="on"] .hero-zoom {
+        animation: hero-scroll-zoom linear both;
+        animation-timeline: view();
+        animation-range: exit 0% exit 100%;
+      }
+    }
+  }
+
+  .hero-search {
+    background: color-mix(in srgb, var(--paper) 97%, transparent);
+    color: var(--ink);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 0.25);
+  }
+
+  /* ── Nivel 3 · Revelados de sección ── */
+  html[data-motion="on"] .reveal-wait {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0);
+  }
+  html[data-motion="on"] [data-reveal="fade"].reveal-wait {
+    transform: none;
+  }
+  html[data-motion="on"] [data-reveal="scale"].reveal-wait {
+    opacity: 1;
+    transform: none;
+  }
+  html[data-motion="on"] [data-reveal="line"].reveal-wait {
+    opacity: 1;
+    transform: none;
+  }
+  html[data-motion="on"] .reveal-in {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--motion-reveal) var(--ease-out),
+      transform var(--motion-reveal) var(--ease-out);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  /* Foto con escala interna (la caja nunca cambia de tamaño: CLS 0) */
+  .media-frame {
+    overflow: hidden;
+    position: relative;
+  }
+  html[data-motion="on"] .reveal-wait .reveal-img {
+    transform: scale(1.12);
+  }
+  html[data-motion="on"] .reveal-in .reveal-img {
+    transform: none;
+    transition: transform 1.4s var(--ease-out) var(--reveal-delay, 0ms);
+  }
+  /* Cortina: la foto se descubre detrás de un plano papel que se desplaza (transform) */
+  .curtain {
+    position: absolute;
+    inset: 0;
+    background: var(--paper);
+    transform-origin: top;
+    transform: scaleY(0);
+    pointer-events: none;
+  }
+  html[data-motion="on"] .reveal-wait .curtain {
+    transform: none;
+  }
+  html[data-motion="on"] .reveal-in .curtain {
+    transform: scaleY(0);
+    transition: transform 1s var(--ease-in-out) var(--reveal-delay, 0ms);
+  }
+  .on-dark .curtain {
+    background: var(--ink);
+  }
+  /* Texto por líneas */
+  .line-mask {
+    display: block;
+    overflow: hidden;
+    padding-bottom: 0.08em;
+    margin-bottom: -0.08em;
+  }
+  .line-inner {
+    display: block;
+  }
+  html[data-motion="on"] .reveal-wait .line-inner {
+    transform: translate3d(0, 105%, 0);
+  }
+  html[data-motion="on"] .reveal-in .line-inner {
+    transform: none;
+    transition: transform 1s var(--ease-out);
+    transition-delay: calc(var(--reveal-delay, 0ms) + var(--l, 0) * 90ms);
+  }
+
+  /* ── Nivel 2 · Manifiesto con 1974 ── */
+  .numeral {
+    font-family: var(--font-display), serif;
+    font-size: clamp(7rem, 26vw, 26rem);
+    line-height: 0.78;
+    letter-spacing: -0.05em;
+  }
+
+  /* ── Sticky story «Qué hacemos» ── */
+  .story-media {
+    position: relative;
+  }
+  .story-photo {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.7s var(--ease-out);
+  }
+  .story-photo[data-idx="0"] {
+    opacity: 1;
+  }
+  [data-story][data-active] .story-photo {
+    opacity: 0;
+  }
+  [data-story][data-active="0"] .story-photo[data-idx="0"],
+  [data-story][data-active="1"] .story-photo[data-idx="1"],
+  [data-story][data-active="2"] .story-photo[data-idx="2"] {
+    opacity: 1;
+  }
+  .story-photo img {
+    transition: transform 1.6s var(--ease-out);
+    transform: scale(1.06);
+  }
+  [data-story]:not([data-active]) .story-photo[data-idx="0"] img,
+  [data-story][data-active="0"] .story-photo[data-idx="0"] img,
+  [data-story][data-active="1"] .story-photo[data-idx="1"] img,
+  [data-story][data-active="2"] .story-photo[data-idx="2"] img {
+    transform: none;
+  }
+  /* Paso activo: número en ladrillo y leve avance; el texto nunca pierde contraste (se lee siempre completo). */
+  .story-step .story-num {
+    transition: transform 0.5s var(--ease-out);
+  }
+  @media (min-width: 1024px) {
+    [data-story][data-active="0"] .story-step[data-story-step="0"] .story-num,
+    [data-story][data-active="1"] .story-step[data-story-step="1"] .story-num,
+    [data-story][data-active="2"] .story-step[data-story-step="2"] .story-num {
+      transform: translateX(6px);
+    }
+  }
+  .story-progress {
+    transform-origin: top;
+    transform: scaleY(0.3333);
+    transition: transform 0.6s var(--ease-out);
+  }
+  [data-story][data-active="1"] .story-progress {
+    transform: scaleY(0.6666);
+  }
+  [data-story][data-active="2"] .story-progress {
+    transform: scaleY(1);
+  }
+
+  /* ── Tarjetas de propiedad ── */
+  .card {
+    position: relative;
+  }
+  .card-img {
+    transition: scale 0.9s var(--ease-out);
+  }
+  .card-arrow {
+    transition:
+      transform var(--motion-ui) var(--ease-out),
+      background-color var(--motion-ui),
+      color var(--motion-ui);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card:hover .card-img {
+      scale: 1.04;
+    }
+    .card:hover .card-arrow {
+      transform: translate(2px, -2px);
+      background: var(--brick);
+      color: var(--white);
+    }
+  }
+  .card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .card:focus-within {
+    outline: 2px solid var(--brick);
+    outline-offset: 4px;
+    border-radius: var(--radius-lg);
+  }
+  .card-link:focus-visible {
+    outline: none;
+  }
+
+  /* Fila horizontal con swipe nativo (sin secuestrar el scroll vertical) */
+  .rail {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(78%, 1fr);
+    gap: 1rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--gutter);
+    padding-inline: var(--gutter);
+    padding-bottom: 1rem;
+    scrollbar-width: thin;
+  }
+  .rail > * {
+    scroll-snap-align: start;
+  }
+  @media (min-width: 640px) {
+    .rail {
+      grid-auto-columns: minmax(46%, 1fr);
+    }
+  }
+  @media (min-width: 1024px) {
+    .rail {
+      grid-auto-columns: calc((100% - 3 * 1.5rem - 2 * var(--gutter)) / 3.4);
+      gap: 1.5rem;
+    }
+  }
+
+  /* ── Galería de la ficha ── */
+  .gallery-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    background: rgb(12 11 10);
+    color: var(--paper);
+  }
+  html[data-motion="on"] .gallery-dialog {
+    animation: fade-in 0.28s var(--ease-out) both;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .gallery-track {
+    display: flex;
+    height: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+  }
+  .gallery-track::-webkit-scrollbar {
+    display: none;
+  }
+  .gallery-slide {
+    position: relative;
+    flex: 0 0 100%;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+  }
+
+  /* Barra de contacto fija en mobile (ficha) */
+  .contact-bar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 30;
+    padding: 0.75rem var(--gutter) calc(0.75rem + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--paper) 96%, transparent);
+    border-top: 1px solid var(--line);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .contact-bar {
+      backdrop-filter: blur(10px);
+    }
+  }
+
+  /* Mapa estático de tiles OSM */
+  .osm-map {
+    position: relative;
+    overflow: hidden;
+    background: var(--paper-2);
+  }
+  .osm-tiles {
+    position: absolute;
+    display: grid;
+    grid-template-columns: repeat(3, 256px);
+    left: 50%;
+    top: 50%;
+  }
+  .osm-tiles img {
+    display: block;
+    width: 256px;
+    height: 256px;
+    max-width: none;
+    filter: grayscale(0.85) contrast(0.95) brightness(1.03);
+  }
+
+  .prose-llf p + p {
+    margin-top: 1em;
+  }
+
+  @media print {
+    .site-header,
+    .contact-bar,
+    .site-footer {
+      display: none;
+    }
+  }
+
+  /* Un ancestro con backdrop-filter se vuelve contenedor de los `position: fixed`: con el menú abierto se quita. */
+  .site-header[data-menu-open="true"] {
+    backdrop-filter: none;
+  }
+}
+
+/* Fuera de la capa: debe ganarle a las utilidades de color del logo (text-brick) mientras el header está sobre la foto. */
+html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-mono,
+html[data-motion] .site-header[data-tone="hero"][data-scrolled="false"]:not([data-menu-open="true"]) .logo-tag {
+  color: var(--paper);
+}

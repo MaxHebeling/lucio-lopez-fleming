@@ -49,3 +49,6 @@ next-env.d.ts
 /backups
 # storage local de desarrollo (driver local)
 /.storage
+# playwright
+/test-results/
+/playwright-report/
