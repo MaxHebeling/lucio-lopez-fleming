@@ -41,7 +41,7 @@ export default async function ContactoPage() {
                   <Phone aria-hidden className="size-5 text-brick" strokeWidth={1.6} />
                   <span>
                     {b.name}:{" "}
-                    <a href={telHref(b.phone)!} className="font-semibold underline-offset-4 hover:underline">
+                    <a href={telHref(b.phone)!} className="whitespace-nowrap font-semibold underline-offset-4 hover:underline">
                       {b.phone}
                     </a>
                   </span>
