@@ -5,3 +5,4 @@
 import "../automation/base-actions";
 import "../automation/engine";
 import "./scheduled";
+import "../integrations/whatsapp/jobs";
