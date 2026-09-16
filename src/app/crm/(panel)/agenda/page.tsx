@@ -159,7 +159,7 @@ function TeamWeek({ days, users, rows, today }: { days: string[]; users: Array<{
   const agents = users.filter((u) => rows.some((r) => r.assigned_user_id === u.id));
   if (agents.length === 0) return <EmptyState title="Nadie del equipo tiene citas esta semana" />;
   return (
-    <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white" role="region" aria-label="Agenda semanal por agente" tabIndex={0}>
+    <div className="relative overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white" role="region" aria-label="Agenda semanal por agente" tabIndex={0}>
       <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
         <thead>
           <tr>

@@ -56,7 +56,7 @@ export default async function OwnerPropertyPage({ params }: PageProps<"/propieta
         <p className="mb-3 text-sm text-ink-2">
           {totals.inquiries} consulta(s) y {totals.visits} visita(s) realizada(s). Se informan cantidades, sin datos de los interesados.
         </p>
-        <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white">
+        <div className="relative overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white">
           <table className="w-full min-w-[420px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-stone">
               <tr>

@@ -29,7 +29,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
 
 export function Card({ children, className, title, actions }: { children: ReactNode; className?: string; title?: string; actions?: ReactNode }) {
   return (
-    <section className={cx("rounded-[var(--radius-lg)] border border-line bg-white p-4 sm:p-5", className)}>
+    <section className={cx("min-w-0 rounded-[var(--radius-lg)] border border-line bg-white p-4 sm:p-5", className)}>
       {title ? (
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink-2">{title}</h2>
@@ -63,7 +63,7 @@ export function Alert({ tone = "info", children }: { tone?: "info" | "danger" | 
 /** Tabla con scroll horizontal propio (la página nunca scrollea en horizontal). */
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cx("overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white", className)}>
+    <div className={cx("relative max-w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white", className)}>
       <table className="w-full min-w-[640px] text-left text-sm [&_td]:border-t [&_td]:border-line [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-stone">
         {children}
       </table>

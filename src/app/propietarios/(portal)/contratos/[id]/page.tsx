@@ -74,7 +74,7 @@ export default async function OwnerContractPage({ params }: PageProps<"/propieta
         {obligations.length === 0 ? (
           <Empty>Sin cuotas.</Empty>
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white">
+          <div className="relative overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white">
             <table className="w-full min-w-[520px] text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-stone">
                 <tr>
