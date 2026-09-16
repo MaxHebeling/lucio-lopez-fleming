@@ -22,6 +22,20 @@ import {
 
 type Columns = Record<string, unknown>;
 
+/**
+ * Si la propiedad vino del sitio anterior, marca campos como corregidos por una persona para que una reimportación
+ * no los revierta (estado, publicación, agentes, fotos, características). Sin efecto para propiedades creadas en el CRM.
+ */
+export async function protectImportedFields(trx: Tx, actor: Actor, propertyId: string, fields: string[]): Promise<void> {
+  if (actor.kind !== "staff" || !fields.length) return;
+  await trx
+    .updateTable("properties")
+    .set({ protected_fields: sql`array(select distinct unnest(protected_fields || ${fields}::text[]))` })
+    .where("id", "=", propertyId)
+    .where("source", "=", "adinco_import")
+    .execute();
+}
+
 async function loadForUpdate(trx: Tx, id: string) {
   const p = await trx.selectFrom("properties").selectAll().where("id", "=", id).where("deleted_at", "is", null).forUpdate().executeTakeFirst();
   if (!p) throw notFound("Propiedad");
@@ -177,6 +191,7 @@ export async function updateProperty(db: Database, actor: Actor, id: string, raw
       await trx.insertInto("property_redirects").values({ path: `/propiedades/${current.slug}`, property_id: id }).onConflict((oc) => oc.column("path").doUpdateSet({ property_id: id })).execute();
     }
     await audit(trx, actor, { action: "PROPERTY_UPDATED", entityType: "property", entityId: id, before: changes.before, after: { ...changes.after, ...(input.featureKeys ? { featureKeys: input.featureKeys } : {}) } });
+    if (input.featureKeys) await protectImportedFields(trx, actor, id, ["features"]);
     await emitEvent(trx, actor, { type: "property.updated", aggregateType: "property", aggregateId: id, payload: { fields: changedColumns, link: `/crm/propiedades/${id}` } });
   });
 }
@@ -236,6 +251,7 @@ export async function changeStatus(db: Database | Tx, actor: Actor, id: string, 
       .execute();
     await trx.insertInto("property_status_history").values({ property_id: id, from_status: from, to_status: to, changed_by: actorUserId(actor), reason: reason ?? null }).execute();
     await audit(trx, actor, { action: "PROPERTY_STATUS_CHANGED", entityType: "property", entityId: id, before: { status: from }, after: { status: to, unpublished: unpublish }, metadata: reason ? { reason } : undefined });
+    await protectImportedFields(trx, actor, id, unpublish ? ["status", "is_published"] : ["status"]);
     await emitEvent(trx, actor, { type: "property.status_changed", aggregateType: "property", aggregateId: id, payload: { from, to } });
     if (unpublish) {
       await markPublications(trx, id, "unpublished");
@@ -269,6 +285,7 @@ export async function publishProperty(db: Database, actor: Actor, id: string): P
     await trx.updateTable("properties").set({ is_published: true, published_at: current.published_at ?? new Date(), updated_by: actorUserId(actor) }).where("id", "=", id).execute();
     await markPublications(trx, id, "published");
     await audit(trx, actor, { action: "PROPERTY_PUBLISHED", entityType: "property", entityId: id });
+    await protectImportedFields(trx, actor, id, ["is_published"]);
     // dedupe por día: republicar varias veces el mismo día no genera borradores de redes repetidos
     await emitEvent(trx, actor, {
       type: "property.published",
@@ -288,6 +305,7 @@ export async function unpublishProperty(db: Database, actor: Actor, id: string, 
     await trx.updateTable("properties").set({ is_published: false, updated_by: actorUserId(actor) }).where("id", "=", id).execute();
     await markPublications(trx, id, "unpublished");
     await audit(trx, actor, { action: "PROPERTY_UNPUBLISHED", entityType: "property", entityId: id, metadata: reason ? { reason } : undefined });
+    await protectImportedFields(trx, actor, id, ["is_published"]);
     await emitEvent(trx, actor, { type: "property.unpublished", aggregateType: "property", aggregateId: id, payload: { reason: reason ?? null } });
   });
 }
@@ -317,6 +335,7 @@ export async function assignAgents(db: Database, actor: Actor, id: string, leadU
     ];
     if (rows.length) await trx.insertInto("property_agents").values(rows).execute();
     await audit(trx, actor, { action: "PROPERTY_AGENTS_ASSIGNED", entityType: "property", entityId: id, before, after: rows.map((r) => ({ user_id: r.user_id, role: r.role })) });
+    await protectImportedFields(trx, actor, id, ["agents"]);
   });
 }
 

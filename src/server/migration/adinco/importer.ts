@@ -351,7 +351,8 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
         if (!protectedFields.has(`price:${n.operation}`)) await upsertOperation(trx, propertyId, n);
         else allWarnings.push({ code: "protected_field_conflict", field: `price:${n.operation}`, severity: "info", message: "Precio corregido en el CRM: no se tomó el del origen", valueB: n.amount === null ? "consultar" : `${n.currency} ${n.amount}` });
         if (!protectedFields.has("features")) await setFeatures(trx, propertyId, n);
-        await syncMedia(trx, propertyId, n, !protectedFields.has("media"));
+        // Fotos ordenadas/borradas/portada elegida en el CRM: el origen ya no las toca (ni agrega ni reordena).
+        if (!protectedFields.has("media")) await syncMedia(trx, propertyId, n, true);
         if (agentUserId && !protectedFields.has("agents")) {
           await trx.deleteFrom("property_agents").where("property_id", "=", propertyId).where("role", "=", "lead").where("user_id", "<>", agentUserId).execute();
           await trx.insertInto("property_agents").values({ property_id: propertyId, user_id: agentUserId, role: "lead" }).onConflict((oc) => oc.doNothing()).execute();

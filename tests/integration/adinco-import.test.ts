@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sql } from "@/server/db";
 import { runAdincoImport } from "@/server/migration/adinco/importer";
-import { updateProperty, changePrice } from "@/server/properties/service";
+import { updateProperty, changePrice, unpublishProperty, assignAgents, changeStatus } from "@/server/properties/service";
 import { createStaff, resetBusinessData, testDb } from "../helpers/db";
 
 const base = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fixtures/adinco-property-3021.json"), "utf8"));
@@ -154,5 +154,27 @@ describe("importador Adinco", () => {
     expect(r2.failed).toBe(5);
     const run = await db.selectFrom("migration_runs").select("status").where("id", "=", r2.runId).executeTakeFirstOrThrow();
     expect(run.status).toBe("failed");
+  });
+
+  it("despublicar, pausar, reasignar agente o editar fotos a mano no lo revierte una reimportación", async () => {
+    const db = testDb();
+    const admin = await createStaff(db, ["administrador"]);
+    const src = fakeSource([base, { ...base, id: 77, code: 3077 }]);
+    await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+    const a = await db.selectFrom("properties").select("id").where("code", "=", 3021).executeTakeFirstOrThrow();
+    const b = await db.selectFrom("properties").select("id").where("code", "=", 3077).executeTakeFirstOrThrow();
+
+    await unpublishProperty(db, admin, a.id, "El propietario pidió bajarla");
+    await assignAgents(db, admin, a.id, admin.userId);
+    await changeStatus(db, admin, b.id, "reserved", "Seña recibida");
+
+    await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0, force: true });
+    const pa = await db.selectFrom("properties").select(["is_published", "protected_fields"]).where("id", "=", a.id).executeTakeFirstOrThrow();
+    expect(pa.is_published).toBe(false);
+    expect(pa.protected_fields).toEqual(expect.arrayContaining(["is_published", "agents"]));
+    const agents = await db.selectFrom("property_agents").select("user_id").where("property_id", "=", a.id).execute();
+    expect(agents.map((x) => x.user_id)).toEqual([admin.userId]);
+    const pb = await db.selectFrom("properties").select("status").where("id", "=", b.id).executeTakeFirstOrThrow();
+    expect(pb.status).toBe("reserved");
   });
 });

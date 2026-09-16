@@ -6,6 +6,7 @@
  * Si la transacción falla, los objetos subidos se borran (best effort, con log).
  */
 import sharp from "sharp";
+import { protectImportedFields } from "./service";
 import { z } from "zod";
 import { parseInput } from "../validate";
 import { sql, type Database, type Tx } from "../db";
@@ -185,6 +186,7 @@ export async function reorderPropertyMedia(db: Database, actor: Actor, propertyI
       from unnest(${ids}::uuid[]) with ordinality as o(id, ord)
       where m.id = o.id and m.property_id = ${propertyId}`.execute(trx);
     await audit(trx, actor, { action: "PROPERTY_MEDIA_REORDERED", entityType: "property", entityId: propertyId, before: { order: currentIds }, after: { order: ids } });
+    await protectImportedFields(trx, actor, propertyId, ["media"]);
     await touchProperty(trx, actor, propertyId);
   });
 }
@@ -215,6 +217,7 @@ export async function setPropertyCover(db: Database, actor: Actor, propertyId: s
     await trx.updateTable("property_media").set({ is_cover: false }).where("property_id", "=", propertyId).where("is_cover", "=", true).execute();
     await trx.updateTable("property_media").set({ is_cover: true }).where("id", "=", mediaId).execute();
     await audit(trx, actor, { action: "PROPERTY_MEDIA_COVER_SET", entityType: "property", entityId: propertyId, before: { coverMediaId: prev?.id ?? null }, after: { coverMediaId: mediaId } });
+    await protectImportedFields(trx, actor, propertyId, ["media"]);
     await touchProperty(trx, actor, propertyId);
   });
 }
@@ -259,6 +262,7 @@ export async function deletePropertyMedia(db: Database, actor: Actor, propertyId
       }
     }
     await audit(trx, actor, { action: "PROPERTY_MEDIA_DELETED", entityType: "property", entityId: propertyId, before: { mediaId, kind: m.kind, wasCover: m.is_cover, fileIds }, after: { newCoverId } });
+    await protectImportedFields(trx, actor, propertyId, ["media"]);
     await touchProperty(trx, actor, propertyId);
     return { newCoverId };
   });
