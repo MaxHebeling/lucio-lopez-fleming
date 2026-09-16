@@ -8,6 +8,8 @@ import { actorUserId, type Actor } from "./auth/actor";
 export const EVENT_TYPES = [
   "lead.created",
   "lead.assigned",
+  "opportunity.created",
+  "opportunity.stage_changed",
   "property.created",
   "property.updated",
   "property.price_changed",

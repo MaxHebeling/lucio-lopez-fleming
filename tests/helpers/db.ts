@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sql, getDb, type Database } from "../../src/server/db";
 import { resetOrganizationCache, organizationId } from "../../src/server/org";
@@ -17,7 +17,11 @@ export async function resetBusinessData(db: Database): Promise<void> {
   const tables = await sql<{ tablename: string }>`
     select tablename from pg_tables where schemaname = 'public' and tablename <> 'schema_migrations'`.execute(db);
   await sql.raw(`truncate ${tables.rows.map((t) => `"${t.tablename}"`).join(", ")} restart identity cascade`).execute(db);
-  await sql.raw(readFileSync(resolve(import.meta.dirname, "../../db/migrations/0008_reference_data.sql"), "utf8")).execute(db);
+  // Datos de referencia idempotentes: 0008 y los de cada bloque (NNNN_*reference_data.sql), en orden.
+  const dir = resolve(import.meta.dirname, "../../db/migrations");
+  for (const f of readdirSync(dir).filter((n) => /^\d{4}_[a-z0-9_]*reference_data\.sql$/.test(n)).sort()) {
+    await sql.raw(readFileSync(resolve(dir, f), "utf8")).execute(db);
+  }
   resetOrganizationCache();
   resetFlagCache();
   await seedOrganization(db);

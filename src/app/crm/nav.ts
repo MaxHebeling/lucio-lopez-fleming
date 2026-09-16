@@ -32,4 +32,5 @@ export const NAV_PERMISSION_ALIASES: Record<string, string[]> = {
   "leads.read_own": ["leads.read_all"],
   "opportunities.read_own": ["opportunities.read_all"],
   "agenda.manage": ["agenda.read_all"],
+  "tasks.manage": ["tasks.read_all"],
 };
