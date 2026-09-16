@@ -6,7 +6,7 @@ import { plural } from "@/server/properties/public-helpers";
  * Buscador del hero: formulario GET a /propiedades (funciona sin JS, URL compartible).
  * Opciones y conteos salen en vivo de la base.
  */
-export function HeroSearch({ facets }: { facets: Facets }) {
+export function HeroSearch({ facets, contact }: { facets: Facets; contact: { label: string; href: string; external: boolean } | null }) {
   const count = (slug: string) => facets.operations.find((o) => o.slug === slug)?.count ?? 0;
   return (
     <form action="/propiedades" method="get" role="search" aria-label="Buscar propiedades" className="hero-search p-3 sm:p-4">
@@ -54,7 +54,17 @@ export function HeroSearch({ facets }: { facets: Facets }) {
           </button>
         </div>
       </div>
-      <p className="mt-2 px-1 text-xs text-ink-2">{plural(facets.total, "propiedad publicada", "propiedades publicadas")} en este momento.</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 text-xs text-ink-2">
+        <p>{plural(facets.total, "propiedad publicada", "propiedades publicadas")} en este momento.</p>
+        {contact ? (
+          <p>
+            ¿Preferís hablar?{" "}
+            <a href={contact.href} {...(contact.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} className="inline-flex min-h-6 items-center font-semibold text-ink underline underline-offset-2">
+              {contact.label}
+            </a>
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

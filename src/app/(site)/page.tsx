@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { ArrowRight } from "lucide-react";
 import { getDb } from "@/server/db";
 import { getPublicFacets, getRecentProperties, getShowcaseProperties, getZoneShowcase } from "@/server/properties/public";
-import { whatsappHref } from "@/server/properties/public-helpers";
+import { telHref, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
 import { CinematicHero } from "@/components/experience/CinematicHero";
 import { PropertyShowcase } from "@/components/experience/PropertyShowcase";
@@ -45,6 +45,12 @@ export default async function HomePage() {
   const recent = await getRecentProperties(db, 10, showcase.map((p) => p.code));
   const wa = whatsappHref(info.whatsappE164, "Hola, les escribo desde la web de Lucio López Fleming.");
   const year = info.foundedYear;
+  const phoneHref = telHref(info.mainPhone);
+  const heroContact = wa
+    ? { label: "Escribinos por WhatsApp", href: wa, external: true }
+    : phoneHref && info.mainPhone
+      ? { label: `Llamanos al ${info.mainPhone.replace(/^\+54\s?/, "")}`, href: phoneHref, external: false }
+      : null;
 
   return (
     <>
@@ -52,7 +58,7 @@ export default async function HomePage() {
         property={hero ?? null}
         eyebrow="Inmobiliaria en Salta"
         titleLines={["Buenos negocios,", <em key="y">{year ? `desde ${year}.` : "en Salta."}</em>]}
-        search={<HeroSearch facets={facets} />}
+        search={<HeroSearch facets={facets} contact={heroContact} />}
       />
 
       <Manifesto foundedYear={year} />
