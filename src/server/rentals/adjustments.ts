@@ -2,13 +2,13 @@
  * Ajustes de alquiler por índice. El sistema solo PROPONE: aplicar o rechazar lo decide una persona con rentals.adjust.
  * Fórmulas y redondeo: ver adjustment-calc.ts y decimal.ts.
  */
-import { sql, pgCode, type Database, type Tx } from "../db";
+import { pgCode, type Database, type Tx } from "../db";
 import { audit } from "../audit";
 import { actorUserId, requirePermission, requireStaff, type Actor } from "../auth/actor";
 import { conflict, notFound } from "../errors";
 import { log } from "../log";
 import { calculateAdjustment, DAILY_INDICES, dailyWindow, monthsForPeriod, previousPeriodStart, type IndexKey, type IndexPoint } from "./adjustment-calc";
-import { todayInSalta } from "./dates";
+import { addDays, todayInSalta } from "./dates";
 import { firstAdjustmentDate, loadContractForUpdate } from "./contracts";
 import { repriceUnpaidFrom } from "./obligations";
 import { rejectAdjustmentSchema } from "./schema";
@@ -188,7 +188,7 @@ export async function contractsWithAdjustmentDue(db: Database, today = todayInSa
     .select(["id", "code", "next_adjustment_date", "adjustment_index_key", "adjustment_pending_note"])
     .where("status", "=", "active")
     .where("next_adjustment_date", "is not", null)
-    .where("next_adjustment_date", "<=", sql<string>`(${today}::date + ${aheadDays}::int)::text`)
+    .where("next_adjustment_date", "<=", addDays(today, aheadDays))
     .execute();
 }
 
