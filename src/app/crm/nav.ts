@@ -16,6 +16,7 @@ export const CRM_NAV: NavItem[] = [
   { href: "/crm/alquileres", label: "Contratos", permission: "rentals.read", group: "alquileres" },
   { href: "/crm/alquileres/cobros", label: "Cobros", permission: "rentals.read", group: "alquileres" },
   { href: "/crm/alquileres/liquidaciones", label: "Liquidaciones", permission: "rentals.read", group: "alquileres" },
+  { href: "/crm/alquileres/indices", label: "Índices", permission: "rentals.read", group: "alquileres" },
   { href: "/crm/informes", label: "Informes", permission: "reports.read", group: "alquileres" },
   { href: "/crm/marketing", label: "Contenido", permission: "marketing.read", group: "marketing" },
   { href: "/crm/publicaciones", label: "Portales", permission: "publications.manage", group: "marketing" },

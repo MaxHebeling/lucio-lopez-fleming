@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sql } from "@/server/db";
 import "@/server/jobs/handlers";
-import { enqueueScheduled } from "@/server/jobs/scheduled";
+import { enqueueScheduled, listScheduledTasks } from "@/server/jobs/scheduled";
 import { runJobs } from "@/server/jobs/runner";
 import { testDb } from "../helpers/db";
 
@@ -18,6 +18,8 @@ describe("tareas periódicas", () => {
     const types = await sql<{ type: string }>`select type from jobs where status = 'queued'`.execute(db);
     expect(types.rows).toHaveLength(0);
     const nextHour = await enqueueScheduled(db, new Date("2026-09-16T16:00:00Z"));
-    expect(nextHour).toBe(first - 1);
+    const hourly = listScheduledTasks().filter((t) => t.every === "hourly").length;
+    expect(first).toBe(listScheduledTasks().length);
+    expect(nextHour).toBe(hourly);
   });
 });

@@ -47,3 +47,5 @@ next-env.d.ts
 
 # backups locales
 /backups
+# storage local de desarrollo (driver local)
+/.storage

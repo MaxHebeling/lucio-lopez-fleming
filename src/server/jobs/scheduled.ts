@@ -17,6 +17,11 @@ export function addScheduledTask(task: Scheduled): void {
   if (!schedule.some((s) => s.type === task.type)) schedule.push(task);
 }
 
+/** Copia de solo lectura de la programación (para el panel y los tests). */
+export function listScheduledTasks(): ReadonlyArray<Readonly<Scheduled>> {
+  return schedule.map((t) => ({ ...t }));
+}
+
 export async function enqueueScheduled(db: Database, now = new Date()): Promise<number> {
   let n = 0;
   const hour = now.toISOString().slice(0, 13);
