@@ -13,7 +13,7 @@ const RULES: Array<{ reason: HandoffReason; patterns: RegExp[] }> = [
   {
     reason: "customer_request",
     patterns: [
-      /\b(hablar|comunicarme|comunicar|contactar(me)?|atender(me)?|atienda|pasame|pasenme|derivame)\b.{0,40}\b(persona|humano|asesor[a]?|agente|alguien|vendedor[a]?|martillero|corredor[a]?|operador[a]?)\b/,
+      /\b(hablar|comunicarme|comunicar|contactar(me)?|atender(me)?|atienda|pasame|pasas|pasan|pasenme|comunicas|derivame|derivas|derivan)\b.{0,40}\b(persona|humano|asesor[a]?|agente|alguien|vendedor[a]?|martillero|corredor[a]?|operador[a]?)\b/,
       /\b(persona real|un humano|no sos (una )?persona|no quiero (hablar con )?(un )?(bot|robot|maquina))\b/,
       /\bquiero (un|una|hablar con (un|una)) (asesor[a]?|persona|agente|vendedor[a]?)\b/,
     ],

@@ -241,9 +241,17 @@ async function ensureWhatsAppLead(
   s: { conversationId: string; contactId: string; messageId: string; isNew: boolean; ev: InboundMessageEvent },
 ): Promise<{ leadId: string; created: boolean }> {
   const days = await leadReuseDays(db);
+  // Clave de idempotencia: conversación + número de lead. Un reintento del mismo mensaje o dos mensajes
+  // procesados en paralelo calculan la misma clave y no duplican el lead. Se cuenta ANTES de buscar el lead
+  // abierto: si otro proceso lo crea entre ambas consultas, o se encuentra o la clave choca.
+  const seq = await db
+    .selectFrom("leads")
+    .select((eb) => eb.fn.countAll<string>().as("n"))
+    .where("conversation_id", "=", s.conversationId)
+    .executeTakeFirstOrThrow();
   const open = await db
     .selectFrom("leads")
-    .select(["id", "conversation_id"])
+    .select(["id", "conversation_id", "external_id"])
     .where("contact_id", "=", s.contactId)
     .where("source_key", "=", "whatsapp")
     .where("status", "in", ["new", "contacted", "qualified"])
@@ -262,7 +270,8 @@ async function ensureWhatsAppLead(
         .where("entity_id", "=", open.id)
         .where(sql<string>`metadata->>'messageId'`, "=", s.messageId)
         .executeTakeFirst();
-      if (!already) {
+      // El mensaje que originó el lead ya está en el lead: no se duplica como actividad
+      if (!already && open.external_id !== s.ev.messageId.slice(0, 200)) {
         await trx
           .insertInto("activities")
           .values({
@@ -278,13 +287,6 @@ async function ensureWhatsAppLead(
     return { leadId: open.id, created: false };
   }
 
-  // Clave de idempotencia: conversación + número de lead. Un reintento del mismo mensaje o dos mensajes
-  // procesados en paralelo calculan la misma clave y no duplican el lead.
-  const seq = await db
-    .selectFrom("leads")
-    .select((eb) => eb.fn.countAll<string>().as("n"))
-    .where("conversation_id", "=", s.conversationId)
-    .executeTakeFirstOrThrow();
   const r = await captureLead(db, actor, {
     name: s.ev.profileName,
     phone: `+${s.ev.waId}`,
