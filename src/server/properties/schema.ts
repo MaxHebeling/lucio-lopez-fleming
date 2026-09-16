@@ -89,7 +89,16 @@ export const createPropertySchema = propertyFieldsSchema.extend({
 });
 export type CreatePropertyInput = z.infer<typeof createPropertySchema>;
 
-export const updatePropertySchema = propertyFieldsSchema.partial();
+// Sin defaults: en Zod 4 `.partial()` conserva los `.default()`, y una edición parcial (p. ej. solo dormitorios)
+// borraba características y atributos y reseteaba destacada/ocultar dirección.
+export const updatePropertySchema = propertyFieldsSchema
+  .extend({
+    hideExactAddress: z.boolean(),
+    featured: z.boolean(),
+    attributes: propertyFieldsSchema.shape.attributes.unwrap(),
+    featureKeys: propertyFieldsSchema.shape.featureKeys.unwrap(),
+  })
+  .partial();
 export type UpdatePropertyInput = z.infer<typeof updatePropertySchema>;
 
 /** Mapeo campo de entrada → columna. Se usa también para campos protegidos contra reimportación. */

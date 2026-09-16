@@ -29,11 +29,26 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
       </aside>
       <div className="flex min-w-0 flex-col">
         <header className="sticky top-0 z-[var(--z-header)] flex h-14 items-center justify-between gap-3 border-b border-line bg-paper/95 px-4 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <MobileNav items={items} />
-            <span className="hidden text-sm text-stone sm:inline">{actor.fullName}</span>
+            <form method="get" action="/crm/buscar" role="search" className="hidden w-full max-w-sm md:block">
+              <label htmlFor="crm-global-search" className="sr-only">
+                Buscar propiedades y contactos
+              </label>
+              <input
+                id="crm-global-search"
+                name="q"
+                type="search"
+                placeholder="Buscar propiedad o contacto…"
+                className="h-9 w-full rounded-[var(--radius-md)] border border-line bg-white px-3 text-sm placeholder:text-stone focus:border-ink focus:outline-none"
+              />
+            </form>
+            <span className="hidden truncate text-sm text-stone xl:inline">{actor.fullName}</span>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/crm/buscar" className="rounded-[var(--radius-md)] px-3 py-1.5 text-sm font-semibold hover:bg-paper-2 md:hidden">
+              Buscar
+            </Link>
             <Link href="/crm/notificaciones" className="relative rounded-[var(--radius-md)] px-3 py-1.5 text-sm font-semibold hover:bg-paper-2">
               Avisos
               {Number(unread?.n ?? 0) > 0 ? (

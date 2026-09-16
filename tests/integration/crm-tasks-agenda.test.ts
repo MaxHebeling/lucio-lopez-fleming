@@ -85,7 +85,7 @@ describe("agenda y visitas", () => {
     expect(done).toMatchObject({ changed: true, opportunityAdvanced: true });
     stageKey = await db.selectFrom("opportunities as o").innerJoin("pipeline_stages as s", "s.id", "o.stage_id").select("s.key").where("o.id", "=", opp.id).executeTakeFirstOrThrow();
     expect(stageKey.key).toBe("visita_realizada");
-    const oppAudit = await db.selectFrom("audit_logs").select(["action", "metadata"]).where("entity_id", "=", opp.id).where("action", "=", "OPPORTUNITY_STAGE_CHANGED").execute();
+    const oppAudit = await db.selectFrom("audit_logs").select(["action", "metadata"]).where("entity_id", "=", opp.id).where("action", "=", "OPPORTUNITY_STAGE_CHANGED").orderBy("id").execute();
     expect(oppAudit.map((a) => a.metadata)).toEqual([{ automatic: "Visita agendada" }, { automatic: "Visita realizada" }]);
 
     // visit.completed dispara la automatización de seguimiento con tarea para el agente

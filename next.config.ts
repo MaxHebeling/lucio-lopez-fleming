@@ -31,6 +31,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    // El proxy bufferea el body (10 MB por defecto): las fotos admiten hasta 15 MB (subida por /api/crm/propiedades/[id]/multimedia).
+    proxyClientMaxBodySize: "16mb",
+  },
   serverExternalPackages: ["@node-rs/argon2", "pg", "sharp"],
   images: {
     formats: ["image/avif", "image/webp"],

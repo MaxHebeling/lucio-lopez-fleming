@@ -339,3 +339,67 @@ export async function setOwners(db: Database, actor: Actor, id: string, owners: 
     await audit(trx, actor, { action: "PROPERTY_OWNERS_ASSIGNED", entityType: "property", entityId: id, before, after: owners });
   });
 }
+
+/**
+ * Duplica una propiedad como borrador con código nuevo: copia datos, operaciones (con su precio) y características.
+ * No copia multimedia, publicaciones, propietarios, historial ni trazabilidad de migración.
+ */
+export async function duplicateProperty(db: Database, actor: Actor, id: string): Promise<{ id: string; code: number; slug: string }> {
+  requirePermission(actor, "properties.create");
+  return db.transaction().execute(async (trx) => {
+    const src = await trx.selectFrom("properties").selectAll().where("id", "=", id).where("deleted_at", "is", null).executeTakeFirst();
+    if (!src) throw notFound("Propiedad");
+    const code = Number((await sql<{ code: string }>`select nextval('property_code_seq') as code`.execute(trx)).rows[0]!.code);
+    const suffix = " (copia)";
+    const title = `${src.title.slice(0, 200 - suffix.length)}${suffix}`;
+    const slug = await buildSlug(trx, title, code);
+    const copied: Columns = {};
+    for (const column of Object.values(FIELD_COLUMNS)) copied[column] = (src as Record<string, unknown>)[column];
+    copied.title = title;
+    copied.featured = false;
+    copied.attributes = JSON.stringify(src.attributes ?? {});
+    const row = await trx
+      .insertInto("properties")
+      .values({
+        ...(copied as object),
+        organization_id: src.organization_id,
+        code,
+        slug,
+        type_key: src.type_key,
+        status: "draft",
+        is_published: false,
+        source: "crm",
+        created_by: actorUserId(actor),
+        updated_by: actorUserId(actor),
+      } as never)
+      .returning(["id", "code", "slug"])
+      .executeTakeFirstOrThrow();
+
+    const ops = await trx.selectFrom("property_operations").select(["operation", "currency", "amount", "price_hidden", "expenses_amount", "expenses_currency"]).where("property_id", "=", id).where("is_active", "=", true).execute();
+    for (const op of ops) {
+      await upsertOperation(
+        trx,
+        actor,
+        row.id,
+        {
+          operation: op.operation as OperationInput["operation"],
+          currency: op.currency as OperationInput["currency"],
+          amount: op.amount === null ? null : Number(op.amount),
+          priceHidden: op.price_hidden,
+          expensesAmount: op.expenses_amount === null ? null : Number(op.expenses_amount),
+          expensesCurrency: (op.expenses_currency as OperationInput["currency"] | null) ?? null,
+        },
+        "crm",
+        `Duplicada de la propiedad #${src.code}`,
+      );
+    }
+    await sql`insert into property_features(property_id, feature_id) select ${row.id}, feature_id from property_features where property_id = ${id}`.execute(trx);
+    await trx.insertInto("property_status_history").values({ property_id: row.id, from_status: null, to_status: "draft", changed_by: actorUserId(actor), reason: `Duplicada de #${src.code}` }).execute();
+    if (actor.kind === "staff") {
+      await trx.insertInto("property_agents").values({ property_id: row.id, user_id: actor.userId, role: "lead" }).onConflict((oc) => oc.doNothing()).execute();
+    }
+    await audit(trx, actor, { action: "PROPERTY_DUPLICATED", entityType: "property", entityId: row.id, after: { code, title, typeKey: src.type_key, operations: ops.length }, metadata: { sourceId: id, sourceCode: src.code } });
+    await emitEvent(trx, actor, { type: "property.created", aggregateType: "property", aggregateId: row.id, payload: { code, duplicatedFrom: id, link: `/crm/propiedades/${row.id}` } });
+    return row;
+  });
+}

@@ -786,6 +786,7 @@ export interface PropertyMedia {
   kind: string;
   last_checked_at: Timestamp | null;
   last_error: string | null;
+  original_file_id: string | null;
   property_id: string;
   sort_order: Generated<number>;
   source_url: string | null;

@@ -18,6 +18,6 @@ create index opportunities_contact on opportunities(contact_id) where deleted_at
 create index appointments_contact on appointments(contact_id, starts_at desc) where contact_id is not null;
 create index appointments_opportunity on appointments(opportunity_id) where opportunity_id is not null;
 create index tasks_entity on tasks(entity_type, entity_id) where entity_id is not null;
-create index leads_unanswered on leads(created_at desc) where first_response_at is null and deleted_at is null;
+create index if not exists leads_unanswered on leads(created_at desc) where first_response_at is null and deleted_at is null;
 create index contact_duplicate_candidates_open on contact_duplicate_candidates(created_at desc) where status = 'open';
 create index contact_emails_trgm on contact_emails using gin (email_normalized gin_trgm_ops);
