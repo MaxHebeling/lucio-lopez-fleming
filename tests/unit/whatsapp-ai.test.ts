@@ -81,10 +81,10 @@ describe("cliente de WhatsApp (puro)", () => {
   });
 
   it("configuración desde entorno sin secretos por defecto", () => {
-    expect(whatsappSendConfig({} as NodeJS.ProcessEnv)).toEqual({ config: null, missing: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"] });
-    expect(whatsappSendConfig({ WHATSAPP_ACCESS_TOKEN: "t", WHATSAPP_PHONE_NUMBER_ID: "1" } as NodeJS.ProcessEnv).config?.graphVersion).toBe("v26.0");
-    expect(reengagementTemplate({} as NodeJS.ProcessEnv)).toBeNull();
-    expect(reengagementTemplate({ WHATSAPP_REENGAGEMENT_TEMPLATE: "retomar_consulta" } as NodeJS.ProcessEnv)).toEqual({ name: "retomar_consulta", language: "es_AR" });
+    expect(whatsappSendConfig({} as unknown as NodeJS.ProcessEnv)).toEqual({ config: null, missing: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"] });
+    expect(whatsappSendConfig({ WHATSAPP_ACCESS_TOKEN: "t", WHATSAPP_PHONE_NUMBER_ID: "1" } as unknown as NodeJS.ProcessEnv).config?.graphVersion).toBe("v26.0");
+    expect(reengagementTemplate({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(reengagementTemplate({ WHATSAPP_REENGAGEMENT_TEMPLATE: "retomar_consulta" } as unknown as NodeJS.ProcessEnv)).toEqual({ name: "retomar_consulta", language: "es_AR" });
     expect(isWindowOpen(new Date(Date.now() - 23 * 3600_000))).toBe(true);
     expect(isWindowOpen(new Date(Date.now() - 25 * 3600_000))).toBe(false);
     expect(isWindowOpen(null)).toBe(false);
