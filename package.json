@@ -25,7 +25,8 @@
     "user:invite": "tsx --conditions=react-server scripts/user-invite.ts",
     "import:adinco": "tsx scripts/import-existing-properties.ts",
     "check:secrets": "bash scripts/check-secrets.sh",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "test:e2e:full": "bash scripts/e2e.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.126.0",
