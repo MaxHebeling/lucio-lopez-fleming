@@ -1,5 +1,6 @@
 /** Notas internas sobre contactos, leads, oportunidades y citas. */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import type { Database } from "../db";
 import { audit } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
@@ -19,7 +20,7 @@ const PERMISSION: Record<z.infer<typeof addNoteSchema>["entityType"], string> = 
   appointment: "agenda.manage",
 };
 
-export async function addNote(db: Database, actor: Actor, raw: z.input<typeof addNoteSchema>): Promise<{ id: string; replayed: boolean }> {
+export async function addNote(db: Database, actor: Actor, raw: SchemaIn<typeof addNoteSchema>): Promise<{ id: string; replayed: boolean }> {
   const input = addNoteSchema.parse(raw);
   requirePermission(actor, PERMISSION[input.entityType]);
   return db.transaction().execute(async (trx) => {

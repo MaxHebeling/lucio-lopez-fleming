@@ -4,6 +4,7 @@
  * Una visita vinculada a una oportunidad la avanza a "visita_programada" / "visita_realizada" (auditado).
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import { pgCode, type Database, type Tx } from "../db";
 import { audit } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
@@ -24,7 +25,7 @@ const localDateTime = z.string().refine(isLocalDateTime, "Fecha y hora inválida
 export const createAppointmentSchema = z
   .object({
     kind: z.enum(APPOINTMENT_KINDS),
-    title: z.string().trim().max(200).optional().transform((v) => v || null),
+    title: z.string().trim().max(200).nullish().transform((v) => v || null),
     startsAt: localDateTime,
     durationMinutes: z.coerce.number().int().min(5, "Mínimo 5 minutos").max(12 * 60, "Máximo 12 horas").default(60),
     propertyId: z.uuid().nullable().optional(),
@@ -32,8 +33,8 @@ export const createAppointmentSchema = z
     opportunityId: z.uuid().nullable().optional(),
     leadId: z.uuid().nullable().optional(),
     assignedUserId: z.uuid().nullable().optional(),
-    location: z.string().trim().max(300).optional().transform((v) => v || null),
-    notes: z.string().trim().max(5000).optional().transform((v) => v || null),
+    location: z.string().trim().max(300).nullish().transform((v) => v || null),
+    notes: z.string().trim().max(5000).nullish().transform((v) => v || null),
     idempotencyKey: z.string().min(8).max(200),
   })
   .refine((v) => v.kind !== "visit" || Boolean(v.propertyId || v.opportunityId || v.leadId), { message: "Elegí la propiedad a visitar", path: ["propertyId"] });
@@ -49,7 +50,7 @@ async function assertAgent(trx: Tx, userId: string) {
   return u;
 }
 
-export async function createAppointment(db: Database, actor: Actor, raw: z.input<typeof createAppointmentSchema>): Promise<{ id: string; replayed: boolean; opportunityAdvanced: boolean }> {
+export async function createAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof createAppointmentSchema>): Promise<{ id: string; replayed: boolean; opportunityAdvanced: boolean }> {
   requirePermission(actor, "agenda.manage");
   const input = createAppointmentSchema.parse(raw);
   const scope = agendaScope(actor);
@@ -146,8 +147,8 @@ export async function createAppointment(db: Database, actor: Actor, raw: z.input
 
 export const appointmentActionSchema = z.object({
   appointmentId: z.uuid(),
-  result: z.string().trim().max(5000).optional().transform((v) => v || null),
-  reason: z.string().trim().max(500).optional().transform((v) => v || null),
+  result: z.string().trim().max(5000).nullish().transform((v) => v || null),
+  reason: z.string().trim().max(500).nullish().transform((v) => v || null),
 });
 
 type AppointmentRow = Awaited<ReturnType<typeof loadAppointment>>;
@@ -168,7 +169,7 @@ async function transition(
 
 const ACTIVE = new Set(["scheduled", "confirmed"]);
 
-export async function confirmAppointment(db: Database, actor: Actor, raw: z.input<typeof appointmentActionSchema>) {
+export async function confirmAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof appointmentActionSchema>) {
   const input = appointmentActionSchema.parse(raw);
   return transition(db, actor, input.appointmentId, async (trx, a) => {
     if (a.status === "confirmed") return { changed: false };
@@ -179,7 +180,7 @@ export async function confirmAppointment(db: Database, actor: Actor, raw: z.inpu
   });
 }
 
-export async function completeAppointment(db: Database, actor: Actor, raw: z.input<typeof appointmentActionSchema>) {
+export async function completeAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof appointmentActionSchema>) {
   const input = appointmentActionSchema.parse(raw);
   if (!input.result || input.result.length < 3) throw invalid("Contá cómo fue", { result: ["El resultado es obligatorio"] });
   return transition(db, actor, input.appointmentId, async (trx, a) => {
@@ -209,7 +210,7 @@ export async function completeAppointment(db: Database, actor: Actor, raw: z.inp
   });
 }
 
-export async function cancelAppointment(db: Database, actor: Actor, raw: z.input<typeof appointmentActionSchema>) {
+export async function cancelAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof appointmentActionSchema>) {
   const input = appointmentActionSchema.parse(raw);
   if (!input.reason || input.reason.length < 3) throw invalid("Indicá el motivo", { reason: ["El motivo es obligatorio"] });
   return transition(db, actor, input.appointmentId, async (trx, a) => {
@@ -221,7 +222,7 @@ export async function cancelAppointment(db: Database, actor: Actor, raw: z.input
   });
 }
 
-export async function markNoShow(db: Database, actor: Actor, raw: z.input<typeof appointmentActionSchema>) {
+export async function markNoShow(db: Database, actor: Actor, raw: SchemaIn<typeof appointmentActionSchema>) {
   const input = appointmentActionSchema.parse(raw);
   return transition(db, actor, input.appointmentId, async (trx, a) => {
     if (a.status === "no_show") return { changed: false };
@@ -238,10 +239,10 @@ export const rescheduleSchema = z.object({
   startsAt: localDateTime,
   durationMinutes: z.coerce.number().int().min(5, "Mínimo 5 minutos").max(12 * 60, "Máximo 12 horas"),
   assignedUserId: z.uuid().nullable().optional(),
-  reason: z.string().trim().max(500).optional().transform((v) => v || null),
+  reason: z.string().trim().max(500).nullish().transform((v) => v || null),
 });
 
-export async function rescheduleAppointment(db: Database, actor: Actor, raw: z.input<typeof rescheduleSchema>) {
+export async function rescheduleAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof rescheduleSchema>) {
   const input = rescheduleSchema.parse(raw);
   const scope = agendaScope(actor);
   return transition(db, actor, input.appointmentId, async (trx, a) => {

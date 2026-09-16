@@ -3,6 +3,7 @@
  * edición de presupuesto/requisitos y asignación. Todo en transacción con bloqueo de fila, auditoría y evento.
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import { sql, type Database, type Tx } from "../db";
 import { audit, diff } from "../audit";
 import { actorUserId, can, requirePermission, type Actor } from "../auth/actor";
@@ -40,7 +41,7 @@ export const createOpportunitySchema = z
     pipelineKey: z.string().regex(/^[a-z0-9_]{2,40}$/).nullable().optional(),
     propertyId: z.uuid().nullable().optional(),
     operation: z.enum(["sale", "rent", "temporary_rent"]).nullable().optional(),
-    title: z.string().trim().max(200).optional().transform((v) => v || null),
+    title: z.string().trim().max(200).nullish().transform((v) => v || null),
     budgetMin: money.optional(),
     budgetMax: money.optional(),
     budgetCurrency: z.enum(["USD", "ARS"]).nullable().optional(),
@@ -56,7 +57,7 @@ async function assertActiveStaff(trx: Tx, userId: string) {
   if (!u) throw invalid("Usuario inválido", { assignedUserId: ["Elegí un usuario activo del equipo"] });
 }
 
-export async function createOpportunity(db: Database, actor: Actor, raw: z.input<typeof createOpportunitySchema>): Promise<{ id: string; replayed: boolean }> {
+export async function createOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof createOpportunitySchema>): Promise<{ id: string; replayed: boolean }> {
   requirePermission(actor, "opportunities.update");
   const input = createOpportunitySchema.parse(raw);
   if (input.idempotencyKey) {
@@ -168,8 +169,8 @@ export async function createOpportunity(db: Database, actor: Actor, raw: z.input
 export const moveStageSchema = z.object({
   opportunityId: z.uuid(),
   stageId: z.uuid(),
-  note: z.string().trim().max(2000).optional().transform((v) => v || null),
-  lostReason: z.string().trim().max(500).optional().transform((v) => v || null),
+  note: z.string().trim().max(2000).nullish().transform((v) => v || null),
+  lostReason: z.string().trim().max(500).nullish().transform((v) => v || null),
 });
 
 const STATUS_BY_OUTCOME = { open: "open", won: "won", lost: "lost", paused: "paused" } as const;
@@ -211,7 +212,7 @@ async function moveInTx(trx: Tx, actor: Actor, opp: { id: string; pipeline_id: s
   return { changed: true, status };
 }
 
-export async function moveOpportunityStage(db: Database, actor: Actor, raw: z.input<typeof moveStageSchema>): Promise<{ changed: boolean }> {
+export async function moveOpportunityStage(db: Database, actor: Actor, raw: SchemaIn<typeof moveStageSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "opportunities.update");
   const input = moveStageSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -228,13 +229,13 @@ async function stageByOutcome(trx: Tx, pipelineId: string, outcome: "won" | "los
 
 export const closeSchema = z.object({
   opportunityId: z.uuid(),
-  note: z.string().trim().max(2000).optional().transform((v) => v || null),
-  lostReason: z.string().trim().max(500).optional().transform((v) => v || null),
+  note: z.string().trim().max(2000).nullish().transform((v) => v || null),
+  lostReason: z.string().trim().max(500).nullish().transform((v) => v || null),
   valueAmount: money.optional(),
   valueCurrency: z.enum(["USD", "ARS"]).nullable().optional(),
 });
 
-export async function winOpportunity(db: Database, actor: Actor, raw: z.input<typeof closeSchema>) {
+export async function winOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof closeSchema>) {
   requirePermission(actor, "opportunities.update");
   const input = closeSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -247,7 +248,7 @@ export async function winOpportunity(db: Database, actor: Actor, raw: z.input<ty
   });
 }
 
-export async function loseOpportunity(db: Database, actor: Actor, raw: z.input<typeof closeSchema>) {
+export async function loseOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof closeSchema>) {
   requirePermission(actor, "opportunities.update");
   const input = closeSchema.parse(raw);
   if (!input.lostReason) throw invalid("Indicá el motivo de la pérdida", { lostReason: ["El motivo es obligatorio"] });
@@ -258,7 +259,7 @@ export async function loseOpportunity(db: Database, actor: Actor, raw: z.input<t
   });
 }
 
-export async function pauseOpportunity(db: Database, actor: Actor, raw: z.input<typeof closeSchema>) {
+export async function pauseOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof closeSchema>) {
   requirePermission(actor, "opportunities.update");
   const input = closeSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -284,7 +285,7 @@ export const updateOpportunitySchema = z
   })
   .refine((v) => v.budgetMin == null || v.budgetMax == null || v.budgetMin <= v.budgetMax, { message: "El mínimo supera al máximo", path: ["budgetMax"] });
 
-export async function updateOpportunity(db: Database, actor: Actor, raw: z.input<typeof updateOpportunitySchema>): Promise<{ changed: boolean }> {
+export async function updateOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof updateOpportunitySchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "opportunities.update");
   const input = updateOpportunitySchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -323,7 +324,7 @@ export async function updateOpportunity(db: Database, actor: Actor, raw: z.input
 
 export const assignOpportunitySchema = z.object({ opportunityId: z.uuid(), userId: z.uuid().nullable() });
 
-export async function assignOpportunity(db: Database, actor: Actor, raw: z.input<typeof assignOpportunitySchema>): Promise<{ changed: boolean }> {
+export async function assignOpportunity(db: Database, actor: Actor, raw: SchemaIn<typeof assignOpportunitySchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "opportunities.assign");
   const input = assignOpportunitySchema.parse(raw);
   return db.transaction().execute(async (trx) => {

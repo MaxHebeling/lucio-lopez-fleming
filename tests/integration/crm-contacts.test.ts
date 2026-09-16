@@ -19,7 +19,7 @@ describe("contactos: alta, edición y búsqueda", () => {
     const again = await createContact(db, agent, input);
     expect(again).toMatchObject({ id: r.id, replayed: true });
     const detail = await getContactDetail(db, agent, r.id);
-    if (detail.mergedInto) throw new Error("no debería estar fusionado");
+    if (detail.mergedInto !== null) throw new Error("no debería estar fusionado");
     expect(detail.contact.displayName).toBe("Marta Díaz");
     expect(detail.emails[0]).toMatchObject({ is_primary: true });
     expect(detail.phones[0]?.phone_e164).toBe("+5493874123987");
@@ -83,7 +83,7 @@ describe("contactos: alta, edición y búsqueda", () => {
     const r = await createContact(db, rentals, { firstName: "Ana", lastName: "Paz", documentType: "dni", documentNumber: "30.111.222", idempotencyKey: key() });
     const forAgent = await getContactDetail(db, agent, r.id);
     const forRentals = await getContactDetail(db, rentals, r.id);
-    if (forAgent.mergedInto || forRentals.mergedInto) throw new Error();
+    if (forAgent.mergedInto !== null || forRentals.mergedInto !== null) throw new Error();
     expect(forAgent.contact.document).toBeNull();
     expect(forRentals.contact.document).toEqual({ type: "dni", number: "30111222" });
     await expect(createContact(db, rentals, { firstName: "Clon", documentType: "dni", documentNumber: "30111222", idempotencyKey: key() })).rejects.toThrow(/ya existe un contacto con ese documento/i);
@@ -113,7 +113,7 @@ describe("contactos: alta, edición y búsqueda", () => {
     expect(await logOutreach(db, agent, { entityType: "contact", entityId: r.id, channel: "whatsapp" })).toEqual({ logged: false });
 
     const detail = await getContactDetail(db, agent, r.id);
-    if (detail.mergedInto) throw new Error();
+    if (detail.mergedInto !== null) throw new Error();
     expect(detail.contact.displayName).toBe("Constructora del Norte SRL");
     expect(detail.roles.sort()).toEqual(["owner", "supplier"]);
     expect(detail.notes).toHaveLength(1);

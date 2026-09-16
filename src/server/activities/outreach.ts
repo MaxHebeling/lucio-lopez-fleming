@@ -3,6 +3,7 @@
  * No envía nada: el agente llama o escribe desde su teléfono; acá queda la traza en el timeline.
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import { sql, type Database } from "../db";
 import { audit } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
@@ -16,7 +17,7 @@ export const outreachSchema = z.object({
 
 const SUMMARY = { call: "Llamada iniciada desde el CRM", whatsapp: "WhatsApp abierto desde el CRM" } as const;
 
-export async function logOutreach(db: Database, actor: Actor, raw: z.input<typeof outreachSchema>): Promise<{ logged: boolean }> {
+export async function logOutreach(db: Database, actor: Actor, raw: SchemaIn<typeof outreachSchema>): Promise<{ logged: boolean }> {
   const input = outreachSchema.parse(raw);
   requirePermission(actor, "contacts.read");
   return db.transaction().execute(async (trx) => {

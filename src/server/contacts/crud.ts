@@ -4,6 +4,7 @@
  * candidatos a duplicado: la fusión la decide siempre una persona (`mergeContacts`).
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import { pgCode, pgConstraint, sql, type Database, type Tx } from "../db";
 import { audit, diff } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
@@ -44,7 +45,7 @@ export const createContactSchema = contactBase.extend({
   tags: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
   idempotencyKey: z.string().min(8).max(200).nullable().optional(),
 });
-export type CreateContactInput = z.input<typeof createContactSchema>;
+export type CreateContactInput = SchemaIn<typeof createContactSchema>;
 
 export const updateContactSchema = contactBase.partial();
 
@@ -208,7 +209,7 @@ async function lockContact(trx: Tx, id: string) {
   return c;
 }
 
-export async function updateContact(db: Database, actor: Actor, id: string, raw: z.input<typeof updateContactSchema>): Promise<void> {
+export async function updateContact(db: Database, actor: Actor, id: string, raw: SchemaIn<typeof updateContactSchema>): Promise<void> {
   requirePermission(actor, "contacts.update");
   const input = updateContactSchema.parse(raw);
   validateDocument(actor, input);

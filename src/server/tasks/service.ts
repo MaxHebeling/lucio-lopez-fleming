@@ -3,9 +3,10 @@
  * a uno o creadas por uno. Crear para otra persona requiere `tasks.read_all`.
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import { sql, type Database, type Executor } from "../db";
 import { audit } from "../audit";
-import { actorUserId, requirePermission, type Actor } from "../auth/actor";
+import { actorUserId, can, requirePermission, type Actor } from "../auth/actor";
 import { conflict, invalid } from "../errors";
 import { notifyUser } from "../notifications";
 import { taskScope } from "../crm/access";
@@ -18,12 +19,12 @@ export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export const createTaskSchema = z
   .object({
     title: z.string().trim().min(2, "Mínimo 2 caracteres").max(200, "Máximo 200 caracteres"),
-    description: z.string().trim().max(5000).optional().transform((v) => v || null),
+    description: z.string().trim().max(5000).nullish().transform((v) => v || null),
     kind: z.enum(TASK_KINDS).default("task"),
     priority: z.enum(TASK_PRIORITIES).default("normal"),
     dueAt: z
       .string()
-      .optional()
+      .nullish()
       .transform((v) => v || null)
       .refine((v) => v === null || isLocalDateTime(v), "Fecha y hora inválidas"),
     assignedUserId: z.uuid().nullable().optional(),
@@ -33,7 +34,7 @@ export const createTaskSchema = z
   })
   .refine((v) => Boolean(v.entityType) === Boolean(v.entityId), { message: "Vínculo incompleto", path: ["entityId"] });
 
-export async function createTask(db: Database, actor: Actor, raw: z.input<typeof createTaskSchema>): Promise<{ id: string; replayed: boolean }> {
+export async function createTask(db: Database, actor: Actor, raw: SchemaIn<typeof createTaskSchema>): Promise<{ id: string; replayed: boolean }> {
   requirePermission(actor, "tasks.manage");
   const input = createTaskSchema.parse(raw);
   const scope = taskScope(actor);
@@ -80,9 +81,9 @@ export async function createTask(db: Database, actor: Actor, raw: z.input<typeof
   });
 }
 
-export const taskActionSchema = z.object({ taskId: z.uuid(), reason: z.string().trim().max(500).optional().transform((v) => v || null) });
+export const taskActionSchema = z.object({ taskId: z.uuid(), reason: z.string().trim().max(500).nullish().transform((v) => v || null) });
 
-export async function completeTask(db: Database, actor: Actor, raw: z.input<typeof taskActionSchema>): Promise<{ changed: boolean }> {
+export async function completeTask(db: Database, actor: Actor, raw: SchemaIn<typeof taskActionSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "tasks.manage");
   const input = taskActionSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -96,7 +97,7 @@ export async function completeTask(db: Database, actor: Actor, raw: z.input<type
   });
 }
 
-export async function cancelTask(db: Database, actor: Actor, raw: z.input<typeof taskActionSchema>): Promise<{ changed: boolean }> {
+export async function cancelTask(db: Database, actor: Actor, raw: SchemaIn<typeof taskActionSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "tasks.manage");
   const input = taskActionSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -109,7 +110,7 @@ export async function cancelTask(db: Database, actor: Actor, raw: z.input<typeof
   });
 }
 
-export async function reopenTask(db: Database, actor: Actor, raw: z.input<typeof taskActionSchema>): Promise<{ changed: boolean }> {
+export async function reopenTask(db: Database, actor: Actor, raw: SchemaIn<typeof taskActionSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "tasks.manage");
   const input = taskActionSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -144,11 +145,11 @@ export function taskEntityLink(type: string | null, id: string | null): string |
 }
 
 export async function listTasks(db: Executor, actor: Actor, raw: unknown, today: string) {
-  requirePermission(actor, "tasks.manage");
   const scope = taskScope(actor);
   const parsed = taskFiltersSchema.safeParse(raw);
   const f = parsed.success ? parsed.data : {};
-  const view = scope.all && f.view === "team" ? "team" : "mine";
+  // Quien solo puede consultar (tasks.read_all sin tasks.manage) ve el equipo por defecto.
+  const view = scope.all && (f.view === "team" || !can(actor, "tasks.manage")) ? "team" : "mine";
   let q = db
     .selectFrom("tasks as t")
     .leftJoin("users as u", "u.id", "t.assigned_user_id")

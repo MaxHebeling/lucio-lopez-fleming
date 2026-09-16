@@ -60,7 +60,7 @@ export async function getContactDetail(db: Executor, actor: Actor, id: string) {
   if (c.merged_into_id) return { mergedInto: c.merged_into_id } as const;
   if (c.deleted_at) throw notFound("Contacto");
   const canPrivate = can(actor, "contacts.read_private");
-  const [emails, phones, roles, tags, notes, assigned, openDuplicates] = await Promise.all([
+  const [emails, phones, roles, tags, notes, assigned, openDuplicates, source] = await Promise.all([
     db.selectFrom("contact_emails").select(["id", "email", "label", "is_primary"]).where("contact_id", "=", id).orderBy("is_primary", "desc").orderBy("created_at").execute(),
     db.selectFrom("contact_phones").select(["id", "phone_raw", "phone_e164", "label", "is_whatsapp", "is_primary"]).where("contact_id", "=", id).orderBy("is_primary", "desc").orderBy("created_at").execute(),
     db.selectFrom("contact_roles").select("role").where("contact_id", "=", id).execute(),
@@ -81,6 +81,7 @@ export async function getContactDetail(db: Executor, actor: Actor, id: string) {
       .where("status", "=", "open")
       .where((eb) => eb.or([eb("contact_a", "=", id), eb("contact_b", "=", id)]))
       .execute(),
+    db.selectFrom("lead_sources").select("name").where("key", "=", c.source).executeTakeFirst(),
   ]);
   return {
     mergedInto: null,
@@ -92,6 +93,7 @@ export async function getContactDetail(db: Executor, actor: Actor, id: string) {
       companyName: c.company_name,
       displayName: c.display_name,
       source: c.source,
+      sourceName: source?.name ?? (c.source === "manual" ? "Carga manual" : c.source),
       assignedUserId: c.assigned_user_id,
       createdAt: c.created_at,
       updatedAt: c.updated_at,
@@ -212,7 +214,7 @@ export async function getDuplicateComparison(db: Executor, actor: Actor, candida
       if (e instanceof Error && e.name === "AppError") return null;
       throw e;
     });
-    if (!detail || detail.mergedInto) return null;
+    if (!detail || detail.mergedInto !== null) return null;
     const counts = await sql<{ leads: number; opportunities: number; appointments: number; owned: number }>`
       select (select count(*)::int from leads where contact_id = ${contactId} and deleted_at is null) as leads,
              (select count(*)::int from opportunities where contact_id = ${contactId} and deleted_at is null) as opportunities,

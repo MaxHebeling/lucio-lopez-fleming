@@ -3,6 +3,7 @@
  * Alcance: con `leads.read_all` se opera sobre todos; con `leads.read_own` solo sobre los asignados a uno.
  */
 import { z } from "zod";
+import type { SchemaIn } from "../crm/types";
 import type { Database, Tx } from "../db";
 import { audit } from "../audit";
 import { actorUserId, can, requirePermission, type Actor } from "../auth/actor";
@@ -19,10 +20,10 @@ export const MANUAL_LEAD_SOURCES = ["manual", "phone", "walk_in"] as const;
 export const manualLeadSchema = z
   .object({
     name: z.string().trim().min(2, "Ingresá el nombre").max(200),
-    email: z.string().trim().max(254).optional().transform((v) => v || null),
-    phone: z.string().trim().max(40).optional().transform((v) => v || null),
+    email: z.string().trim().max(254).nullish().transform((v) => v || null),
+    phone: z.string().trim().max(40).nullish().transform((v) => v || null),
     phoneIsWhatsapp: z.boolean().optional(),
-    message: z.string().trim().max(5000).optional().transform((v) => v || null),
+    message: z.string().trim().max(5000).nullish().transform((v) => v || null),
     sourceKey: z.enum(MANUAL_LEAD_SOURCES),
     propertyId: z.uuid().nullable().optional(),
     operationInterest: z.enum(["sale", "rent", "temporary_rent", "appraisal", "sell_my_property", "other"]).nullable().optional(),
@@ -33,7 +34,7 @@ export const manualLeadSchema = z
   .refine((v) => Boolean(v.email || v.phone), { message: "Ingresá un email o un teléfono", path: ["phone"] });
 
 /** Carga manual (teléfono, oficina, otra vía). Reusa la captura multicanal: dedupe de contacto + idempotencia + lead.created. */
-export async function createManualLead(db: Database, actor: Actor, raw: z.input<typeof manualLeadSchema>): Promise<CaptureLeadResult> {
+export async function createManualLead(db: Database, actor: Actor, raw: SchemaIn<typeof manualLeadSchema>): Promise<CaptureLeadResult> {
   requirePermission(actor, "leads.create");
   const input = manualLeadSchema.parse(raw);
   let assignedUserId = input.assignedUserId ?? null;
@@ -66,7 +67,7 @@ async function assertActiveStaff(db: Database | Tx, userId: string) {
 
 export const assignLeadSchema = z.object({ leadId: z.uuid(), userId: z.uuid().nullable() });
 
-export async function assignLead(db: Database, actor: Actor, raw: z.input<typeof assignLeadSchema>): Promise<{ changed: boolean }> {
+export async function assignLead(db: Database, actor: Actor, raw: SchemaIn<typeof assignLeadSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "leads.assign");
   const input = assignLeadSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -102,7 +103,7 @@ export async function assignLead(db: Database, actor: Actor, raw: z.input<typeof
 
 export const leadStatusSchema = z.object({ leadId: z.uuid(), status: z.enum(LEAD_STATUSES).exclude(["converted"]) });
 
-export async function changeLeadStatus(db: Database, actor: Actor, raw: z.input<typeof leadStatusSchema>): Promise<{ changed: boolean }> {
+export async function changeLeadStatus(db: Database, actor: Actor, raw: SchemaIn<typeof leadStatusSchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "leads.update");
   const input = leadStatusSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -120,7 +121,7 @@ export async function changeLeadStatus(db: Database, actor: Actor, raw: z.input<
 
 export const leadPrioritySchema = z.object({ leadId: z.uuid(), priority: z.enum(LEAD_PRIORITIES) });
 
-export async function changeLeadPriority(db: Database, actor: Actor, raw: z.input<typeof leadPrioritySchema>): Promise<{ changed: boolean }> {
+export async function changeLeadPriority(db: Database, actor: Actor, raw: SchemaIn<typeof leadPrioritySchema>): Promise<{ changed: boolean }> {
   requirePermission(actor, "leads.update");
   const input = leadPrioritySchema.parse(raw);
   return db.transaction().execute(async (trx) => {
@@ -135,13 +136,13 @@ export async function changeLeadPriority(db: Database, actor: Actor, raw: z.inpu
 export const firstContactSchema = z.object({
   leadId: z.uuid(),
   channel: z.enum(["call", "whatsapp", "email", "in_person", "other"]),
-  note: z.string().trim().max(2000).optional().transform((v) => v || null),
+  note: z.string().trim().max(2000).nullish().transform((v) => v || null),
 });
 
 const CHANNEL_LABEL = { call: "llamada", whatsapp: "WhatsApp", email: "email", in_person: "en persona", other: "otro medio" } as const;
 
 /** Registra el primer contacto con el lead. `first_response_at` se fija una sola vez. */
-export async function registerFirstContact(db: Database, actor: Actor, raw: z.input<typeof firstContactSchema>): Promise<{ alreadyRegistered: boolean }> {
+export async function registerFirstContact(db: Database, actor: Actor, raw: SchemaIn<typeof firstContactSchema>): Promise<{ alreadyRegistered: boolean }> {
   requirePermission(actor, "leads.update");
   const input = firstContactSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
