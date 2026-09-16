@@ -357,6 +357,16 @@ export interface IndexValues {
   value: Numeric;
 }
 
+export interface IntegrationCredentials {
+  access_expires_at: Timestamp | null;
+  auth_tag: string;
+  ciphertext: string;
+  integration_key: string;
+  iv: string;
+  rotated_at: Generated<Timestamp>;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface IntegrationLogs {
   created_at: Generated<Timestamp>;
   duration_ms: number | null;
@@ -740,6 +750,7 @@ export interface PropertyFeatures {
 
 export interface PropertyMedia {
   alt_text: string | null;
+  copy_attempts: Generated<number>;
   created_at: Generated<Timestamp>;
   deleted_at: Timestamp | null;
   file_id: string | null;
@@ -997,6 +1008,7 @@ export interface SocialPosts {
   channel: string;
   created_at: Generated<Timestamp>;
   created_by: string | null;
+  external_container_id: string | null;
   external_post_id: string | null;
   generated_by: string;
   id: Generated<string>;
@@ -1109,6 +1121,7 @@ export interface DB {
   features: Features;
   files: Files;
   index_values: IndexValues;
+  integration_credentials: IntegrationCredentials;
   integration_logs: IntegrationLogs;
   integrations: Integrations;
   jobs: Jobs;
