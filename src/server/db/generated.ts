@@ -236,6 +236,7 @@ export interface Contacts {
   document_type: string | null;
   first_name: string | null;
   id: Generated<string>;
+  idempotency_key: string | null;
   kind: Generated<string>;
   last_name: string | null;
   merged_into_id: string | null;
@@ -508,6 +509,7 @@ export interface Notes {
   entity_id: string;
   entity_type: string;
   id: Generated<string>;
+  idempotency_key: string | null;
   updated_at: Generated<Timestamp>;
 }
 
@@ -537,6 +539,7 @@ export interface Opportunities {
   deleted_at: Timestamp | null;
   expected_close_date: string | null;
   id: Generated<string>;
+  idempotency_key: string | null;
   lead_id: string | null;
   lost_reason: string | null;
   operation: string | null;
