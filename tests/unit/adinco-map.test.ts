@@ -72,6 +72,17 @@ describe("anomalías reales detectadas en el origen", () => {
     const r = mapAdincoProperty({ ...real, hiddenPrice: true, operation: "Alquiler", currencyId: "pesos", price: 700000, statusId: 2 });
     expect(r.property).toMatchObject({ priceHidden: true, operation: "rent", currency: "ARS", status: "reserved" });
   });
+  it("emprendimientos del origen: sin precio → 'Consultar', posesión como atributo; flags 0/1 y nombres nulos", () => {
+    const r = mapAdincoProperty({ ...real, type: "property.type.property_type_development", title: "WA HOMES", price: null, currencyId: null, possessionDate: "2027-06-01 00:00:00", allowsPets: 1, aptoCredito: 0, ambients: [{ id: 1, name: null }] });
+    expect(r.property).toMatchObject({ typeKey: "emprendimiento", priceHidden: true, amount: null, allowsPets: true, creditEligible: false });
+    expect(r.property!.attributes.possession_date).toBe("2027-06-01");
+    expect(hasBlockingWarning(r.warnings)).toBe(false);
+    expect(r.warnings.map((w) => w.code)).toContain("development_price_on_request");
+  });
+  it("una casa sin precio sí bloquea y moneda desconocida con monto también", () => {
+    expect(hasBlockingWarning(mapAdincoProperty({ ...real, price: null, currencyId: null }).warnings)).toBe(true);
+    expect(mapAdincoProperty({ ...real, currencyId: "eur" }).warnings.map((w) => w.code)).toContain("unknown_currency");
+  });
   it("payload inválido no revienta: advertencia de error", () => {
     const r = mapAdincoProperty({ foo: 1 });
     expect(r.property).toBeNull();

@@ -231,7 +231,7 @@ async function setRecord(db: Database | Tx, externalId: string, runId: string, p
 }
 
 type Maps = { branches: Map<string, string>; agents: Map<string, string>; force: boolean };
-type Outcome = { result: "created" | "updated" | "unchanged" | "skippedProtected"; propertyId: string | null; published: boolean; reviewRequired: boolean; warnings: MigrationWarning[] };
+type Outcome = { result: "created" | "updated" | "unchanged" | "skippedProtected" | "failed"; propertyId: string | null; published: boolean; reviewRequired: boolean; warnings: MigrationWarning[] };
 
 export async function importOne(db: Database, actor: SystemActor, runId: string, externalId: string, raw: unknown, maps: Maps): Promise<Outcome> {
   const rawHash = createHash("sha256").update(JSON.stringify(raw)).digest("hex");
@@ -246,7 +246,7 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
   if (!n) {
     await upsertWarnings(db, runId, externalId, null, warnings);
     await setRecord(db, externalId, runId, { stage: "failed", error: warnings.map((w) => w.message).join(" · ") });
-    return { result: "unchanged", propertyId: null, published: false, reviewRequired: false, warnings };
+    return { result: "failed", propertyId: null, published: false, reviewRequired: false, warnings };
   }
   await setRecord(db, externalId, runId, { stage: "normalized", normalized: n });
   await setRecord(db, externalId, runId, { stage: "validated" });

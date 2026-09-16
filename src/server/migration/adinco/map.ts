@@ -10,7 +10,8 @@ export const ADINCO_SOURCE = "adinco";
 export const ADINCO_MEDIA_BASE = "https://static1.adinco.net/";
 
 const zone = z.object({ id: z.number(), name: z.string(), parent_id: z.number().nullable().optional(), category: z.string().nullable().optional() }).nullable().optional();
-const named = z.array(z.object({ id: z.number(), name: z.string() })).nullable().optional();
+const named = z.array(z.object({ id: z.number(), name: z.string().nullable() })).nullable().optional();
+const boolish = z.union([z.boolean(), z.number()]).nullable().optional().transform((v) => (v === null || v === undefined ? null : v === true || v === 1));
 const num = z.number().nullable().optional();
 
 export const adincoPropertySchema = z.object({
@@ -46,9 +47,10 @@ export const adincoPropertySchema = z.object({
   semiCoveredGarages: num,
   old: num,
   expenses: num,
-  aptoCredito: z.boolean().nullable().optional(),
+  aptoCredito: boolish,
   professional: num,
-  allowsPets: z.boolean().nullable().optional(),
+  allowsPets: boolish,
+  possessionDate: z.string().nullable().optional(),
   flats: num,
   services: named,
   others: named,
@@ -163,7 +165,8 @@ export function mapAdincoProperty(raw: unknown): { property: NormalizedProperty 
   const a = parsed.data;
   const warn = (w: MigrationWarning) => warnings.push(w);
 
-  const typeKey = TYPE_MAP[slugify(a.type)] ?? "otro";
+  const typeKey = /development|emprendimiento/i.test(a.type) ? "emprendimiento" : (TYPE_MAP[slugify(a.type)] ?? "otro");
+  const isDevelopment = typeKey === "emprendimiento";
   if (typeKey === "otro") warn({ code: "unknown_type", field: "type_key", severity: "warning", message: `Tipo "${a.type}" sin equivalente: importado como Otro`, valueA: a.type });
 
   const operation = OPERATION_MAP[slugify(a.operation)];
@@ -171,12 +174,15 @@ export function mapAdincoProperty(raw: unknown): { property: NormalizedProperty 
     return { property: null, warnings: [...warnings, { code: "unknown_operation", field: "operation", severity: "error", message: `Operación "${a.operation}" desconocida`, valueA: a.operation }] };
   }
 
-  const currency = a.currencyId === "usd" ? "USD" : a.currencyId === "pesos" ? "ARS" : null;
-  if (!currency) warn({ code: "unknown_currency", field: "currency", severity: "error", message: `Moneda "${a.currencyId}" desconocida`, valueA: a.currencyId ?? null });
-
   const priceHidden = Boolean(a.hiddenPrice);
   const amount = positive(a.price);
-  if (!priceHidden && amount === null) warn({ code: "missing_price", field: "price", severity: "error", message: "Sin precio y sin marcar como 'consultar'" });
+  const currency = a.currencyId === "usd" ? "USD" : a.currencyId === "pesos" ? "ARS" : null;
+  // Sin precio la moneda no se muestra: solo es un error si hay monto con moneda desconocida.
+  if (!currency && amount !== null) warn({ code: "unknown_currency", field: "currency", severity: "error", message: `Moneda "${a.currencyId}" desconocida`, valueA: a.currencyId ?? null });
+  if (!priceHidden && amount === null) {
+    if (isDevelopment) warn({ code: "development_price_on_request", field: "price", severity: "info", message: "Emprendimiento sin precio: se muestra 'Consultar'" });
+    else warn({ code: "missing_price", field: "price", severity: "error", message: "Sin precio y sin marcar como 'consultar'" });
+  }
 
   // Precios implausibles: no se tocan, se marcan para revisión.
   if (amount !== null && currency === "USD") {
@@ -252,6 +258,7 @@ export function mapAdincoProperty(raw: unknown): { property: NormalizedProperty 
   const features = new Map<string, NormalizedProperty["features"][number]>();
   for (const [list, grp] of featureGroups) {
     for (const f of list ?? []) {
+      if (!f.name?.trim()) continue;
       const key = slugify(f.name).replace(/-/g, "_").slice(0, 80);
       if (key.length >= 2 && !features.has(key)) features.set(key, { key, name: f.name.trim(), grp });
     }
@@ -272,6 +279,7 @@ export function mapAdincoProperty(raw: unknown): { property: NormalizedProperty 
 
   const attributes: Record<string, string | number | boolean> = {};
   if (typeKey === "casa" && positive(a.flats)) attributes.floors = a.flats!;
+  if (isDevelopment && a.possessionDate && /^\d{4}-\d{2}-\d{2}/.test(a.possessionDate)) attributes.possession_date = a.possessionDate.slice(0, 10);
   if ((typeKey === "campo" || (typeKey === "terreno" && a.totalAreaUnit === 2)) && positive(a.totalArea) && a.totalAreaUnit === 2) attributes.hectares = a.totalArea!;
 
   const garages = positive(a.garages) ?? (positive(a.coveredGarages) ?? 0) + (positive(a.semiCoveredGarages) ?? 0);
