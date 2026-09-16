@@ -22,6 +22,7 @@
     "db:recreate": "tsx scripts/db/recreate.ts",
     "db:seed": "tsx scripts/db/seed.ts",
     "jobs:run": "tsx scripts/jobs-run.ts",
+    "user:invite": "tsx scripts/user-invite.ts",
     "import:adinco": "tsx scripts/import-existing-properties.ts",
     "check:secrets": "bash scripts/check-secrets.sh",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
