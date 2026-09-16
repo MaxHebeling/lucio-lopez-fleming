@@ -2,13 +2,14 @@ import type { NextConfig } from "next";
 
 const storagePublic = process.env.STORAGE_PUBLIC_BASE_URL ? new URL(process.env.STORAGE_PUBLIC_BASE_URL) : null;
 
-// CSP: sin dominios de terceros innecesarios. Los tiles del mapa (OpenStreetMap) y las fotos migradas (Adinco)
+// CSP: sin dominios de terceros innecesarios. tile.openstreetmap.org es el host canónico de tiles de OSM
+// (los subdominios a/b/c quedaron deprecados): lo usa el mapa estático del sitio público. Los tiles del mapa (OpenStreetMap) y las fotos migradas (Adinco)
 // son los únicos orígenes externos de imágenes hasta completar la copia de multimedia a storage propio.
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: https://static1.adinco.net https://*.tile.openstreetmap.org${storagePublic ? ` ${storagePublic.origin}` : ""}`,
+  `img-src 'self' data: blob: https://static1.adinco.net https://tile.openstreetmap.org https://*.tile.openstreetmap.org${storagePublic ? ` ${storagePublic.origin}` : ""}`,
   "font-src 'self'",
   "connect-src 'self'",
   "media-src 'self' blob:" + (storagePublic ? ` ${storagePublic.origin}` : ""),
@@ -38,6 +39,20 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "static1.adinco.net" },
       ...(storagePublic ? [{ protocol: storagePublic.protocol.replace(":", "") as "https", hostname: storagePublic.hostname }] : []),
     ],
+  },
+  // URLs del sitio anterior (Adinco) → sitio nuevo. 301 explícito: es lo que esperan buscadores y portales.
+  // Las fichas /luciolopez-{código} se resuelven contra property_redirects en /api/site/legacy/[code].
+  async redirects() {
+    return [
+      { source: "/properties", destination: "/propiedades", statusCode: 301 },
+      { source: "/properties/operation/forSale", destination: "/propiedades/venta", statusCode: 301 },
+      { source: "/properties/operation/forRent", destination: "/propiedades/alquiler", statusCode: 301 },
+      { source: "/company", destination: "/empresa", statusCode: 301 },
+      { source: "/contact", destination: "/contacto", statusCode: 301 },
+    ];
+  },
+  async rewrites() {
+    return [{ source: "/luciolopez-:code(\\d{1,7})", destination: "/api/site/legacy/:code" }];
   },
   async headers() {
     return [
