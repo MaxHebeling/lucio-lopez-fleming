@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners } from "@/server/properties/service";
+import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
 import { createLocation } from "@/server/properties/locations";
 import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE } from "@/server/properties/media";
@@ -110,6 +110,19 @@ describe("listado y ficha de propiedades", () => {
     await expect(searchOwnerCandidates(db, agent, "María")).rejects.toThrow(/permiso/);
     expect((await searchOwnerCandidates(db, admin, "maria")).map((c) => c.id)).toContain(owner.contactId);
     await expect(getPropertyDetail(db, admin, "no-es-uuid")).rejects.toThrow(/no encontrad/);
+  });
+
+  it("edición parcial no pisa características, atributos, destacada ni ocultar dirección (fix schema núcleo)", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    await db.insertInto("features").values({ key: "gas_natural_test", name: "Gas natural", grp: "service" }).execute();
+    const p = await createProperty(db, admin, input(hood.id, { featureKeys: ["gas_natural_test"], featured: true, hideExactAddress: false }));
+    await updateProperty(db, admin, p.id, { bedrooms: 4 });
+    const row = await db.selectFrom("properties").select(["bedrooms", "featured", "hide_exact_address", "attributes"]).where("id", "=", p.id).executeTakeFirstOrThrow();
+    expect(row).toEqual({ bedrooms: 4, featured: true, hide_exact_address: false, attributes: { floors: 2, has_pool: true } });
+    expect(await db.selectFrom("property_features").select("feature_id").where("property_id", "=", p.id).execute()).toHaveLength(1);
+    const audit = await db.selectFrom("audit_logs").select(["before", "after"]).where("entity_id", "=", p.id).where("action", "=", "PROPERTY_UPDATED").executeTakeFirstOrThrow();
+    expect(audit).toEqual({ before: { bedrooms: 3 }, after: { bedrooms: 4 } });
   });
 
   it("duplicar: borrador con código nuevo, copia datos/operaciones/características, no multimedia ni publicaciones", async () => {
