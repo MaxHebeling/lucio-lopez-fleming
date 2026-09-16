@@ -362,3 +362,24 @@ describe("acciones del equipo sobre conversaciones", () => {
     expect(reopened.mode).toBe("bot");
   });
 });
+
+describe("plantillas para la cola genérica de mensajes", () => {
+  it("sin credenciales → awaiting_credentials; con credenciales envía la plantilla con sus parámetros", async () => {
+    const { sendWhatsAppTemplate } = await import("@/server/integrations/whatsapp/template-sender");
+    const db = testDb();
+    const msg = { messageId: "00000000-0000-4000-8000-000000000099", to: "+54 9 387 555-0000", templateKey: "rent_due_reminder", payload: { whatsappTemplate: { bodyParameters: ["Ana", "10/10"] } }, dedupeKey: "x" };
+    expect(await sendWhatsAppTemplate(db, msg, { NODE_ENV: "test" } as unknown as NodeJS.ProcessEnv)).toMatchObject({ status: "awaiting_credentials" });
+    const fetchMock = vi.fn(async (_u: string, init: RequestInit) => {
+      expect(JSON.parse(String(init.body))).toEqual({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: "5493875550000",
+        type: "template",
+        template: { name: "rent_due_reminder", language: { code: "es_AR" }, components: [{ type: "body", parameters: [{ type: "text", text: "Ana" }, { type: "text", text: "10/10" }] }] },
+      });
+      return new Response(JSON.stringify({ messages: [{ id: "wamid.TPL", message_status: "accepted" }] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await sendWhatsAppTemplate(db, msg, whatsappEnv())).toEqual({ status: "sent", providerMessageId: "wamid.TPL" });
+  });
+});
