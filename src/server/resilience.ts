@@ -103,7 +103,7 @@ export async function callIntegration<T>(
     const result = await fn();
     await db
       .updateTable("integrations")
-      .set({ consecutive_failures: 0, circuit_open_until: null, last_ok_at: new Date(), status: sql`case when status in ('degraded','error') then 'active' else status end`, updated_at: new Date() })
+      .set({ consecutive_failures: 0, circuit_open_until: null, last_ok_at: new Date(), status: sql`case when status in ('degraded','error','awaiting_credentials') then 'active' else status end`, updated_at: new Date() })
       .where("key", "=", key)
       .execute();
     await db
