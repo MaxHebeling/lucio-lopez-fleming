@@ -44,3 +44,6 @@ next-env.d.ts
 
 # storage local de desarrollo
 /.storage
+
+# storage local de desarrollo (driver local)
+/.storage

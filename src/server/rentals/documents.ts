@@ -12,7 +12,8 @@ import { ALLOWED_UPLOADS, newStorageKey, sha256, sniffContentType, storage } fro
 import { DOCUMENT_KINDS } from "./schema";
 import { z } from "zod";
 
-const MAX_BYTES = 25 * 1024 * 1024;
+/** 4 MB: el cuerpo de una request a una función de Vercel no puede superar 4,5 MB. */
+export const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 const ALLOWED = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
 const uploadSchema = z.object({
@@ -30,7 +31,7 @@ export async function uploadContractDocument(
   requirePermission(actor, "rentals.manage");
   const input = uploadSchema.parse({ title: raw.title, kind: raw.kind, visibleToOwner: raw.visibleToOwner === true || raw.visibleToOwner === "on" });
   if (!raw.bytes.length) throw invalid("Elegí un archivo");
-  if (raw.bytes.length > MAX_BYTES) throw invalid("El archivo supera los 25 MB");
+  if (raw.bytes.length > MAX_DOCUMENT_BYTES) throw invalid("El archivo supera los 4 MB");
   const contentType = sniffContentType(raw.bytes);
   if (!contentType || !ALLOWED.has(contentType)) throw invalid("Formato no permitido: subí PDF, JPG, PNG o WebP");
   const contract = await db.selectFrom("rental_contracts").select(["id"]).where("id", "=", contractId).executeTakeFirst();
@@ -118,13 +119,14 @@ export async function fileDownloadResponse(file: FileRef, filename: string): Pro
 }
 
 /** Documento de contrato para el equipo (rentals.read). */
-export async function staffContractDocument(db: Database, actor: Actor, documentId: string) {
+export async function staffContractDocument(db: Database, actor: Actor, contractId: string, documentId: string) {
   requirePermission(actor, "rentals.read");
   const row = await db
     .selectFrom("rental_contract_documents as d")
     .innerJoin("files as f", "f.id", "d.file_id")
     .select(["f.id", "f.storage_driver", "f.bucket", "f.storage_key", "f.content_type", "f.original_name", "d.title"])
     .where("d.id", "=", documentId)
+    .where("d.contract_id", "=", contractId)
     .where("d.deleted_at", "is", null)
     .where("f.deleted_at", "is", null)
     .executeTakeFirst();
