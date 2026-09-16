@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import "@/server/automation/base-actions";
 import { sql } from "@/server/db";
 import { enqueue, claimJobs, failJob, recoverExpiredLeases } from "@/server/jobs/queue";
-import { registerJobHandler } from "@/server/jobs/registry";
+import { registerJobDeadHandler, registerJobHandler } from "@/server/jobs/registry";
 import { runJobs } from "@/server/jobs/runner";
 import { dispatchPendingEvents } from "@/server/automation/engine";
 import { emitEvent } from "@/server/events";
@@ -44,7 +44,7 @@ describe("cola de jobs", () => {
     await enqueue(db, { type: "test.lease" });
     const [job] = await claimJobs(db, "muerto", 1);
     await sql`update jobs set lease_expires_at = now() - interval '1 second' where id = ${job!.id}`.execute(db);
-    expect(await recoverExpiredLeases(db)).toEqual({ requeued: 1, dead: 0 });
+    expect(await recoverExpiredLeases(db)).toMatchObject({ requeued: 1, dead: 0 });
   });
 
   it("runJobs ejecuta handlers, reintenta y alerta a administración cuando un job muere", async () => {
@@ -57,9 +57,60 @@ describe("cola de jobs", () => {
     });
     await enqueue(db, { type: "test.ok", payload: { v: 1 } });
     await enqueue(db, { type: "test.boom", maxAttempts: 1 });
-    const stats = await runJobs(db, { budgetMs: 5_000 });
+    const stats = await runJobs(db, { budgetMs: 300_000 });
     expect(stats.succeeded).toBe(1);
     expect(stats.dead).toBe(1);
+    const notes = await db.selectFrom("notifications").select("kind").where("user_id", "=", admin.userId).execute();
+    expect(notes.map((n) => n.kind)).toContain("job_dead");
+  });
+});
+
+describe("runner: timeouts y leases (sin duplicar efectos)", () => {
+  it("un job que supera su timeout no se marca fallido ni se reejecuta mientras sigue corriendo; completa si termina en el lease", async () => {
+    const db = testDb();
+    await sql`delete from jobs`.execute(db);
+    let executions = 0;
+    registerJobHandler("test.slow", async () => {
+      executions++;
+      await new Promise((r) => setTimeout(r, 1_500));
+      return { done: true };
+    });
+    const id = await enqueue(db, { type: "test.slow", timeoutMs: 1_000 });
+    const stats = await runJobs(db, { budgetMs: 300_000 });
+    expect(stats.timedOut).toBe(1);
+    expect(stats.retried).toBe(0);
+    // Otra pasada inmediata no lo vuelve a tomar: sigue running con lease vigente
+    const again = await runJobs(db, { budgetMs: 300_000 });
+    expect(again.claimed).toBe(0);
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(executions).toBe(1);
+    const row = await db.selectFrom("jobs").select(["status"]).where("id", "=", id!).executeTakeFirstOrThrow();
+    expect(row.status).toBe("succeeded");
+  });
+
+  it("no toma jobs cuyo timeout no entra en el tiempo restante", async () => {
+    const db = testDb();
+    await sql`delete from jobs`.execute(db);
+    registerJobHandler("test.long", async () => ({ ok: true }));
+    await enqueue(db, { type: "test.long", timeoutMs: 120_000 });
+    expect((await runJobs(db, { budgetMs: 30_000 })).claimed).toBe(0);
+    expect((await runJobs(db, { budgetMs: 300_000 })).succeeded).toBe(1);
+  });
+
+  it("job muerto por lease vencido avisa a administración y dispara onDead una vez", async () => {
+    const db = testDb();
+    await sql`delete from jobs`.execute(db);
+    const admin = await createStaff(db, ["administrador"]);
+    const calls: string[] = [];
+    registerJobDeadHandler("test.lease_dead", async (payload) => {
+      calls.push(String(payload.conv));
+    });
+    await enqueue(db, { type: "test.lease_dead", payload: { conv: "c1" }, maxAttempts: 1 });
+    const [job] = await claimJobs(db, "muerto", 1);
+    await sql`update jobs set lease_expires_at = now() - interval '1 second' where id = ${job!.id}`.execute(db);
+    const stats = await runJobs(db, { budgetMs: 300_000 });
+    expect(stats.recovered).toBe(1);
+    expect(calls).toEqual(["c1"]);
     const notes = await db.selectFrom("notifications").select("kind").where("user_id", "=", admin.userId).execute();
     expect(notes.map((n) => n.kind)).toContain("job_dead");
   });
@@ -81,13 +132,13 @@ describe("motor de automatizaciones", () => {
     // Segundo despacho: el evento ya está despachado, no genera más jobs
     expect((await dispatchPendingEvents(db)).jobs).toBe(0);
 
-    await runJobs(db, { budgetMs: 5_000 });
+    await runJobs(db, { budgetMs: 300_000 });
     // Simula reejecución (p. ej. timeout tras commit): reencola el mismo run
     const ev = await db.selectFrom("domain_events").select("id").executeTakeFirstOrThrow();
     const auto = await db.selectFrom("automation_definitions").select("id").where("key", "=", "lead_notify_and_followup").executeTakeFirstOrThrow();
     await sql`update automation_runs set status = 'failed'`.execute(db);
     await enqueue(db, { type: "automation.run", payload: { automationId: auto.id, eventId: ev.id } });
-    await runJobs(db, { budgetMs: 5_000 });
+    await runJobs(db, { budgetMs: 300_000 });
 
     const tasks = await db.selectFrom("tasks").selectAll().where("entity_id", "=", leadId).execute();
     expect(tasks).toHaveLength(1);

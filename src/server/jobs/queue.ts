@@ -16,6 +16,9 @@ export type JobRow = {
   timeout_ms: number;
 };
 
+/** Tope de duración de un job: debe entrar en el presupuesto del cron (maxDuration 300 s en Vercel Pro). */
+export const MAX_JOB_TIMEOUT_MS = 240_000;
+
 export type EnqueueInput = {
   type: string;
   payload?: Record<string, unknown>;
@@ -31,17 +34,21 @@ export async function enqueue(db: Executor, input: EnqueueInput): Promise<string
   const r = await sql<{ id: string }>`
     insert into jobs(type, payload, dedupe_key, run_at, max_attempts, timeout_ms, priority)
     values (${input.type}, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.dedupeKey ?? null},
-            ${input.runAt ?? new Date()}, ${input.maxAttempts ?? 5}, ${input.timeoutMs ?? 30_000}, ${input.priority ?? 100})
+            ${input.runAt ?? new Date()}, ${input.maxAttempts ?? 5}, ${Math.min(input.timeoutMs ?? 30_000, MAX_JOB_TIMEOUT_MS)}, ${input.priority ?? 100})
     on conflict (dedupe_key) where dedupe_key is not null and status in ('queued', 'running', 'failed') do nothing
     returning id`.execute(db);
   return r.rows[0]?.id ?? null;
 }
 
-export async function claimJobs(db: Executor, workerId: string, limit: number): Promise<JobRow[]> {
+/**
+ * Toma jobs listos cuyo timeout entra en `maxTimeoutMs` (el tiempo que le queda a esta invocación).
+ * Así un job nunca empieza si no alcanza a terminar antes de que la plataforma corte la función.
+ */
+export async function claimJobs(db: Executor, workerId: string, limit: number, maxTimeoutMs = MAX_JOB_TIMEOUT_MS): Promise<JobRow[]> {
   const r = await sql<JobRow>`
     with c as (
       select id from jobs
-       where status in ('queued', 'failed') and run_at <= now()
+       where status in ('queued', 'failed') and run_at <= now() and timeout_ms <= ${maxTimeoutMs}
        order by priority, run_at
        limit ${limit}
        for update skip locked
@@ -91,9 +98,9 @@ export async function failJob(
   return dead ? "dead" : "retry";
 }
 
-/** Jobs cuyo worker murió (lease vencido) vuelven a la cola o pasan a dead. */
-export async function recoverExpiredLeases(db: Executor): Promise<{ requeued: number; dead: number }> {
-  const r = await sql<{ status: string }>`
+/** Jobs cuyo worker murió o se pasó de su timeout (lease vencido) vuelven a la cola o pasan a dead. */
+export async function recoverExpiredLeases(db: Executor): Promise<{ requeued: number; dead: number; deadJobs: Array<Pick<JobRow, "id" | "type" | "payload">> }> {
+  const r = await sql<{ id: string; type: string; payload: Record<string, unknown>; status: string }>`
     update jobs set
       status = case when attempts >= max_attempts then 'dead' else 'failed' end,
       last_error = 'lease vencido: el worker no terminó a tiempo',
@@ -101,11 +108,9 @@ export async function recoverExpiredLeases(db: Executor): Promise<{ requeued: nu
       run_at = now() + interval '1 minute',
       finished_at = case when attempts >= max_attempts then now() else null end
     where status = 'running' and lease_expires_at < now()
-    returning status`.execute(db);
-  return {
-    requeued: r.rows.filter((x) => x.status === "failed").length,
-    dead: r.rows.filter((x) => x.status === "dead").length,
-  };
+    returning id, type, payload, status`.execute(db);
+  const deadJobs = r.rows.filter((x) => x.status === "dead").map(({ id, type, payload }) => ({ id, type, payload }));
+  return { requeued: r.rows.length - deadJobs.length, dead: deadJobs.length, deadJobs };
 }
 
 /** Reintento manual de un job muerto o fallido (desde el panel). */

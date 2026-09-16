@@ -186,7 +186,7 @@ describe("procesamiento de mensajes entrantes", () => {
     const p = inboundTextPayload({ waId, text: "Hola, busco un terreno" });
     const { rawBody, signature } = signed(p.body);
     await ingestWhatsAppWebhook(db, { rawBody, signature, ip: null, env: whatsappEnv() });
-    await runJobs(db, { budgetMs: 10_000 });
+    await runJobs(db, { budgetMs: 300_000 });
 
     const conv = await db.selectFrom("conversations").select(["id", "mode", "handoff_reason"]).where("external_thread_id", "=", waId).executeTakeFirstOrThrow();
     expect(conv).toMatchObject({ mode: "human", handoff_reason: "ai_unavailable" });

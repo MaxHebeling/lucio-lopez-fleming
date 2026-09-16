@@ -22,7 +22,7 @@ async function drain() {
   const db = testDb();
   for (let i = 0; i < 2; i++) {
     await dispatchPendingEvents(db);
-    await runJobs(db, { budgetMs: 8_000 });
+    await runJobs(db, { budgetMs: 300_000 });
   }
 }
 
@@ -90,7 +90,7 @@ describe("motor de contenido y redes", () => {
     const auto = await db.selectFrom("automation_definitions").select("id").where("key", "=", "property_social_drafts").executeTakeFirstOrThrow();
     await sql`update automation_runs set status = 'failed' where automation_id = ${auto.id} and trigger_event_id = ${ev.id}`.execute(db);
     await db.insertInto("jobs").values({ type: "automation.run", payload: JSON.stringify({ automationId: auto.id, eventId: ev.id }) }).execute();
-    await runJobs(db, { budgetMs: 8_000 });
+    await runJobs(db, { budgetMs: 300_000 });
 
     const posts = await postsFor(p.id);
     expect(posts.map((x) => x.channel)).toEqual(["facebook", "instagram"]);
@@ -201,7 +201,7 @@ describe("motor de contenido y redes", () => {
     ]);
     try {
       expect((await dispatchDueSocialPosts(db)).queued).toBe(1);
-      await runJobs(db, { budgetMs: 10_000 });
+      await runJobs(db, { budgetMs: 300_000 });
       const post = await db.selectFrom("social_posts").selectAll().where("id", "=", postId).executeTakeFirstOrThrow();
       expect(post).toMatchObject({ status: "published", external_post_id: "1122334455_998877" });
       const photos = http.calls.filter((c) => c.url.endsWith("/photos"));

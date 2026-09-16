@@ -73,7 +73,7 @@ async function drain() {
   const db = testDb();
   for (let i = 0; i < 3; i++) {
     await dispatchPendingEvents(db);
-    await runJobs(db, { budgetMs: 10_000 });
+    await runJobs(db, { budgetMs: 300_000 });
   }
 }
 
@@ -188,9 +188,9 @@ describe("sincronización con portales", () => {
       state.itemsPut503 = true;
       await updateProperty(db, admin, p.id, { bedrooms: 5 });
       await dispatchPendingEvents(db);
-      await runJobs(db, { budgetMs: 10_000 });
+      await runJobs(db, { budgetMs: 300_000 });
       await dispatchPendingEvents(db);
-      await runJobs(db, { budgetMs: 10_000 });
+      await runJobs(db, { budgetMs: 300_000 });
       const failed = await pub(p.id);
       expect(failed.sync_status).toBe("retrying");
       expect(failed.last_error).toMatch(/503/);
@@ -201,7 +201,7 @@ describe("sincronización con portales", () => {
       // El portal vuelve: el reintento de la cola sincroniza sin crear otro aviso
       state.itemsPut503 = false;
       await sql`update jobs set run_at = now() where type = 'portals.sync' and status = 'failed'`.execute(db);
-      await runJobs(db, { budgetMs: 10_000 });
+      await runJobs(db, { budgetMs: 300_000 });
       expect((await pub(p.id)).sync_status).toBe("synced");
       expect(http.calls.filter((c) => c.method === "POST" && c.url.endsWith("/items"))).toHaveLength(1);
 

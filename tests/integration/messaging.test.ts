@@ -87,7 +87,7 @@ describe("mensajería saliente (email)", () => {
     try {
       const id = await message("t:send-once");
       // El job lo procesa el worker (camino real: queueMessage → messaging.send)
-      const stats = await runJobs(db, { budgetMs: 5_000 });
+      const stats = await runJobs(db, { budgetMs: 300_000 });
       expect(stats.succeeded).toBeGreaterThanOrEqual(1);
       // Reejecución manual del handler: no reenvía
       expect((await sendQueuedMessage(db, id)).outcome).toBe("skipped");
@@ -159,7 +159,7 @@ describe("mensajería saliente (email)", () => {
       return { status: "sent", providerMessageId: "wamid.1" };
     });
     expect(await resumeAwaitingMessages(db)).toMatchObject({ requeued: expect.any(Number) });
-    await runJobs(db, { budgetMs: 5_000 });
+    await runJobs(db, { budgetMs: 300_000 });
     expect(calls).toBe(1);
     expect((await db.selectFrom("outbound_messages").select(["status", "provider_message_id"]).where("id", "=", id).executeTakeFirstOrThrow())).toEqual({ status: "sent", provider_message_id: "wamid.1" });
     await setFlag(db, "outbound_whatsapp", false);
@@ -177,7 +177,7 @@ describe("mensajería saliente (email)", () => {
       .executeTakeFirstOrThrow();
     await emitEvent(db, system, { type: "lead.created", aggregateType: "lead", aggregateId: lead.id, payload: {} });
     await dispatchPendingEvents(db);
-    await runJobs(db, { budgetMs: 8_000 });
+    await runJobs(db, { budgetMs: 300_000 });
     await dispatchPendingEvents(db);
     const msgs = await db.selectFrom("outbound_messages").selectAll().where("template_key", "=", "lead_internal_notice").where("entity_id", "=", lead.id).execute();
     expect(msgs.map((m) => m.to_address).sort()).toEqual(["gerencia@luciolopezfleming.com.ar", "ventas@luciolopezfleming.com.ar"]);

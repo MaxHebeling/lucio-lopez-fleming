@@ -90,7 +90,7 @@ describe("agenda y visitas", () => {
 
     // visit.completed dispara la automatización de seguimiento con tarea para el agente
     await dispatchPendingEvents(db);
-    await runJobs(db, { budgetMs: 5_000 });
+    await runJobs(db, { budgetMs: 300_000 });
     const followUp = await db.selectFrom("tasks").select(["assigned_user_id", "entity_type", "entity_id"]).where("entity_id", "=", visit.id).executeTakeFirst();
     expect(followUp).toEqual({ assigned_user_id: agent.userId, entity_type: "appointment", entity_id: visit.id });
   });

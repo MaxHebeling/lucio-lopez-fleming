@@ -42,7 +42,7 @@ export const POST = apiRoute("webhooks.whatsapp.events", async (req: NextRequest
   if (result.newEvents > 0) {
     after(async () => {
       try {
-        await runJobs(db, { budgetMs: 40_000, batch: 5 });
+        await runJobs(db, { budgetMs: 50_000 });
       } catch (e) {
         log.error("whatsapp.after_run_jobs_failed", errorFields(e));
       }

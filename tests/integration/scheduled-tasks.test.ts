@@ -12,7 +12,7 @@ describe("tareas periódicas", () => {
     const at = new Date("2026-09-16T15:10:00Z");
     const first = await enqueueScheduled(db, at);
     expect(first).toBeGreaterThanOrEqual(5); // housekeeping + tareas de integraciones
-    await runJobs(db, { budgetMs: 8_000 });
+    await runJobs(db, { budgetMs: 300_000 });
     expect(await enqueueScheduled(db, new Date("2026-09-16T15:11:00Z"))).toBe(0);
     // Nueva hora: las horarias vuelven; la diaria no
     const types = await sql<{ type: string }>`select type from jobs where status = 'queued'`.execute(db);

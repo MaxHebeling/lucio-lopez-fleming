@@ -33,3 +33,19 @@ export function getJobHandler(type: string): JobHandler | undefined {
 export function registeredJobTypes(): string[] {
   return [...handlers.keys()].sort();
 }
+
+/**
+ * Reacción cuando un job muere (agotó intentos, error permanente o lease vencido): p. ej. derivar a una persona.
+ * Debe ser idempotente y no lanzar (los errores se loguean).
+ */
+export type JobDeadHandler = (payload: Record<string, unknown>, ctx: { db: Database; actor: SystemActor; jobId: string; error: string }) => Promise<void>;
+
+const deadHandlers = new Map<string, JobDeadHandler>();
+
+export function registerJobDeadHandler(type: string, handler: JobDeadHandler): void {
+  deadHandlers.set(type, handler);
+}
+
+export function getJobDeadHandler(type: string): JobDeadHandler | undefined {
+  return deadHandlers.get(type);
+}
