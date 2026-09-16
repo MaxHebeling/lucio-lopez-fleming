@@ -105,7 +105,7 @@ describe("contraseñas y permisos", () => {
     expect(passwordPolicyError("Letras-y-numeros-2026")).toBeNull();
   });
   it("RBAC: super_admin todo, el resto solo lo otorgado", () => {
-    const base = { kind: "staff", organizationId: "o", userId: "u", email: "e", fullName: "f", branchIds: [] } as const;
+    const base = { kind: "staff" as const, organizationId: "o", userId: "u", email: "e", fullName: "f", branchIds: [] as string[] };
     const agent: StaffActor = { ...base, roles: ["agente"], permissions: new Set(["leads.read_own"]) };
     const root: StaffActor = { ...base, roles: ["super_admin"], permissions: new Set() };
     expect(can(agent, "leads.read_own")).toBe(true);

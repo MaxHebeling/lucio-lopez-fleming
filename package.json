@@ -16,8 +16,8 @@
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:status": "tsx scripts/db/migrate.ts --status",
-    "db:codegen": "kysely-codegen --dialect postgres --out-file src/server/db/generated.ts --exclude-pattern schema_migrations --date-parser string",
-    "db:codegen:verify": "kysely-codegen --dialect postgres --out-file src/server/db/generated.ts --exclude-pattern schema_migrations --date-parser string --verify",
+    "db:codegen": "tsx scripts/db/codegen.ts",
+    "db:codegen:verify": "tsx scripts/db/codegen.ts --verify",
     "db:recreate": "tsx scripts/db/recreate.ts",
     "db:seed": "tsx scripts/db/seed.ts",
     "jobs:run": "tsx scripts/jobs-run.ts",
@@ -28,6 +28,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.126.0",
     "@node-rs/argon2": "2.2.1",
+    "aws4fetch": "1.0.20",
     "kysely": "0.29.5",
     "lenis": "1.3.26",
     "lucide-react": "1.45.0",

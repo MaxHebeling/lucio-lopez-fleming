@@ -846,6 +846,12 @@ export interface PublicationChannels {
   name: string;
 }
 
+export interface RateLimitBuckets {
+  count: Generated<number>;
+  key: string;
+  window_start: Timestamp;
+}
+
 export interface RentAdjustments {
   applied_at: Timestamp | null;
   applied_by: string | null;
@@ -1138,6 +1144,7 @@ export interface DB {
   property_status_history: PropertyStatusHistory;
   property_types: PropertyTypes;
   publication_channels: PublicationChannels;
+  rate_limit_buckets: RateLimitBuckets;
   rent_adjustments: RentAdjustments;
   rent_obligations: RentObligations;
   rent_payments: RentPayments;
