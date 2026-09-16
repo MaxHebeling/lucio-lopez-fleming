@@ -6,22 +6,60 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "db:migrate": "tsx scripts/db/migrate.ts",
+    "db:status": "tsx scripts/db/migrate.ts --status",
+    "db:codegen": "kysely-codegen --dialect postgres --out-file src/server/db/generated.ts --exclude-pattern schema_migrations --date-parser string",
+    "db:codegen:verify": "kysely-codegen --dialect postgres --out-file src/server/db/generated.ts --exclude-pattern schema_migrations --date-parser string --verify",
+    "db:recreate": "tsx scripts/db/recreate.ts",
+    "db:seed": "tsx scripts/db/seed.ts",
+    "jobs:run": "tsx scripts/jobs-run.ts",
+    "import:adinco": "tsx scripts/import-existing-properties.ts",
+    "check:secrets": "bash scripts/check-secrets.sh",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.126.0",
+    "@node-rs/argon2": "2.2.1",
+    "kysely": "0.29.5",
+    "lenis": "1.3.26",
+    "lucide-react": "1.45.0",
     "next": "16.3.5",
+    "pg": "8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1",
+    "sharp": "0.35.4",
+    "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22.20.2",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "happy-dom": "20.0.0",
+    "kysely-codegen": "0.20.0",
+    "prettier": "3.9.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "4.23.13",
+    "typescript": "^5",
+    "vitest": "4.1.11"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10"
+  }
 }
