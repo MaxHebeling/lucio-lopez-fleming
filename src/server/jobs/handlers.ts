@@ -5,3 +5,9 @@
 import "../automation/base-actions";
 import "../automation/engine";
 import "./scheduled";
+import "../messaging/send";
+import "../messaging/internal-actions";
+import "../integrations/portals/sync";
+import "../marketing/drafts";
+import "../marketing/publish";
+import "../media/copy";

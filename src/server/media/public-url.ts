@@ -31,8 +31,8 @@ export type MediaForUrl = {
 export async function publicMediaUrl(m: MediaForUrl): Promise<string | null> {
   if (m.file_id && m.file_visibility === "public" && m.file_bucket && m.file_storage_key && !m.file_deleted_at) {
     try {
-      let url = await storage().url(m.file_bucket, m.file_storage_key, "public", m.file_id);
-      if (url.startsWith("/") && process.env.APP_URL) url = new URL(url, process.env.APP_URL).toString();
+      // Solo URLs absolutas https del storage (el driver local devuelve rutas internas: no sirven afuera).
+      const url = await storage().url(m.file_bucket, m.file_storage_key, "public", m.file_id);
       if (isPublicHttpsUrl(url)) return url;
     } catch (e) {
       // Storage sin configurar o caído: se intenta con la URL de origen.
