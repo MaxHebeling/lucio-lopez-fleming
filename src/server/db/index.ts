@@ -4,6 +4,7 @@
  */
 import { Kysely, PostgresDialect, sql, type Transaction } from "kysely";
 import pg from "pg";
+import { attachDatabasePool } from "@vercel/functions";
 import type { DB } from "./generated";
 
 export type { DB } from "./generated";
@@ -30,7 +31,8 @@ export function createDb(connectionString?: string, max?: number): { db: Databas
     connectionString: url,
     ssl: sslFromEnv(),
     max: max ?? (process.env.VERCEL ? 3 : 10),
-    idleTimeoutMillis: 30_000,
+    // En serverless las instancias se suspenden: conexiones ociosas cortas para no agotar el pooler.
+    idleTimeoutMillis: process.env.VERCEL ? 5_000 : 30_000,
     connectionTimeoutMillis: 10_000,
     statement_timeout: 20_000,
   });
@@ -38,6 +40,8 @@ export function createDb(connectionString?: string, max?: number): { db: Databas
     // Error de un cliente ocioso: no tumba el proceso; el pool lo descarta.
     console.error(JSON.stringify({ level: "error", msg: "db.pool_error", error: err.message }));
   });
+  // En Vercel (Fluid compute) cierra las conexiones ociosas antes de suspender la instancia.
+  if (process.env.VERCEL) attachDatabasePool(pool);
   return { db: new Kysely<DB>({ dialect: new PostgresDialect({ pool }) }), pool };
 }
 

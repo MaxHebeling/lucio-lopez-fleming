@@ -31,7 +31,13 @@ PostgreSQL ≥ 15 (probado en 17). Migraciones SQL en `db/migrations/NNNN_nombre
 
 Si la base es Supabase, `_post_migrate.sql` habilita RLS sin políticas en todas las tablas y revoca privilegios de
 `anon`/`authenticated` (incluido `EXECUTE` de funciones propias a `PUBLIC`): la API REST automática no expone nada.
-La app se conecta con el rol dueño (bypassea RLS). Usar conexión directa o pooler en modo sesión.
+La app se conecta con el rol dueño (bypassea RLS).
+
+Conexiones en Vercel: la app usa el **pooler en modo transacción** (Supabase: puerto 6543) — el código no depende de
+estado de sesión (solo locks transaccionales `pg_advisory_xact_lock` y `set_config(..., true)`), pool de 3 conexiones por
+instancia con 5 s de inactividad y `attachDatabasePool`. Migraciones y backups usan `MIGRATION_DATABASE_URL` (conexión
+directa o pooler en modo sesión, puerto 5432) porque toman un advisory lock de sesión. La conexión directa de Supabase es
+solo IPv6: desde runners sin IPv6 (GitHub Actions) usar el pooler en modo sesión.
 
 ## Cambios
 

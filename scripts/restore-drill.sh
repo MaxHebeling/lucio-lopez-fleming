@@ -14,8 +14,18 @@ psql "$admin" -qc "create database $target_db"
 cleanup() { psql "$admin" -qc "drop database if exists $target_db with (force)" || true; }
 trap cleanup EXIT
 
-# Extensiones que el dump referencia (en Supabase viven en otro esquema; se crean acá antes de restaurar)
-psql "$target_url" -qc "create extension if not exists pg_trgm; create extension if not exists unaccent; create extension if not exists btree_gist;"
+# Extensiones que el dump referencia. En Postgres "plano" viven en public; en Supabase en el esquema `extensions`.
+# Se detecta por las referencias del propio dump y se recrean en el mismo esquema antes de restaurar.
+# Sin `grep -q`: con pipefail cortaría la tubería (SIGPIPE en pg_restore) y la detección fallaría en silencio.
+ext_refs=$(pg_restore -f - "$dump" 2>/dev/null | grep -c "extensions\." || true)
+if [ "${ext_refs:-0}" -gt 0 ]; then
+  ext_schema=extensions
+  psql "$target_url" -qc "create schema if not exists extensions"
+  psql "$admin" -qc "alter database $target_db set search_path = public, extensions"
+else
+  ext_schema=public
+fi
+psql "$target_url" -qc "create extension if not exists pg_trgm schema $ext_schema; create extension if not exists unaccent schema $ext_schema; create extension if not exists btree_gist schema $ext_schema;"
 # El esquema public ya existe en una base nueva: se excluye esa entrada de la lista de restauración.
 list=$(mktemp)
 pg_restore -l "$dump" | grep -vE '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - public ' > "$list"
@@ -31,5 +41,6 @@ audit_immutable=$(psql "$target_url" -Atc "select count(*) from pg_trigger where
 secs=$(( $(date +%s) - t0 ))
 
 echo "tablas: $restored_tables/$expected_tables · propiedades: $restored_props/$expected_props · trigger auditoría: $audit_immutable · RTO simulacro: ${secs}s"
-[ "$restored_props" = "$expected_props" ] && [ "$restored_tables" = "$expected_tables" ] && [ "$audit_immutable" = "1" ] || { echo "✖ El restore no coincide con el manifiesto"; exit 1; }
+# Los conteos del manifiesto se toman ANTES del dump: durante el dump solo pueden crecer (no hay borrados físicos).
+[ "$restored_props" -ge "$expected_props" ] && [ "$restored_tables" = "$expected_tables" ] && [ "$audit_immutable" = "1" ] || { echo "✖ El restore no coincide con el manifiesto"; exit 1; }
 echo "✓ Simulacro de restore OK"

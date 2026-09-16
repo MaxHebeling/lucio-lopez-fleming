@@ -6,8 +6,10 @@ config({ path: ".env", quiet: true });
 
 export function databaseUrl(argv = process.argv): string {
   const i = argv.indexOf("--url");
-  const url = i >= 0 ? argv[i + 1] : process.env.DATABASE_URL;
-  if (!url) throw new Error("Falta DATABASE_URL (o --url postgres://...)");
+  // Migraciones y backups usan un lock/sesión: con Supabase deben ir por conexión directa o pooler en modo sesión
+  // (MIGRATION_DATABASE_URL), aunque la app use el pooler en modo transacción (DATABASE_URL).
+  const url = i >= 0 ? argv[i + 1] : (process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL);
+  if (!url) throw new Error("Falta DATABASE_URL (o MIGRATION_DATABASE_URL / --url postgres://...)");
   return url;
 }
 

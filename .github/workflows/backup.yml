@@ -46,20 +46,25 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -q && sudo apt-get install -yq postgresql-client-17 age
           pnpm install --frozen-lockfile
-      - name: Backup (sin cifrar primero, para el simulacro)
+      - name: Backup
         if: steps.cfg.outputs.enabled == 'true'
         run: BACKUP_ENCRYPT_RECIPIENT= bash scripts/backup.sh backups
-      - name: Simulacro de restore en Postgres efímero
-        if: steps.cfg.outputs.enabled == 'true'
-        run: bash scripts/restore-drill.sh "$(ls backups/*.dump | tail -1)" postgres://postgres:postgres@localhost:5432/postgres
-      - name: Cifrar
+      - name: Cifrar copia y subir ANTES del simulacro (un simulacro fallido nunca deja la noche sin backup)
         if: steps.cfg.outputs.enabled == 'true'
         run: |
+          mkdir -p upload
           f=$(ls backups/*.dump | tail -1)
-          age -r "$BACKUP_ENCRYPT_RECIPIENT" -o "$f.age" "$f" && rm "$f"
+          age -r "$BACKUP_ENCRYPT_RECIPIENT" -o "upload/$(basename "$f").age" "$f"
+          cp "$f.json" upload/
       - uses: actions/upload-artifact@v4
         if: steps.cfg.outputs.enabled == 'true'
         with:
           name: backup-${{ github.run_id }}
-          path: backups/
+          path: upload/
           retention-days: 30
+      - name: Simulacro de restore en Postgres efímero (falla = alerta)
+        if: steps.cfg.outputs.enabled == 'true'
+        run: bash scripts/restore-drill.sh "$(ls backups/*.dump | tail -1)" postgres://postgres:postgres@localhost:5432/postgres
+      - name: Borrar copia sin cifrar del runner
+        if: always()
+        run: rm -rf backups
