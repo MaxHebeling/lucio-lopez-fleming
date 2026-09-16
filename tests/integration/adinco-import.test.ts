@@ -133,4 +133,26 @@ describe("importador Adinco", () => {
     const rec = await db.selectFrom("migration_records").select(["stage", "error"]).where("external_id", "=", "5").executeTakeFirstOrThrow();
     expect(rec.stage).toBe("failed");
   });
+
+  it("bloqueo del CDN (403) no marca fotos como rotas ni despublica; origen bloqueado corta la corrida", async () => {
+    const db = testDb();
+    const src = fakeSource([base]);
+    const blockedCdn = (async (input: RequestInfo | URL, init?: RequestInit) =>
+      init?.method === "HEAD" ? new Response("Request blocked", { status: 403, headers: { "content-type": "text/html" } }) : src.fetchImpl(input, init)) as typeof fetch;
+    const r = await runAdincoImport(db, { fetchImpl: blockedCdn, verifyMedia: true, delayMs: 0 });
+    expect(r).toMatchObject({ created: 1, published: 1, mediaFailed: 0 });
+    expect(r.mediaInconclusive).toBeGreaterThan(0);
+    const p = await db.selectFrom("properties").select("is_published").where("code", "=", 3021).executeTakeFirstOrThrow();
+    expect(p.is_published).toBe(true);
+    expect(await db.selectFrom("property_media").select("id").where("status", "=", "failed").execute()).toHaveLength(0);
+
+    const many = fakeSource(Array.from({ length: 12 }, (_, i) => ({ ...base, id: 1000 + i, code: 4000 + i })));
+    const blockedSite = (async (input: RequestInfo | URL, init?: RequestInit) =>
+      /luciolopez-\d+$/.test(String(input)) ? new Response("blocked", { status: 403 }) : many.fetchImpl(input, init)) as typeof fetch;
+    const r2 = await runAdincoImport(db, { fetchImpl: blockedSite, delayMs: 0, concurrency: 1 });
+    expect(r2.aborted).toMatch(/bloqueando/);
+    expect(r2.failed).toBe(5);
+    const run = await db.selectFrom("migration_runs").select("status").where("id", "=", r2.runId).executeTakeFirstOrThrow();
+    expect(run.status).toBe("failed");
+  });
 });

@@ -46,6 +46,8 @@ export type ImportStats = {
   missingFromSource: number;
   mediaVerified: number;
   mediaFailed: number;
+  mediaInconclusive: number;
+  aborted: string | null;
   warnings: { info: number; warning: number; error: number };
   agentsCreated: number;
 };
@@ -123,6 +125,8 @@ export async function runAdincoImport(db: Database, opts: ImportOptions = {}): P
     missingFromSource: 0,
     mediaVerified: 0,
     mediaFailed: 0,
+    mediaInconclusive: 0,
+    aborted: null,
     warnings: { info: 0, warning: 0, error: 0 },
     agentsCreated: 0,
   };
@@ -149,17 +153,23 @@ export async function runAdincoImport(db: Database, opts: ImportOptions = {}): P
 
     // 3–7. EXTRACT → … → PUBLISHED, por propiedad
     const importedIds: string[] = [];
+    let consecutiveExtractFailures = 0;
     await mapLimit(
       listed,
       opts.concurrency ?? 3,
       async (item, i) => {
         const externalId = String(item.id);
+        if (stats.aborted) return;
         let raw: unknown;
         try {
           raw = await fetchAdincoPropertyDetail(item.code, opts.fetchImpl);
           stats.extracted++;
+          consecutiveExtractFailures = 0;
         } catch (e) {
           stats.failed++;
+          // El origen bloquea ráfagas (CloudFront 403): tras varias fallas seguidas se corta la corrida en vez de
+          // marcar cientos de fichas como fallidas. Se reanuda más tarde: el importador es incremental.
+          if (++consecutiveExtractFailures >= 5) stats.aborted = `origen no disponible o bloqueando: ${(e as Error).message}`;
           await setRecord(db, externalId, run.id, { stage: "failed", error: `extracción: ${(e as Error).message}` });
           log.warn("migration.extract_failed", { code: item.code, ...errorFields(e) });
           return;
@@ -203,12 +213,13 @@ export async function runAdincoImport(db: Database, opts: ImportOptions = {}): P
       const r = await verifyMedia(db, run.id, importedIds, opts.fetchImpl, logger);
       stats.mediaVerified = r.verified;
       stats.mediaFailed = r.failed;
+      stats.mediaInconclusive = r.inconclusive;
     }
 
     await sql`select setval('property_code_seq', greatest((select coalesce(max(code), 0) from properties), (select last_value from property_code_seq)))`.execute(db);
     await db
       .updateTable("migration_runs")
-      .set({ status: stats.failed ? "completed_with_errors" : "completed", stats: JSON.stringify(stats), finished_at: new Date() })
+      .set({ status: stats.aborted ? "failed" : stats.failed ? "completed_with_errors" : "completed", error: stats.aborted, stats: JSON.stringify(stats), finished_at: new Date() })
       .where("id", "=", run.id)
       .execute();
     return stats;
@@ -563,32 +574,51 @@ async function verifyMedia(db: Database, runId: string, propertyIds: string[], f
     .execute();
   let verified = 0;
   let failed = 0;
+  let inconclusive = 0;
+  let consecutiveInconclusive = 0;
+  let aborted = false;
+  // Cortesía y resiliencia: el CDN de origen bloquea ráfagas (CloudFront 403). Un 403/429/5xx o un error de red
+  // NO prueban que la foto no exista: se deja sin verificar. Tras 20 no concluyentes seguidos se aborta la verificación.
   await mapLimit(
     media,
-    8,
+    4,
     async (m) => {
-      let ok = false;
+      if (aborted) return;
+      let outcome: "ok" | "missing" | "inconclusive" = "inconclusive";
       let error: string | null = null;
       try {
         const res = await fetchImpl(m.source_url!, { method: "HEAD", signal: AbortSignal.timeout(15_000) });
-        ok = res.ok && (res.headers.get("content-type") ?? "").startsWith("image/");
-        if (!ok) error = `HTTP ${res.status} ${res.headers.get("content-type") ?? ""}`;
+        const type = res.headers.get("content-type") ?? "";
+        if (res.ok && type.startsWith("image/")) outcome = "ok";
+        else if (res.status === 404 || res.status === 410 || (res.ok && !type.startsWith("image/"))) outcome = "missing";
+        error = outcome === "ok" ? null : `HTTP ${res.status} ${type}`;
       } catch (e) {
         error = (e as Error).message;
       }
-      if (ok) verified++;
+      if (outcome === "inconclusive") {
+        inconclusive++;
+        consecutiveInconclusive++;
+        if (consecutiveInconclusive >= 20 && !aborted) {
+          aborted = true;
+          log.warn("migration.media_verification_aborted", { reason: "respuestas no concluyentes seguidas (posible bloqueo del origen)", lastError: error });
+        }
+        await db.updateTable("property_media").set({ last_checked_at: new Date(), last_error: `no concluyente: ${error}` }).where("id", "=", m.id).execute();
+        return;
+      }
+      consecutiveInconclusive = 0;
+      if (outcome === "ok") verified++;
       else failed++;
-      // source_only se mantiene como "servida desde el origen" pero verificada; failed no se muestra.
-      await db.updateTable("property_media").set({ status: ok ? "verified" : "failed", last_checked_at: new Date(), last_error: error }).where("id", "=", m.id).execute();
+      await db.updateTable("property_media").set({ status: outcome === "ok" ? "verified" : "failed", last_checked_at: new Date(), last_error: error }).where("id", "=", m.id).execute();
     },
-    0,
+    50,
   );
-  logger(`Multimedia verificada: ${verified} ok · ${failed} con error`);
+  logger(`Multimedia: ${verified} ok · ${failed} inexistentes · ${inconclusive} sin verificar${aborted ? " (verificación abortada: el origen está bloqueando)" : ""}`);
   const noImages = await sql<{ property_id: string; external_id: string }>`
     select p.id as property_id, r.external_id from properties p
     join external_refs r on r.entity_id = p.id and r.external_type = 'property' and r.source = ${ADINCO_SOURCE}
     where p.id = any(${propertyIds}::uuid[])
-      and not exists (select 1 from property_media m where m.property_id = p.id and m.kind = 'image' and m.deleted_at is null and m.status in ('verified','stored'))`.execute(db);
+      and exists (select 1 from property_media m where m.property_id = p.id and m.kind = 'image' and m.deleted_at is null)
+      and not exists (select 1 from property_media m where m.property_id = p.id and m.kind = 'image' and m.deleted_at is null and m.status <> 'failed')`.execute(db);
   for (const r of noImages.rows) {
     await db.transaction().execute(async (trx) => {
       await trx.updateTable("properties").set({ is_published: false }).where("id", "=", r.property_id).execute();
@@ -597,5 +627,5 @@ async function verifyMedia(db: Database, runId: string, propertyIds: string[], f
     });
   }
   await sql`update migration_records set stage = 'media_verified' where source = ${ADINCO_SOURCE} and last_run_id = ${runId} and stage = 'imported'`.execute(db);
-  return { verified, failed };
+  return { verified, failed, inconclusive, aborted };
 }
