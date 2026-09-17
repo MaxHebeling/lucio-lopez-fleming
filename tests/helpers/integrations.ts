@@ -49,7 +49,7 @@ export function useMemoryStorage(opts?: { publicBase?: string | null }) {
 }
 
 export type RecordedCall = { method: string; url: string; headers: Record<string, string>; body: string };
-type Route = (call: RecordedCall) => Response | Promise<Response> | undefined;
+type Route = (call: RecordedCall) => Response | Promise<Response | undefined> | undefined;
 
 /** HTTP mockeado: registra cada llamada y responde según rutas. Una llamada sin ruta falla el test. */
 export function mockHttp(routes: Route[]) {
