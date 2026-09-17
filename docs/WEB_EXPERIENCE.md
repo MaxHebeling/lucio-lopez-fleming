@@ -51,24 +51,33 @@ enseguida: «quiero ver esta casa / escribirles».
 
 ## 4. Narrativa del Home
 
-1. **Hero cinematográfico** — foto real a sangre de una propiedad destacada (Valle de Lerma/San Lorenzo con cerros),
-   escala lenta, titular editorial «Buenos negocios, desde 1974.» revelado por líneas, monograma que se dibuja,
-   **buscador integrado** (operación · tipo · zona) como CTA principal + acceso a WhatsApp. Visible y usable sin JS.
-2. **Manifiesto** — texto real de la empresa con «1974» como gran numeral y fotos reales de la oficina y el equipo
-   (sin afirmar "generaciones" hasta confirmarlo).
-3. **Propiedades destacadas** — showcase editorial asimétrico (no grilla de cards idénticas), datos claros.
-4. **Explorar por zona** — zonas reales con conteo en vivo desde la base y foto real de una propiedad de esa zona.
-5. **Sticky story «Qué hacemos»** — Venta · Alquiler y administración · Tasaciones, cada paso con su CTA real.
-6. **Recientes** — últimas publicadas, horizontal con swipe natural en mobile (sin secuestrar el scroll en desktop).
-7. **Tasación** — formulario corto que crea un lead de captación en el CRM.
-8. **Oficinas y contacto** — dos sedes, horarios, mapa (OpenStreetMap), teléfono, WhatsApp.
-9. **Cierre** — macro titular + CTA.
+Ritmo: IMPACTO → PAUSA → PROPIEDAD → TERRITORIO → SERVICIOS → PROCESO → CONVERSIÓN → CONFIANZA → CIERRE.
+
+1. **Portada de revista** (`CoverHero`) — la foto de la oficina modular (`public/brand/photos/oficina-modular.jpg`,
+   1200 × 1600) es la imagen explícita de la portada: lámina vertical a sangre (derecha en desktop, arriba en mobile)
+   con un ancho máximo de ~1 vez su alto para no estirarla. Titular «Buenos negocios, desde 1974.» por líneas, año de
+   fundación como numeral fantasma detrás de la lámina, CTA «Ver propiedades» y «Quiero vender mi propiedad», buscador
+   en barra (operación · ubicación · tipo · precio). En desktop queda fija y la escena siguiente la cubre como una hoja.
+2. **Manifiesto** (`EditorialManifesto`) — textos reales, se enciende palabra por palabra con el scroll (desktop).
+3. **Destacadas** (`FeaturedEditorial`) — 3 propiedades de `getShowcaseProperties` (≥ 8 fotos no fallidas, destacadas
+   del equipo primero), cada una con composición propia: foto protagonista + número, split editorial, localidad gigante
+   detrás de la foto.
+4. **Territorio** (`TerritorySalta`) — «SALTA» recortando la portada de la zona con más propiedades fuera de la ciudad
+   de la casa central (elegida por datos) + índice de zonas con conteos en vivo.
+5. **Servicios** (`ServicesIndex`) — venta, alquileres, administración, tasaciones: índice con lámina que cambia al
+   hover/foco en desktop, acordeón en mobile.
+6. **Proceso** (`ProcessSteps`) — seis pasos genéricos; el monograma LLF se completa trazo a trazo (sticky en desktop).
+7. **Propietarios** (`OwnersCapture`, `#vender`) — formulario que crea un lead `sell_my_property` (alquilar →
+   captación) + acceso a tasación.
+8. **Confianza** (`TrustLedger`) — solo datos reales: 1974, sedes, inventario y localidades en vivo, texto propio de la
+   empresa, foto real del equipo y oficinas con horarios.
+9. **Recientes** y **Cierre** (`FinalCover`, la foto de la portada reencuadrada sobre el cielo).
 
 ## 5. Movimiento (jerarquía)
 
 | Nivel | Dónde | Qué |
 | --- | --- | --- |
-| 1 Hero | portada | entrada ≈1.2–1.6 s (fondo → monograma → foto → titular → buscador), escala lenta, parallax ≤ 8 px con mouse solo desktop |
+| 1 Hero | portada | entrada ≈1.8 s en CSS (foto que asienta su escala → cabecera → titular por líneas → bajada → CTA → buscador), profundidad ≤ 6 px con el puntero solo desktop, transformación al scroll mientras la cubre el manifiesto |
 | 2 Story | manifiesto, "qué hacemos" | sticky con progreso ligado al scroll, reveals por línea |
 | 3 Secciones | resto del home | reveals moderados al entrar (opacity/translate), stagger corto |
 | 4 UI | botones, cards, filtros | microinteracciones consistentes (flecha, fondo, 2–4 px) |
@@ -76,8 +85,12 @@ enseguida: «quiero ver esta casa / escribirles».
 
 Reglas técnicas: solo `transform`/`opacity`; contenido visible sin JS (lo que se oculta cuelga de un atributo que pone JS);
 `prefers-reduced-motion` desactiva parallax, sticky animado, smooth scroll y reveals; mouse tracking y magnetismo solo con
-`(hover: hover) and (pointer: fine)`; cero librerías de animación en el bundle inicial (Lenis opcional, importado en idle
-solo en desktop); limpieza de observers/listeners al desmontar; CLS = 0; el LCP (foto del hero) nunca parte de opacity 0.
+`(hover: hover) and (pointer: fine)`; cero librerías de animación en el bundle inicial: Lenis + GSAP/ScrollTrigger se
+importan con `import()` en idle, solo en desktop con puntero fino y fuera de las rutas calmas
+(`components/experience/motion/smooth-scroll.ts` y `scenes.ts`); limpieza de observers/listeners/ScrollTriggers al
+desmontar; CLS = 0; el LCP (foto de la portada) nunca parte de opacity 0. Tokens de duración: `--motion-fast`,
+`--motion-ui`, `--motion-reveal`, `--motion-editorial`, `--motion-cinematic` (dos curvas: `--ease-out`, `--ease-in-out`).
+Mobile: sin GSAP ni Lenis; revelados por IntersectionObserver y CSS.
 
 ## 6. Conversión
 

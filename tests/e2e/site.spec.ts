@@ -301,13 +301,14 @@ test("accesibilidad (axe) 1440: home, listado, ficha, contacto, tasaciones y emp
   }
 });
 
-test("home: portada con la foto de la oficina (explícita y precargada), destacadas reales y buscador con precio", async ({ page }) => {
+test("home: portada con la foto de la oficina (explícita y con prioridad alta), destacadas reales y buscador con precio", async ({ page }) => {
   await page.goto("/");
   const cover = page.locator("[data-hero] .cover-img");
   await expect(cover).toBeVisible();
   expect(await cover.getAttribute("src")).toContain("oficina-modular");
   expect(await cover.getAttribute("alt")).toMatch(/Oficina modular/);
-  expect(await page.locator('link[rel="preload"][as="image"]').count()).toBe(1);
+  expect(await cover.getAttribute("fetchpriority")).toBe("high");
+  expect(await cover.getAttribute("loading")).not.toBe("lazy");
 
   const featured = page.getByRole("region", { name: /Propiedades para mirar dos veces/ }).or(page.locator('section[aria-labelledby="destacadas-title"]'));
   await expect(featured).toBeVisible();
