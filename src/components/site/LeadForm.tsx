@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useId, useRef } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Check } from "lucide-react";
 import { submitLeadAction, type LeadFormState } from "@/app/(site)/actions";
+import { clientLeadErrors } from "./lead-form-validation";
 
 type Kind = "property" | "visit" | "contact" | "appraisal";
 
@@ -25,8 +26,11 @@ function newKey(): string {
 const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
 /**
- * Formulario público → CRM. Funciona sin JS (Server Action). Con JS agrega: clave de idempotencia por envío
- * (un doble click o un reintento no duplica el lead), UTM de la URL y estados accesibles (aria-live, foco en error).
+ * Formulario público → CRM. Funciona sin JS (Server Action; si el servidor rechaza, vuelve con lo escrito).
+ * Con JS: se envía con onSubmit + transición (React no resetea el formulario, así un rechazo no borra lo escrito),
+ * valida "teléfono o email" antes de enviar, y usa una clave de idempotencia por consulta: la misma en los reintentos
+ * de ese envío (un doble click o un reintento tras un error no duplica el lead) y una nueva recién después de un éxito.
+ * Suma UTM de la URL y estados accesibles (aria-live, foco en el primer error).
  */
 export function LeadForm({ kind, propertyCode, operation, defaultMessage, submitLabel, tone = "light", appraisalTypes, compact }: Props) {
   const [state, action, pending] = useActionState<LeadFormState, FormData>(submitLeadAction, { status: "idle" });
@@ -34,6 +38,8 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   const formRef = useRef<HTMLFormElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  const [clientErrors, setClientErrors] = useState<Record<string, string[]> | null>(null);
+  const inFlight = useRef(false);
 
   // Valores que solo existen en el navegador: se escriben directo en los inputs ocultos (sin re-render).
   useEffect(() => {
@@ -47,6 +53,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   }, []);
 
   useEffect(() => {
+    inFlight.current = false;
     if (state.status === "sent") {
       formRef.current?.reset();
       if (keyRef.current) keyRef.current.value = newKey(); // el próximo envío es otra consulta
@@ -57,7 +64,24 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
     }
   }, [state]);
 
-  const errors = state.status === "error" ? (state.fieldErrors ?? {}) : {};
+  useEffect(() => {
+    if (!clientErrors) return;
+    formRef.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
+  }, [clientErrors]);
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (inFlight.current || pending) return;
+    const fd = new FormData(e.currentTarget);
+    const invalid = clientLeadErrors(fd);
+    setClientErrors(invalid);
+    if (invalid) return;
+    inFlight.current = true;
+    startTransition(() => action(fd));
+  };
+
+  const values = state.status === "error" ? (state.values ?? {}) : {};
+  const errors = clientErrors ?? (state.status === "error" ? (state.fieldErrors ?? {}) : {});
   const dark = tone === "dark";
   const control = `field-control ${dark ? "!border-paper/25 !bg-paper/5 !text-paper placeholder:text-paper/50" : ""}`;
   const label = `field-label ${dark ? "!text-paper/75" : ""}`;
@@ -76,13 +100,15 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
     ) : null;
 
   return (
-    <form ref={formRef} action={action} noValidate={false} className="grid gap-4" aria-describedby={`${id}-status`}>
+    <form ref={formRef} action={action} onSubmit={onSubmit} className="grid gap-4" aria-describedby={`${id}-status`}>
       <input type="hidden" name="kind" value={kind} />
-      <input ref={keyRef} type="hidden" name="idempotencyKey" defaultValue="" />
+      {/* Sin value/defaultValue: los escribe el efecto de montaje y React no debe tocarlos al re-renderizar (en un input
+          hidden, reasignar defaultValue pisa el valor: se perdían la clave y los UTM después de un error). */}
+      <input ref={keyRef} type="hidden" name="idempotencyKey" />
       {propertyCode ? <input type="hidden" name="propertyCode" value={propertyCode} /> : null}
       {operation ? <input type="hidden" name="operation" value={operation} /> : null}
       {UTM_FIELDS.map((k) => (
-        <input key={k} type="hidden" name={k} defaultValue="" />
+        <input key={k} type="hidden" name={k} />
       ))}
       {/* Honeypot: invisible para personas y lectores de pantalla */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
@@ -95,21 +121,21 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
           <label htmlFor={`${id}-name`} className={label}>
             Nombre y apellido
           </label>
-          <input {...fieldProps("name")} className={control} type="text" autoComplete="name" required minLength={2} maxLength={120} />
+          <input {...fieldProps("name")} className={control} type="text" autoComplete="name" required minLength={2} maxLength={120} defaultValue={values.name} />
           {errorText("name")}
         </div>
         <div>
           <label htmlFor={`${id}-phone`} className={label}>
             Teléfono / WhatsApp
           </label>
-          <input {...fieldProps("phone")} className={control} type="tel" autoComplete="tel" inputMode="tel" maxLength={40} placeholder="387 ..." />
+          <input {...fieldProps("phone")} className={control} type="tel" autoComplete="tel" inputMode="tel" maxLength={40} placeholder="387 ..." defaultValue={values.phone} />
           {errorText("phone")}
         </div>
         <div>
           <label htmlFor={`${id}-email`} className={label}>
             Email
           </label>
-          <input {...fieldProps("email")} className={control} type="email" autoComplete="email" maxLength={254} />
+          <input {...fieldProps("email")} className={control} type="email" autoComplete="email" maxLength={254} defaultValue={values.email} />
           {errorText("email")}
         </div>
       </div>
@@ -120,7 +146,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
             <label htmlFor={`${id}-appraisalGoal`} className={label}>
               ¿Qué querés hacer?
             </label>
-            <select {...fieldProps("appraisalGoal")} className={control} defaultValue="vender">
+            <select {...fieldProps("appraisalGoal")} className={control} defaultValue={values.appraisalGoal ?? "vender"}>
               <option value="vender">Vender</option>
               <option value="alquilar">Alquilar</option>
               <option value="conocer">Conocer su valor</option>
@@ -130,7 +156,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
             <label htmlFor={`${id}-appraisalType`} className={label}>
               Tipo de propiedad
             </label>
-            <select {...fieldProps("appraisalType")} className={control} defaultValue="">
+            <select {...fieldProps("appraisalType")} className={control} defaultValue={values.appraisalType ?? ""}>
               <option value="">Elegí</option>
               {(appraisalTypes ?? ["Casa", "Departamento", "Terreno", "Local", "Oficina", "Campo", "Otro"]).map((t) => (
                 <option key={t} value={t}>
@@ -143,7 +169,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
             <label htmlFor={`${id}-appraisalZone`} className={label}>
               Dirección o zona
             </label>
-            <input {...fieldProps("appraisalZone")} className={control} type="text" maxLength={160} required placeholder="Barrio, localidad" />
+            <input {...fieldProps("appraisalZone")} className={control} type="text" maxLength={160} required placeholder="Barrio, localidad" defaultValue={values.appraisalZone} />
             {errorText("appraisalZone")}
           </div>
         </div>
@@ -154,7 +180,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
           <label htmlFor={`${id}-visitWhen`} className={label}>
             ¿Qué días y horarios te quedan bien?
           </label>
-          <input {...fieldProps("visitWhen")} className={control} type="text" maxLength={120} placeholder="Ej.: martes o jueves por la tarde" />
+          <input {...fieldProps("visitWhen")} className={control} type="text" maxLength={120} placeholder="Ej.: martes o jueves por la tarde" defaultValue={values.visitWhen} />
         </div>
       ) : null}
 
@@ -162,7 +188,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
         <label htmlFor={`${id}-message`} className={label}>
           {kind === "appraisal" ? "Contanos algo más (opcional)" : "Mensaje"}
         </label>
-        <textarea {...fieldProps("message")} className={`${control} min-h-28`} maxLength={2000} rows={compact ? 3 : 4} defaultValue={defaultMessage} />
+        <textarea {...fieldProps("message")} className={`${control} min-h-28`} maxLength={2000} rows={compact ? 3 : 4} defaultValue={values.message ?? defaultMessage} />
         {errorText("message")}
       </div>
 
@@ -170,11 +196,13 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
         id={`${id}-status`}
         ref={statusRef}
         tabIndex={-1}
-        role={state.status === "error" ? "alert" : "status"}
+        role={state.status === "error" || clientErrors ? "alert" : "status"}
         aria-live="polite"
         className="outline-none empty:hidden"
       >
-        {state.status === "sent" ? (
+        {clientErrors ? (
+          <p className={`rounded-[var(--radius-md)] p-3 text-sm font-medium ${dark ? "bg-paper/10 text-[#ffb4ad]" : "bg-danger/10 text-danger"}`}>Revisá los datos marcados.</p>
+        ) : state.status === "sent" ? (
           <p className={`flex items-start gap-2 rounded-[var(--radius-md)] p-3 text-sm font-medium ${dark ? "bg-paper/10 text-paper" : "bg-success/10 text-success"}`}>
             <Check aria-hidden className="mt-0.5 size-4 shrink-0" /> {state.message}
           </p>
