@@ -5,7 +5,7 @@
  */
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { AwsClient } from "aws4fetch";
 import { RetryableError, isRetryableStatus, retry, withTimeout } from "../resilience";
@@ -17,6 +17,8 @@ export interface StorageDriver {
   bucketFor(visibility: Visibility): string;
   put(bucket: string, key: string, body: Uint8Array, contentType: string): Promise<void>;
   get(bucket: string, key: string): Promise<Uint8Array>;
+  /** Metadatos sin descargar el contenido. null si el objeto no existe. */
+  head(bucket: string, key: string): Promise<{ size: number; contentType: string | null } | null>;
   remove(bucket: string, key: string): Promise<void>;
   /** URL para leer. Públicos: estable. Privados: firmada y temporal (s3) o ruta autorizada (local). */
   url(bucket: string, key: string, visibility: Visibility, fileId: string, expiresSeconds?: number): Promise<string>;
@@ -48,6 +50,15 @@ class LocalDriver implements StorageDriver {
   }
   async get(bucket: string, key: string) {
     return new Uint8Array(await readFile(this.path(bucket, key)));
+  }
+  async head(bucket: string, key: string) {
+    try {
+      const st = await stat(this.path(bucket, key));
+      return st.isFile() ? { size: st.size, contentType: null } : null;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw e;
+    }
   }
   async remove(bucket: string, key: string) {
     await rm(this.path(bucket, key), { force: true });
@@ -105,6 +116,13 @@ class S3Driver implements StorageDriver {
     const res = await this.send("GET", this.objectUrl(bucket, key));
     if (res.status === 404) throw new Error("Archivo inexistente en storage");
     return new Uint8Array(await res.arrayBuffer());
+  }
+  async head(bucket: string, key: string) {
+    const res = await this.send("HEAD", this.objectUrl(bucket, key));
+    if (res.status === 404) return null;
+    const size = Number(res.headers.get("content-length"));
+    if (!Number.isFinite(size) || size < 0) throw new Error("S3 HEAD sin content-length");
+    return { size, contentType: res.headers.get("content-type") };
   }
   async remove(bucket: string, key: string) {
     await this.send("DELETE", this.objectUrl(bucket, key));

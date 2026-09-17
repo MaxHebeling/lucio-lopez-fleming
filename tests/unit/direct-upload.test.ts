@@ -21,3 +21,19 @@ describe("tokens de subida directa", () => {
     expect(() => verifyUploadToken(signUploadToken({ ...base, k: "files/secretos/contrato.pdf" }), expect1)).toThrow();
   });
 });
+
+describe("secreto de firma de subidas", () => {
+  it("en producción exige UPLOAD_SIGNING_SECRET (no cae a CRON_SECRET)", () => {
+    const saved = { ...process.env };
+    try {
+      delete process.env.UPLOAD_SIGNING_SECRET;
+      process.env.CRON_SECRET = "cron-secreto-de-al-menos-32-caracteres-xxxxx";
+      process.env.APP_ENV = "production";
+      expect(() => signUploadToken(base)).toThrow(/UPLOAD_SIGNING_SECRET/);
+      process.env.APP_ENV = "development";
+      expect(() => signUploadToken(base)).not.toThrow();
+    } finally {
+      process.env = saved;
+    }
+  });
+});

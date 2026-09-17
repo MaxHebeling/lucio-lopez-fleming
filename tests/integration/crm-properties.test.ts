@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
@@ -321,6 +321,22 @@ describe("multimedia", () => {
       await expect(createUploadIntent({ userId: admin.userId, entity: p.id, purpose: "property-media", contentType: "application/x-msdownload", size: 10 })).rejects.toThrow(/Formato/);
     } finally {
       store.direct = false;
+    }
+  });
+
+  it("subida directa: el tamaño se verifica con HEAD antes de descargar; un objeto demasiado grande o inexistente no se lee", async () => {
+    const key = "uploads/tmp/property-media/grande.jpg";
+    await store.put("private", key, new Uint8Array(4096), "image/jpeg");
+    const getSpy = vi.spyOn(store, "get");
+    try {
+      const consume = vi.fn(async () => "no debería llegar");
+      await expect(consumeDirectUpload(key, 1024, consume)).rejects.toThrow(/tamaño máximo/);
+      await expect(consumeDirectUpload("uploads/tmp/property-media/nunca-subido.jpg", 1024, consume)).rejects.toThrow(/No recibimos/);
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(consume).not.toHaveBeenCalled();
+      expect(store.objects.has(`private/${key}`)).toBe(false);
+    } finally {
+      getSpy.mockRestore();
     }
   });
 });
