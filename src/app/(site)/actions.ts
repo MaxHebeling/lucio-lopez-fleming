@@ -29,6 +29,13 @@ function echoValues(raw: Record<string, unknown>): LeadFormValues {
   return out;
 }
 
+const SENT_MESSAGE: Record<string, string> = {
+  appraisal: "Recibimos tu pedido de tasación. Te contactamos para coordinar.",
+  owner: "Recibimos los datos de tu propiedad. Te contactamos para conversar los próximos pasos.",
+  visit: "Recibimos tu pedido de visita. Te escribimos para confirmar día y horario.",
+  contact: "Recibimos tu consulta. Te respondemos a la brevedad.",
+};
+
 /** Formularios públicos (consulta de ficha, visita, contacto, tasación) → CRM. */
 export async function submitLeadAction(_prev: LeadFormState, fd: FormData): Promise<LeadFormState> {
   const raw = formToObject(fd);
@@ -50,7 +57,7 @@ export async function submitLeadAction(_prev: LeadFormState, fd: FormData): Prom
       case "sent":
         return {
           status: "sent",
-          message: raw.kind === "appraisal" ? "Recibimos tu pedido de tasación. Te contactamos para coordinar." : raw.kind === "visit" ? "Recibimos tu pedido de visita. Te escribimos para confirmar día y horario." : "Recibimos tu consulta. Te respondemos a la brevedad.",
+          message: SENT_MESSAGE[String(raw.kind)] ?? SENT_MESSAGE.contact!,
         };
       case "disabled":
         return { status: "error", message: `En este momento no podemos recibir consultas desde la web.${await contactHint()}`, values: echoValues(raw) };

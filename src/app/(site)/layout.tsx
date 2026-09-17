@@ -3,6 +3,7 @@ import { MotionProvider } from "@/components/experience/MotionProvider";
 import { MOTION_BOOT_SCRIPT } from "@/components/experience/motion/config";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import { SiteFloatingContact } from "@/components/site/SiteFloatingContact";
 import { OrganizationJsonLd } from "@/components/site/JsonLd";
 
 export default function SiteLayout({ children }: LayoutProps<"/">) {
@@ -18,6 +19,7 @@ export default function SiteLayout({ children }: LayoutProps<"/">) {
         {children}
       </main>
       <SiteFooter />
+      <SiteFloatingContact />
       <OrganizationJsonLd />
       <MotionProvider />
     </div>

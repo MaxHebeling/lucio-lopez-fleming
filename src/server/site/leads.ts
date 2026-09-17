@@ -14,7 +14,7 @@ import { AppError } from "../errors";
 import { errorFields, log } from "../log";
 import { normalizePhone } from "../contacts/normalize";
 
-export const LEAD_FORM_KINDS = ["property", "visit", "contact", "appraisal"] as const;
+export const LEAD_FORM_KINDS = ["property", "visit", "contact", "appraisal", "owner"] as const;
 export type LeadFormKind = (typeof LEAD_FORM_KINDS)[number];
 
 const RATE_LIMIT = { perIp: 6, windowSeconds: 600 } as const;
@@ -36,7 +36,7 @@ export const publicLeadSchema = z
     message: optionalText(2000, "El mensaje es muy largo (máx. 2000 caracteres)"),
     propertyCode: z.preprocess((v) => (v === "" || v === undefined || v === null ? undefined : Number(v)), z.number().int().positive().max(9_999_999).optional()),
     operation: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["sale", "rent", "temporary_rent"]).optional()),
-    // Tasación
+    // Tasación y propietarios ("Quiero vender mi propiedad"): qué quiere hacer, tipo y ubicación
     appraisalType: optionalText(60, "Tipo inválido"),
     appraisalZone: optionalText(160, "La zona es muy larga"),
     appraisalGoal: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["vender", "alquilar", "conocer"]).optional()),
@@ -50,7 +50,8 @@ export const publicLeadSchema = z
   .superRefine((v, ctx) => {
     if (!v.email && !v.phone) ctx.addIssue({ code: "custom", path: ["phone"], message: "Dejanos un teléfono o un email para responderte" });
     if (v.phone && !normalizePhone(v.phone, { defaultAreaCode: "387" })) ctx.addIssue({ code: "custom", path: ["phone"], message: "Revisá el teléfono (con código de área)" });
-    if (v.kind === "appraisal" && !v.appraisalZone) ctx.addIssue({ code: "custom", path: ["appraisalZone"], message: "Contanos dónde está la propiedad" });
+    if (v.kind === "owner" && v.appraisalGoal === "conocer") ctx.addIssue({ code: "custom", path: ["appraisalGoal"], message: "Elegí si querés vender o alquilar" });
+    if ((v.kind === "appraisal" || v.kind === "owner") && !v.appraisalZone) ctx.addIssue({ code: "custom", path: ["appraisalZone"], message: "Contanos dónde está la propiedad" });
     if ((v.kind === "property" || v.kind === "visit") && !v.propertyCode) ctx.addIssue({ code: "custom", path: ["propertyCode"], message: "Falta la propiedad" });
   });
 export type PublicLeadInput = z.input<typeof publicLeadSchema>;
@@ -72,6 +73,7 @@ export function sanitizeUtm(raw: unknown): Record<string, string> {
 }
 
 const APPRAISAL_GOAL: Record<string, string> = { vender: "Quiere vender", alquilar: "Quiere alquilar", conocer: "Quiere conocer el valor" };
+const OWNER_GOAL: Record<string, string> = { vender: "Quiere vender su propiedad", alquilar: "Quiere alquilar su propiedad" };
 
 function composeMessage(v: z.infer<typeof publicLeadSchema>): string | null {
   const lines: string[] = [];
@@ -79,11 +81,25 @@ function composeMessage(v: z.infer<typeof publicLeadSchema>): string | null {
   if (v.kind === "appraisal") {
     lines.push("Pide tasación");
     if (v.appraisalGoal) lines.push(APPRAISAL_GOAL[v.appraisalGoal]!);
+  }
+  if (v.kind === "owner") lines.push(`Propietario · ${OWNER_GOAL[v.appraisalGoal ?? "vender"]}`);
+  if (v.kind === "appraisal" || v.kind === "owner") {
     if (v.appraisalType) lines.push(`Tipo: ${v.appraisalType}`);
     if (v.appraisalZone) lines.push(`Ubicación: ${v.appraisalZone}`);
   }
   if (v.message) lines.push(v.message);
   return lines.length ? lines.join("\n") : null;
+}
+
+/**
+ * Interés del lead. Propietario que quiere vender → `sell_my_property`. Propietario que quiere alquilar → `appraisal`
+ * (no hay un interés "alquilar mi propiedad": es el mismo criterio que ya usa el formulario de tasación con el objetivo
+ * "alquilar"; ambos caen en el pipeline de captación y el mensaje lo aclara).
+ */
+export function leadInterest(v: Pick<z.infer<typeof publicLeadSchema>, "kind" | "appraisalGoal" | "operation">) {
+  if (v.kind === "owner") return v.appraisalGoal === "alquilar" ? ("appraisal" as const) : ("sell_my_property" as const);
+  if (v.kind === "appraisal") return "appraisal" as const;
+  return v.operation ?? null;
 }
 
 /**
@@ -116,8 +132,8 @@ export async function submitPublicLead(db: Database, actor: Actor, ip: string | 
     log.error("site.lead_rate_limit_failed", { requestId: actor.requestId, ...errorFields(e) });
   }
 
-  const sourceKey = v.kind === "appraisal" ? "web_appraisal" : v.kind === "contact" ? "web_contact" : "web_property";
-  const operationInterest = v.kind === "appraisal" ? ("appraisal" as const) : (v.operation ?? null);
+  const sourceKey = v.kind === "appraisal" || v.kind === "owner" ? "web_appraisal" : v.kind === "contact" ? "web_contact" : "web_property";
+  const operationInterest = leadInterest(v);
   try {
     const res = await captureLead(db, actor, {
       name: v.name,

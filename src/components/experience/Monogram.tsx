@@ -5,7 +5,7 @@ import type { CSSProperties } from "react";
  * Cada trazo es un polígono propio: con `draw` se "dibujan" en secuencia (transform + opacity, CSS en site.css).
  * Los trazos se superponen: la silueta final es idéntica al monograma original.
  */
-const STROKES: Array<{ d: string; origin: string; sx: number; sy: number }> = [
+export const MONOGRAM_STROKES: ReadonlyArray<{ d: string; origin: string; sx: number; sy: number }> = [
   { d: "M0 114 L33 95 L33 345 L0 351 Z", origin: "50% 100%", sx: 1, sy: 0 },
   { d: "M0 351 L35 331 L198 423 L233 443 L233 481 Z", origin: "0% 0%", sx: 0, sy: 0 },
   { d: "M198 1 L233 21 L233 481 L198 461 Z", origin: "50% 100%", sx: 1, sy: 0 },
@@ -14,7 +14,8 @@ const STROKES: Array<{ d: string; origin: string; sx: number; sy: number }> = [
   { d: "M100 57 L131 38 L133 290 L100 296 Z", origin: "50% 0%", sx: 1, sy: 0 },
   { d: "M100 296 L133 275 L172 298 L172 336 Z", origin: "0% 0%", sx: 0, sy: 0 },
 ];
-const DRAW_ORDER = [0, 5, 2, 1, 6, 3, 4];
+/** Orden en que se dibujan los trazos (índices de MONOGRAM_STROKES). */
+export const MONOGRAM_DRAW_ORDER: readonly number[] = [0, 5, 2, 1, 6, 3, 4];
 
 export function Monogram({ className, draw = false, delayMs = 0, title }: { className?: string; draw?: boolean; delayMs?: number; title?: string }) {
   return (
@@ -28,12 +29,12 @@ export function Monogram({ className, draw = false, delayMs = 0, title }: { clas
       style={{ "--mono-delay": `${delayMs}ms` } as CSSProperties}
     >
       <g fill="currentColor">
-        {STROKES.map((s, i) => (
+        {MONOGRAM_STROKES.map((s, i) => (
           <path
             key={i}
             d={s.d}
             className="mono-stroke"
-            style={{ transformOrigin: s.origin, "--s": DRAW_ORDER.indexOf(i), "--sx": s.sx, "--sy": s.sy } as CSSProperties}
+            style={{ transformOrigin: s.origin, "--s": MONOGRAM_DRAW_ORDER.indexOf(i), "--sx": s.sx, "--sy": s.sy } as CSSProperties}
           />
         ))}
       </g>

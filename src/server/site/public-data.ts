@@ -69,15 +69,20 @@ export const getSiteFacets = cache(async (operation?: PublicOperation, typeKey?:
 
 const showcaseCached = unstable_cache(
   async (limit: number, preferCoverWidth: number | null) => getShowcaseProperties(getDb(), limit, preferCoverWidth ? { preferCoverWidth } : {}),
-  ["site", "showcase", "v2"],
+  ["site", "showcase", "v3"],
   PROPERTIES,
 );
 export const getSiteShowcase = cache((limit: number, preferCoverWidth?: number) => readPublic(() => showcaseCached(limit, preferCoverWidth ?? null)));
 
-const recentCached = unstable_cache(async (limit: number, excludeCodes: number[]) => getRecentProperties(getDb(), limit, excludeCodes), ["site", "recent", "v2"], PROPERTIES);
-export const getSiteRecent = (limit: number, excludeCodes: number[] = []) => readPublic(() => recentCached(limit, [...excludeCodes].sort((a, b) => a - b)));
+const recentCached = unstable_cache(
+  async (limit: number, excludeCodes: number[], operation: PublicOperation | null) => getRecentProperties(getDb(), limit, excludeCodes, operation ?? undefined),
+  ["site", "recent", "v3"],
+  PROPERTIES,
+);
+export const getSiteRecent = (limit: number, excludeCodes: number[] = [], operation?: PublicOperation) =>
+  readPublic(() => recentCached(limit, [...excludeCodes].sort((a, b) => a - b), operation ?? null));
 
-const zonesCached = unstable_cache(async (top: ZoneCount[]) => getZoneShowcase(getDb(), { zones: top }, top.length), ["site", "zones", "v2"], PROPERTIES);
+const zonesCached = unstable_cache(async (top: ZoneCount[]) => getZoneShowcase(getDb(), { zones: top }, top.length), ["site", "zones", "v3"], PROPERTIES);
 /** Portadas por zona a partir de las facetas ya leídas (no se recuentan). */
 export const getSiteZoneShowcase = (zones: ZoneCount[], limit: number) => readPublic(() => zonesCached(zones.slice(0, limit)));
 

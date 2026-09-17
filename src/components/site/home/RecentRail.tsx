@@ -8,7 +8,7 @@ import { TextReveal } from "@/components/experience/Reveal";
 export function RecentRail({ items }: { items: PublicPropertyCard[] }) {
   if (!items.length) return null;
   return (
-    <section className="py-[var(--section-y)]" aria-labelledby="recientes-title">
+    <section className="scene recent" aria-labelledby="recientes-title">
       <div className="container-site flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="eyebrow text-brick">Recién publicadas</p>

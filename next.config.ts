@@ -40,6 +40,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@node-rs/argon2", "pg", "sharp"],
   images: {
     formats: ["image/avif", "image/webp"],
+    // 75 por defecto; 65 solo para la foto de la portada (LCP): cielo y texturas suaves, sin pérdida visible y ~30 % menos bytes.
+    qualities: [65, 75],
     remotePatterns: [
       { protocol: "https", hostname: "static1.adinco.net" },
       ...(storagePublic ? [{ protocol: storagePublic.protocol.replace(":", "") as "https", hostname: storagePublic.hostname }] : []),

@@ -409,13 +409,16 @@ export async function getPublicFacets(db: Executor, operation?: PublicOperation,
 
 // ───────────────────────── Home: destacadas, recientes, fotos por zona ─────────────────────────
 
-/** Mínimo de fotos "verificadas" (o servidas desde storage propio) para que una propiedad protagonice el home. */
+/**
+ * Mínimo de fotos publicables (no fallidas) para que una propiedad protagonice el home. Cuentan también las `source_only`:
+ * son válidas y se sirven desde el origen (así está hoy todo el inventario importado en producción).
+ */
 export const SHOWCASE_MIN_PHOTOS = 8;
 
 /**
  * Propiedades para el hero y el showcase del home. Criterio (en este orden):
  * 1. publicadas y disponibles o reservadas (nunca vendidas/alquiladas en portada);
- * 2. con al menos SHOWCASE_MIN_PHOTOS fotos verificadas/copiadas y portada;
+ * 2. con al menos SHOWCASE_MIN_PHOTOS fotos no fallidas (mismo criterio que la portada y la galería: `status <> 'failed'`);
  * 3. `featured` (marcadas por el equipo en el CRM) primero;
  * 4. luego las de más fotos (proxy objetivo de producción fotográfica cuidada) y más recientes.
  * Tipos residenciales/emprendimientos primero para el hero (una casa con paisaje comunica mejor que un galpón).
@@ -433,22 +436,24 @@ export async function getShowcaseProperties(db: Executor, limit = 6, opts: { pre
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       and (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image'
-           and m.status in ('verified', 'stored')) >= ${SHOWCASE_MIN_PHOTOS}
+           and m.status <> 'failed') >= ${SHOWCASE_MIN_PHOTOS}
     order by ${wide} p.featured desc,
       (t.category in ('residential', 'development')) desc,
-      (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status in ('verified', 'stored')) desc,
+      (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed') desc,
       p.published_at desc, p.code desc
     limit ${limit}`.execute(db);
   return rows.rows.map((r) => mapCard(idx, r));
 }
 
-export async function getRecentProperties(db: Executor, limit = 10, excludeCodes: number[] = []): Promise<PublicPropertyCard[]> {
+/** Últimas publicadas disponibles. `operation` las limita a una operación (p. ej. la foto real de "Alquileres" en el home). */
+export async function getRecentProperties(db: Executor, limit = 10, excludeCodes: number[] = [], operation?: PublicOperation): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
   const rows = await sql<CardRow>`
     select ${cardSelect}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       ${excludeCodes.length ? sql`and not (p.code = any(${excludeCodes}::int[]))` : sql``}
+      ${operation ? sql`and exists (select 1 from property_operations o where o.property_id = p.id and o.is_active and o.operation = ${operation})` : sql``}
     order by p.published_at desc nulls last, p.code desc
     limit ${limit}`.execute(db);
   return rows.rows.map((r) => mapCard(idx, r));

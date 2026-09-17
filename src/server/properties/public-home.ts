@@ -11,7 +11,7 @@ export type ZoneShowcase = ZoneCount & { cover: PublicPhoto | null };
 
 /**
  * Zonas con más propiedades publicadas (de las facetas ya calculadas: no se recuentan) + la portada de la propiedad
- * disponible con más fotos verificadas de cada una, resuelta en una sola consulta (ranking por zona en SQL, sin traer
+ * disponible con más fotos publicables (no fallidas) de cada una, resuelta en una sola consulta (ranking por zona en SQL, sin traer
  * todas las propiedades). Hasta 3 candidatas por zona para saltear portadas sin URL pública.
  */
 export async function getZoneShowcase(db: Executor, facets: Pick<Facets, "zones">, limit = 6): Promise<ZoneShowcase[]> {
@@ -37,7 +37,7 @@ export async function getZoneShowcase(db: Executor, facets: Pick<Facets, "zones"
         row_number() over (
           partition by z.zone_slug
           order by (select count(*) from property_media v where v.property_id = p.id and v.deleted_at is null and v.kind = 'image'
-                    and v.status in ('verified', 'stored')) desc,
+                    and v.status <> 'failed') desc,
             p.published_at desc nulls last, p.code desc) as rn
       from properties p join zone_locs z on z.id = p.location_id
       where p.is_published and p.deleted_at is null and p.status in ('available', 'reserved')

@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import { Search } from "lucide-react";
 import type { Facets } from "@/server/properties/public";
 
+type OperationSlug = "venta" | "alquiler" | "temporario";
 type Options = {
-  operations: Array<{ slug: "venta" | "alquiler" | "temporario"; count: number }>;
+  operations: Array<{ slug: OperationSlug; count: number }>;
   types: Array<{ key: string; plural: string; count: number }>;
   zones: Array<{ slug: string; name: string; count: number }>;
 };
@@ -13,20 +14,31 @@ type Options = {
 const nf = new Intl.NumberFormat("es-AR");
 
 /**
- * Buscador del hero: formulario GET a /propiedades (funciona sin JS, URL compartible). Opciones y conteos en vivo.
- * El servidor lo entrega con las opciones de la operación por defecto (venta); con JS, al cambiar operación o tipo se
- * piden las opciones de esa combinación (/api/site/facets): nunca se ofrecen tipos o zonas sin propiedades, y lo
- * elegido que deja de existir vuelve a "Todos".
+ * Topes de precio del buscador (parámetros reales del listado: `moneda` + `precio_max`, ver searchFiltersSchema).
+ * Son escalones de interfaz, no datos: la venta se publica en dólares y el alquiler mayormente en pesos. Con "Todas"
+ * las operaciones o temporario no se ofrece precio (mezclaría monedas).
  */
-export function HeroSearch({ facets, total, contact }: { facets: Facets; total: number; contact: { label: string; href: string; external: boolean } | null }) {
+const PRICE_STEPS: Partial<Record<OperationSlug, { currency: "USD" | "ARS"; steps: number[] }>> = {
+  venta: { currency: "USD", steps: [50_000, 100_000, 150_000, 250_000, 400_000, 700_000] },
+  alquiler: { currency: "ARS", steps: [400_000, 700_000, 1_000_000, 1_500_000, 2_500_000] },
+};
+
+/**
+ * Buscador de la portada: barra única (Operación · Zona · Tipo · Precio) que envía un GET a /propiedades (funciona sin
+ * JS, URL compartible). Opciones y conteos en vivo: el servidor la entrega con las facetas de la operación por defecto
+ * (venta); con JS, al cambiar operación o tipo se piden las de esa combinación (/api/site/facets) y lo elegido que deja
+ * de existir vuelve a "Todos".
+ */
+export function HeroSearch({ facets, total }: { facets: Facets; total: number }) {
   const [options, setOptions] = useState<Options>({
     operations: facets.operations,
     types: facets.types.map((t) => ({ key: t.key, plural: t.plural, count: t.count })),
     zones: facets.zones.map((z) => ({ slug: z.slug, name: z.name, count: z.count })),
   });
-  const [operacion, setOperacion] = useState("venta");
+  const [operacion, setOperacion] = useState<string>("venta");
   const [tipo, setTipo] = useState("");
   const [zona, setZona] = useState("");
+  const [precio, setPrecio] = useState("");
   const [loading, setLoading] = useState(false);
   const inflight = useRef<AbortController | null>(null);
 
@@ -44,14 +56,14 @@ export function HeroSearch({ facets, total, contact }: { facets: Facets; total: 
       setZona((z) => (z && !next.zones.some((x) => x.slug === z) ? "" : z));
     } catch (e) {
       // Abortado por un cambio más nuevo, o sin red: quedan las opciones anteriores (el listado igual muestra un estado vacío útil).
-      if ((e as Error).name !== "AbortError") console.warn("[hero] no se pudieron actualizar las opciones", e);
+      if ((e as Error).name !== "AbortError") console.warn("[buscador] no se pudieron actualizar las opciones", e);
     } finally {
       if (inflight.current === ctrl) setLoading(false);
     }
   };
 
-  const count = (slug: string) => options.operations.find((o) => o.slug === slug)?.count ?? 0;
-  const opOption = (value: "venta" | "alquiler" | "temporario", label: string) => {
+  const count = (slug: OperationSlug) => options.operations.find((o) => o.slug === slug)?.count ?? 0;
+  const opOption = (value: OperationSlug, label: string) => {
     const n = count(value);
     if (value === "temporario" && !n && operacion !== "temporario") return null;
     return (
@@ -60,21 +72,21 @@ export function HeroSearch({ facets, total, contact }: { facets: Facets; total: 
       </option>
     );
   };
+  const price = PRICE_STEPS[operacion as OperationSlug] ?? null;
 
   return (
-    <form action="/propiedades" method="get" role="search" aria-label="Buscar propiedades" className="hero-search p-3 sm:p-4" aria-busy={loading || undefined}>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.2fr_auto]">
-        <div>
-          <label htmlFor="hero-operacion" className="field-label !mb-1 px-1">
-            Operación
-          </label>
+    <form action="/propiedades" method="get" role="search" aria-label="Buscar propiedades" className="search-bar" aria-busy={loading || undefined}>
+      <div className="search-row">
+      <div className="search-fields">
+        <div className="search-field">
+          <label htmlFor="hero-operacion">Operación</label>
           <select
             id="hero-operacion"
             name="operacion"
-            className="field-control"
             value={operacion}
             onChange={(e) => {
               setOperacion(e.target.value);
+              setPrecio("");
               void reload(e.target.value, tipo);
             }}
           >
@@ -84,14 +96,22 @@ export function HeroSearch({ facets, total, contact }: { facets: Facets; total: 
             <option value="">Todas</option>
           </select>
         </div>
-        <div>
-          <label htmlFor="hero-tipo" className="field-label !mb-1 px-1">
-            Tipo
-          </label>
+        <div className="search-field">
+          <label htmlFor="hero-zona">Ubicación</label>
+          <select id="hero-zona" name="zona" value={zona} onChange={(e) => setZona(e.target.value)}>
+            <option value="">Todas las zonas</option>
+            {options.zones.map((z) => (
+              <option key={z.slug} value={z.slug}>
+                {z.name} ({nf.format(z.count)})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="search-field">
+          <label htmlFor="hero-tipo">Tipo</label>
           <select
             id="hero-tipo"
             name="tipo"
-            className="field-control"
             value={tipo}
             onChange={(e) => {
               setTipo(e.target.value);
@@ -106,38 +126,27 @@ export function HeroSearch({ facets, total, contact }: { facets: Facets; total: 
             ))}
           </select>
         </div>
-        <div className="sm:col-span-2 lg:col-span-1">
-          <label htmlFor="hero-zona" className="field-label !mb-1 px-1">
-            Zona
-          </label>
-          <select id="hero-zona" name="zona" className="field-control" value={zona} onChange={(e) => setZona(e.target.value)}>
-            <option value="">Todas las zonas</option>
-            {options.zones.map((z) => (
-              <option key={z.slug} value={z.slug}>
-                {z.name} ({nf.format(z.count)})
+        <div className="search-field" data-disabled={price ? undefined : ""}>
+          <label htmlFor="hero-precio">Precio hasta</label>
+          <select id="hero-precio" name="precio_max" value={price ? precio : ""} disabled={!price} onChange={(e) => setPrecio(e.target.value)}>
+            <option value="">{price ? "Sin tope" : "Elegí la operación"}</option>
+            {price?.steps.map((n) => (
+              <option key={n} value={n}>
+                {price.currency === "USD" ? "USD" : "$"} {nf.format(n)}
               </option>
             ))}
           </select>
-        </div>
-        <div className="flex items-end sm:col-span-2 lg:col-span-1">
-          <button type="submit" className="btn btn-primary w-full lg:w-auto" data-magnetic>
-            <Search aria-hidden className="size-5" /> Buscar
-          </button>
+          {/* La moneda viaja solo con un tope elegido: sin precio la búsqueda no se limita a una moneda. */}
+          <input type="hidden" name="moneda" value={price?.currency ?? ""} disabled={!price || !precio} />
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 text-xs text-ink-2">
-        <p>
-          {nf.format(total)} {total === 1 ? "propiedad publicada" : "propiedades publicadas"} en este momento.
-        </p>
-        {contact ? (
-          <p>
-            ¿Preferís hablar?{" "}
-            <a href={contact.href} {...(contact.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} className="inline-flex min-h-6 items-center font-semibold text-ink underline underline-offset-2">
-              {contact.label}
-            </a>
-          </p>
-        ) : null}
+      <button type="submit" className="btn btn-primary search-submit">
+        <Search aria-hidden className="size-5" /> Buscar
+      </button>
       </div>
+      <p className="search-meta">
+        <span className="tabular">{nf.format(total)}</span> {total === 1 ? "propiedad publicada" : "propiedades publicadas"} hoy
+      </p>
     </form>
   );
 }
