@@ -19,7 +19,7 @@ test("Tablero: «Resumen de hoy» con conteos reales, link a la lista filtrada y
   const problems = await watchProblems(page);
   const admin = await adminId(pool, ADMIN_EMAIL);
   await overdueFollowUp(pool, admin, "Seguimiento vencido E2E de gestión");
-  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD, pool);
   const card = page.getByRole("region", { name: "Resumen de hoy" });
   await expect(card).toBeVisible();
   await expect(card.getByText(/^(Buen día|Buenas tardes|Buenas noches), /)).toBeVisible();
@@ -40,7 +40,7 @@ test("Tareas sugeridas: «Actualizar», aceptar crea la tarea real y la sugerenc
   const problems = await watchProblems(page);
   const admin = await adminId(pool, ADMIN_EMAIL);
   const visit = await finishedVisitWithoutReport(pool, admin);
-  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD, pool);
   await page.getByRole("navigation").getByRole("link", { name: "Tareas sugeridas" }).first().click();
   await expect(page.getByRole("heading", { level: 1, name: "Tareas sugeridas" })).toBeVisible();
   await page.getByRole("button", { name: "Actualizar sugerencias" }).click();
@@ -67,8 +67,10 @@ test("Tareas sugeridas: «Actualizar», aceptar crea la tarea real y la sugerenc
 
 test("Centro de comando (administración) y copiloto «¿Cómo estuvo la semana?» con hechos definidos", async ({ page }) => {
   const problems = await watchProblems(page);
-  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-  await page.getByRole("link", { name: "Centro de comando" }).first().click();
+  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD, pool);
+  await expect(page.getByRole("link", { name: "Centro de comando" }).first()).toHaveAttribute("href", "/crm/centro-de-comando");
+  // Carga directa: el ítem activo del menú anima su fondo al navegar con clic y axe podría medir el contraste a mitad.
+  await page.goto("/crm/centro-de-comando");
   await expect(page.getByRole("heading", { level: 1, name: "Centro de comando" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Resumen de hoy" })).toBeVisible();
   for (const t of ["Tareas sugeridas", "Alertas y anomalías", "Calidad de las publicaciones", "Salud de la IA (24 h)"]) {
@@ -97,7 +99,7 @@ test("Centro de comando (administración) y copiloto «¿Cómo estuvo la semana?
 test("un agente no ve ni puede abrir el Centro de comando; sí su bandeja de Tareas sugeridas", async ({ page }) => {
   const problems = await watchProblems(page);
   const agent = await createAgent(pool, "Agente Gestión E2E");
-  await loginCrm(page, agent.email, AGENT_PASSWORD);
+  await loginCrm(page, agent.email, AGENT_PASSWORD, pool);
   await expect(page.getByRole("link", { name: "Centro de comando" })).toHaveCount(0);
   await page.goto("/crm/centro-de-comando");
   await expect(page).toHaveURL(/\/crm\?sin-permiso=1$/);

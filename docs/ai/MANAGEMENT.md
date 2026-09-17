@@ -213,7 +213,7 @@ usuario/día), el Analista a pedido y la extracción del informe confirmado (Hai
 | `pnpm db:codegen:verify` | OK (tipos al día con 0530–0531) |
 | `pnpm test` | **71 archivos, 721 tests OK** (línea base 68 / 676: +3 archivos, +45 tests) |
 | `pnpm build` | OK |
-| E2E completo (`E2E_PORT=3119 E2E_DB=llf_e2e_mgmt E2E_TEMPLATE_DB=llf_dev_mgmt bash scripts/e2e.sh`) | **52/52 OK** (5 nuevos) |
+| E2E completo (`E2E_PORT=3119 E2E_DB=llf_e2e_mgmt E2E_TEMPLATE_DB=llf_dev_mgmt bash scripts/e2e.sh`) | **52/52 OK** (5 nuevos). En corridas intermedias: una vez el conocido «Failed to fetch» del beacon de `tour.spec.ts › demo 1440` (documentado desde la Fase 1, código no tocado) y una vez el límite de 20 ingresos cada 5 min por IP del login (la suite suma ingresos desde localhost): los E2E de gestión liberan solo ese contador en la base E2E antes de ingresar. Última corrida completa: 52/52 |
 
 **First Load JS** (sin comprimir, `.next/diagnostics/route-bundle-stats.json`, mismo método que la línea base):
 `/crm` 494.307 B → 494.307 B (**+0**: la tarjeta es de servidor y el «Actualizar» es un formulario con Server Action),

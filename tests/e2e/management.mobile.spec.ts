@@ -16,7 +16,7 @@ test("mobile 390: Resumen de hoy legible y bandeja de Tareas sugeridas", async (
   const admin = await adminId(pool, ADMIN_EMAIL);
   await overdueFollowUp(pool, admin, "Seguimiento vencido E2E mobile");
   await finishedVisitWithoutReport(pool, admin);
-  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  await loginCrm(page, ADMIN_EMAIL, ADMIN_PASSWORD, pool);
   const card = page.getByRole("region", { name: "Resumen de hoy" });
   await expect(card).toBeVisible();
   await expect(card.getByRole("link", { name: /seguimientos? vencidos?/ })).toBeVisible();

@@ -7,7 +7,19 @@ import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import type pg from "pg";
 
-export { ADMIN_EMAIL, ADMIN_PASSWORD, AGENT_PASSWORD, axeSerious, createAgent, loginCrm, watchProblems } from "./visits-helpers";
+import { loginCrm as baseLogin } from "./visits-helpers";
+
+export { ADMIN_EMAIL, ADMIN_PASSWORD, AGENT_PASSWORD, axeSerious, createAgent, watchProblems } from "./visits-helpers";
+
+/**
+ * Login para la suite completa: el CRM limita 20 ingresos cada 5 minutos por IP y todos los E2E entran desde localhost.
+ * Antes de ingresar se libera SOLO el contador de ingresos de la base E2E descartable (no se toca el límite de la app),
+ * para que sumar pruebas no haga fallar a otras por tiempo.
+ */
+export async function loginCrm(page: Page, email: string, password: string, pool?: pg.Pool) {
+  if (pool) await pool.query("delete from rate_limit_buckets where key like 'login:ip:%'");
+  await baseLogin(page, email, password);
+}
 
 export async function adminId(pool: pg.Pool, email: string): Promise<string> {
   return (await pool.query<{ id: string }>("select id from users where email = $1", [email])).rows[0]!.id;
