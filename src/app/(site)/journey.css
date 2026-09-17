@@ -82,7 +82,15 @@
     display: none;
   }
   .jr-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+  }
+  /* Con JS, la foto de una escena espera a que la escena se acerque (script inline del recorrido o motor): no compite con el LCP. */
+  .jr[data-defer] .jr-scene:not([data-armed]) .jr-img {
+    display: none;
   }
   .jr-frame-shade,
   .cover-plate-shade {

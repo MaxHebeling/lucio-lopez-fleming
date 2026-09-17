@@ -42,6 +42,8 @@ export function MotionProvider() {
           if (cancelled) return;
           cleanupJourney = initJourney(engine);
           cleanupScenes = initScenes(engine);
+          // Diagnóstico (QA/e2e): disparadores vivos. Volver a una ruta no debe duplicarlos.
+          document.documentElement.setAttribute("data-scroll-triggers", String(engine.ScrollTrigger.getAll().length));
         });
       }, 3000);
     return () => {
@@ -49,6 +51,7 @@ export function MotionProvider() {
       cancelIdle();
       cleanupScenes();
       cleanupJourney();
+      document.documentElement.removeAttribute("data-scroll-triggers");
       for (const c of cleanups) c();
     };
   }, [pathname, preference]);

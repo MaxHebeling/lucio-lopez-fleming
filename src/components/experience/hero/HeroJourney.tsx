@@ -10,6 +10,14 @@ import { HeroScene } from "./HeroScene";
 export const JOURNEY_END_ID = "tras-el-recorrido";
 
 /**
+ * Inline (≈ 450 B), primer hijo del recorrido: corre al parsear, antes de que existan las fotos y sin esperar a React.
+ * Marca `data-defer` (las fotos esperan) y habilita cada escena cuando se acerca al viewport. En el modo fijado decide
+ * el motor. Sin JS no corre y las fotos quedan con `loading="lazy"` nativo; en una navegación del cliente React no
+ * ejecuta scripts inline y pasa lo mismo.
+ */
+const JOURNEY_DEFER_SCRIPT = `(function(){var s=document.currentScript,r=s&&s.parentElement;if(!r||!("IntersectionObserver"in window))return;r.setAttribute("data-defer","");function go(){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&!r.hasAttribute("data-pinned")){e.target.setAttribute("data-armed","");io.unobserve(e.target)}})},{rootMargin:"0px 0px 60% 0px"});r.querySelectorAll("[data-jr-scene]").forEach(function(el){io.observe(el)})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",go):go()})();`;
+
+/**
  * Portada + recorrido arquitectónico (docs/WEB_EXPERIENCE.md §4.1). Server component: 0 JS propio. Un mismo HTML,
  * cuatro presentaciones decididas por CSS y por el motor:
  *
@@ -47,6 +55,7 @@ export function HeroJourney({
   const labels = ["Portada", ...journey.scenes.map((s) => s.label)];
   return (
     <section className="jr on-dark" data-hero data-journey={journey.kind} aria-labelledby="hero-title">
+      <script dangerouslySetInnerHTML={{ __html: JOURNEY_DEFER_SCRIPT }} />
       <div className="jr-stage" data-jr-stage>
         <span className="jr-paper" data-jr-paper aria-hidden />
         <div className="cover" data-jr-cover>

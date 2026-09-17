@@ -458,7 +458,7 @@ function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement)
     for (const attr of ["data-pinned", "data-active-index", "data-tone"]) root.removeAttribute(attr);
     root.style.removeProperty("--jr-track");
     for (const s of scenes) {
-      s.li.removeAttribute("data-armed");
+      // `data-armed` queda: la foto ya está descargada.
       s.li.removeAttribute("data-active");
       s.levels.forEach((l) => l.removeAttribute("data-on"));
     }

@@ -16,7 +16,7 @@ import {
   searchPublicProperties,
 } from "@/server/properties/public";
 import { parseSearchFilters } from "@/server/properties/public-helpers";
-import { getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "@/server/properties/public-home";
+import { getJourneyProperty, getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "@/server/properties/public-home";
 import { submitPublicLead } from "@/server/site/leads";
 import { loadSiteInfo } from "@/server/site/info";
 import { testDb } from "../helpers/db";
@@ -500,6 +500,35 @@ describe("home: fotos publicables servidas desde el origen (source_only)", () =>
       await db.deleteFrom("property_media").where("property_id", "in", created).execute();
       await db.deleteFrom("property_operations").where("property_id", "in", created).execute();
       await db.deleteFrom("properties").where("id", "in", created).execute();
+    }
+  });
+});
+
+describe("home: propiedad del recorrido de la portada", () => {
+  it("solo publicada, disponible y con todas las fotos del recorrido; si no, null (respaldo de marca)", async () => {
+    const db = testDb();
+    const praderas = await db.selectFrom("locations").select("id").where("slug", "=", "praderas-san-lorenzo").executeTakeFirstOrThrow();
+    const id = await insertProperty({ code: 9201, slug: "casa-recorrido-9201", title: "Casa del recorrido", location: praderas.id, bedrooms: 5 });
+    const urls = [0, 1, 2].map((i) => `https://static1.adinco.net/test/recorrido-${i}.jpg`);
+    try {
+      await sql`update properties set bathrooms = 4, covered_area_m2 = 500 where id = ${id}`.execute(db);
+      for (const [i, url] of urls.entries()) await db.insertInto("property_media").values({ property_id: id, kind: "image", source_url: url, status: "verified", sort_order: i }).execute();
+
+      expect(await getJourneyProperty(db, 9201, urls)).toEqual({ code: 9201, slug: "casa-recorrido-9201", bedrooms: 5, bathrooms: 4, coveredAreaM2: 500 });
+      // Una foto del recorrido fallida o borrada en la publicación → no se usa.
+      await sql`update property_media set status = 'failed' where property_id = ${id} and source_url = ${urls[2]!}`.execute(db);
+      expect(await getJourneyProperty(db, 9201, urls)).toBeNull();
+      await sql`update property_media set status = 'verified' where property_id = ${id}`.execute(db);
+      // Reservada, vendida o despublicada → no se usa.
+      await sql`update properties set status = 'reserved' where id = ${id}`.execute(db);
+      expect(await getJourneyProperty(db, 9201, urls)).toBeNull();
+      await sql`update properties set status = 'available', is_published = false, published_at = null where id = ${id}`.execute(db);
+      expect(await getJourneyProperty(db, 9201, urls)).toBeNull();
+      // Código inexistente.
+      expect(await getJourneyProperty(db, 999999, urls)).toBeNull();
+    } finally {
+      await db.deleteFrom("property_media").where("property_id", "=", id).execute();
+      await db.deleteFrom("properties").where("id", "=", id).execute();
     }
   });
 });
