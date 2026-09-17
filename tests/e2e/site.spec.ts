@@ -576,9 +576,18 @@ test.describe("recorrido: respaldo sin la propiedad", () => {
     try {
       await pool.query("update properties set is_published = false where code = 2605");
       expect((await revalidate(page)).status()).toBe(200);
-      await page.goto("/");
+      // Otro worker puede regenerar el home en paralelo con datos previos: se reintenta invalidar hasta ver el respaldo.
       const journey = page.locator("[data-journey]");
-      await expect(journey).toHaveAttribute("data-journey", "brand");
+      await expect
+        .poll(
+          async () => {
+            await revalidate(page);
+            await page.goto("/");
+            return journey.getAttribute("data-journey");
+          },
+          { timeout: 20_000 },
+        )
+        .toBe("brand");
       await expect(page.locator(`a[href="/propiedades/${before!.slug}"]`)).toHaveCount(0);
       expect(await page.content()).not.toContain("el-tipal-2605");
       await expect(journey.getByRole("list", { name: "Recorrido por la inmobiliaria" })).toBeAttached();
@@ -587,7 +596,15 @@ test.describe("recorrido: respaldo sin la propiedad", () => {
       await pool.query("update properties set is_published = true where code = 2605");
       await revalidate(page);
     }
-    await page.goto("/");
-    await expect(page.locator("[data-journey]")).toHaveAttribute("data-journey", "property");
+    await expect
+      .poll(
+        async () => {
+          await revalidate(page);
+          await page.goto("/");
+          return page.locator("[data-journey]").getAttribute("data-journey");
+        },
+        { timeout: 20_000 },
+      )
+      .toBe("property");
   });
 });

@@ -1,5 +1,5 @@
 import { DESKTOP_MQ, FINE_POINTER_MQ, clamp, noop } from "./config";
-import type { Engine } from "./smooth-scroll";
+import { reaimAnchor, type Engine } from "./smooth-scroll";
 
 /**
  * Recorrido arquitectónico de la portada (docs/WEB_EXPERIENCE.md §4.1) · solo desktop con puntero fino, sin movimiento
@@ -121,9 +121,36 @@ export function initJourney(engine: Engine): () => void {
   };
   start();
   if (!started) window.addEventListener("journey:scenes", start);
+  const stopKeeping = keepTargetsBelow(engine, root);
   return () => {
     window.removeEventListener("journey:scenes", start);
+    stopKeeping();
     mm.revert();
+  };
+}
+
+/**
+ * El recorrido cambia de alto cuando llegan las escenas y al pasar a/desde el modo fijado (y ScrollTrigger recalcula).
+ * Si eso ocurre durante el scroll suave hacia un ancla de la misma página («Quiero vender mi propiedad», «Saltar
+ * recorrido»), se vuelve a apuntar al elemento (smooth-scroll.ts → reaimAnchor) para que el scroll termine donde el
+ * usuario pidió. Cualquier gesto propio (rueda, touch, tecla) cancela la corrección.
+ */
+function keepTargetsBelow({ ScrollTrigger }: Engine, root: HTMLElement): () => void {
+  let height = root.offsetHeight;
+  const ro =
+    typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+          const next = root.offsetHeight;
+          if (Math.abs(next - height) < 1) return;
+          height = next;
+          reaimAnchor();
+        });
+  ro?.observe(root);
+  ScrollTrigger.addEventListener("refresh", reaimAnchor);
+  return () => {
+    ro?.disconnect();
+    ScrollTrigger.removeEventListener("refresh", reaimAnchor);
   };
 }
 
@@ -166,7 +193,8 @@ function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement)
   const next = root.nextElementSibling;
   const y0 = window.scrollY;
   const nextTopBefore = next?.getBoundingClientRect().top ?? 0;
-  const pastHero = y0 > 0 && nextTopBefore <= window.innerHeight;
+  // Con un scroll suave en curso (un ancla) no se salta: keepTargetsBelow corrige su destino.
+  const pastHero = y0 > 0 && nextTopBefore <= window.innerHeight && lenis.isScrolling !== "smooth";
   root.style.setProperty("--jr-track", `${(estimateUnits(scenes) * SVH_PER_UNIT).toFixed(1)}svh`);
   root.setAttribute("data-pinned", "");
   root.setAttribute("data-active-index", "0");

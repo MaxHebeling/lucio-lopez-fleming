@@ -286,6 +286,9 @@ export function journeySourceUrls(journey: Journey): string[] {
   return journey.scenes.flatMap((s) => s.media.map((m) => m.sourceUrl).filter((u): u is string => Boolean(u)));
 }
 
+/** Fotos de la propiedad protagonista (URL de origen), constante para que la caché por render las reconozca. */
+export const PROPERTY_JOURNEY_PHOTOS = journeySourceUrls(PROPERTY_JOURNEY);
+
 export type JourneyPropertyData = { code: number; slug: string; bedrooms: number | null; bathrooms: number | null; coveredAreaM2: number | null };
 
 export type ResolvedJourney = {

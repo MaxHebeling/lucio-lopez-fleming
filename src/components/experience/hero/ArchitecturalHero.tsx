@@ -1,11 +1,9 @@
 import type { StaticImageData } from "next/image";
 import type { ReactNode } from "react";
 import { getSiteJourneyProperty } from "@/server/site/public-data";
-import { PROPERTY_JOURNEY, journeySourceUrls, pickJourney } from "./hero-journey";
+import { PROPERTY_JOURNEY, PROPERTY_JOURNEY_PHOTOS, pickJourney } from "./hero-journey";
 import type { HeroCta } from "./HeroHeadline";
 import { HeroJourney } from "./HeroJourney";
-
-const PROPERTY_PHOTOS = journeySourceUrls(PROPERTY_JOURNEY);
 
 /**
  * Portada del home como recorrido arquitectónico. Server component: decide con datos (caché del sitio, invalidada por
@@ -22,6 +20,6 @@ export async function ArchitecturalHero(props: {
   ghost: string | null;
   search: ReactNode;
 }) {
-  const property = PROPERTY_JOURNEY.propertyCode ? await getSiteJourneyProperty(PROPERTY_JOURNEY.propertyCode, PROPERTY_PHOTOS) : null;
+  const property = PROPERTY_JOURNEY.propertyCode ? await getSiteJourneyProperty(PROPERTY_JOURNEY.propertyCode, PROPERTY_JOURNEY_PHOTOS) : null;
   return <HeroJourney resolved={pickJourney(property)} {...props} />;
 }
