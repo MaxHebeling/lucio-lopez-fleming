@@ -76,6 +76,16 @@ describe("mapeo Mercado Libre", () => {
     expect(item.description.plain_text).toContain("Código de referencia: 1203");
   });
 
+  it("dirección oculta: nunca envía la altura, tampoco la embebida en la calle (importación: \"Sarmiento 447\")", () => {
+    const embedded = mapToMercadoLibre(fixture({ address: { street: "Sarmiento 447", number: null, hideExact: true, latitude: null, longitude: null } }), cfg);
+    expect(embedded.ok && embedded.payload.item.location.address_line).toBe("Sarmiento");
+    const both = mapToMercadoLibre(fixture({ address: { street: "Av. Entre Ríos N° 639", number: "639", hideExact: true, latitude: null, longitude: null } }), cfg);
+    expect(both.ok && both.payload.item.location.address_line).toBe("Av. Entre Ríos");
+    // Sin nombre de calle utilizable → la localidad
+    const onlyNumber = mapToMercadoLibre(fixture({ address: { street: "447", number: null, hideExact: true, latitude: null, longitude: null } }), cfg);
+    expect(onlyNumber.ok && onlyNumber.payload.item.location.address_line).not.toMatch(/\d/);
+  });
+
   it("dirección visible → número y coordenadas", () => {
     const r = mapToMercadoLibre(fixture({ address: { street: "Los Ceibos", number: "123", hideExact: false, latitude: -24.77, longitude: -65.4 } }), cfg);
     expect(r.ok && r.payload.item.location).toMatchObject({ address_line: "Los Ceibos 123", latitude: -24.77, longitude: -65.4 });
