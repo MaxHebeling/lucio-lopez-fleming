@@ -157,7 +157,9 @@ export type GenerateResult = { generatedBy: "template" | "ai"; notice: string | 
 
 // ───────────────────────────── Generación ─────────────────────────────
 
-export const generateSchema = z.object({ propertyId: z.uuid(), mode: z.enum(["template", "ai"]).default("template") });
+/** `scope: "own"`: solo SEO, WhatsApp, email y Reel (la reacción a property.published: Instagram y Facebook ya los arma
+ * la automatización `property_social_drafts`, así no se duplican borradores de redes). */
+export const generateSchema = z.object({ propertyId: z.uuid(), mode: z.enum(["template", "ai"]).default("template"), scope: z.enum(["all", "own"]).default("all") });
 
 export async function generateMarketingDrafts(db: Database, actor: Actor, raw: z.input<typeof generateSchema>, deps: TaskDeps = {}): Promise<GenerateResult> {
   requirePermission(actor, "marketing.create");
@@ -229,7 +231,7 @@ export async function generateMarketingDrafts(db: Database, actor: Actor, raw: z
         created++;
       }
     }
-    for (const channel of SOCIAL) {
+    for (const channel of input.scope === "own" ? [] : SOCIAL) {
       const caption = channel === "instagram" ? set.instagram.caption : set.facebook.text;
       const existing = await trx
         .selectFrom("social_posts")

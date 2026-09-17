@@ -137,6 +137,23 @@ Detalle en `docs/ai/PROPERTY.md` y `docs/ai/VISITS_AI.md`. Resumen:
 - **PII**: `redactForModel` antes del proveedor; `ai_interactions` sin prompts ni respuestas; eventos sin datos
   personales. `visit_ai_outputs` guarda el brief (datos internos ya visibles para el agente de la visita).
 
+## IA de gestión y automatización (2026-09, Fases 5 y 6)
+
+Detalle en `docs/ai/MANAGEMENT.md` y `docs/ai/AUTOMATION.md`. Resumen:
+
+- **Alcance**: Tareas sugeridas por usuario (agente: asignadas a él; ventas además con el alcance comercial vigente al
+  leer) y equipo solo con `tasks.read_all`; cada origen exige el permiso de su módulo; decidir sobre algo fuera de alcance
+  = 404. Centro de comando y preguntas de dirección con `ai.executive` (+ flag verificado al ejecutar). Anomalías: agente
+  las suyas; las de organización solo con `automations.read`/`ai.read_usage`. Todas las consultas filtran por
+  organización (tests con otra organización y con filas ajenas asignadas al mismo usuario).
+- **Privacidad**: sugerencias, anomalías, eventos y auditoría sin datos personales ni texto libre (la nota de descarte no
+  se audita); la ubicación de agentes no se usa en recomendaciones ni métricas (test estático).
+- **Automatizaciones**: nada se envía ni se publica; reacciones idempotentes con protección contra loops por causalidad;
+  activación segura por flag. Límites: «Actualizar» del resumen (1/min) y de la bandeja (1/2 min) por usuario, tope diario
+  de redacciones y de avisos.
+- **Prompt injection**: informe de visita y conteos como datos delimitados; extracción validada contra catálogo y texto;
+  cifras no respaldadas descartan la salida.
+
 ## Reportar una vulnerabilidad
 
 Escribir a la dirección técnica del proyecto (no abrir issue público). Se responde en 72 h.

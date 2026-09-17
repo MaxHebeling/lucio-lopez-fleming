@@ -8,12 +8,14 @@ export type NavItem = { href: string; label: string; icon: string; permission: s
 
 export const CRM_NAV: NavItem[] = [
   { href: "/crm", label: "Tablero", icon: "🏠", permission: "dashboard.read", group: "operacion" },
+  { href: "/crm/centro-de-comando", label: "Centro de comando", icon: "🧭", permission: "ai.executive", group: "operacion", flag: "ai_executive" },
   { href: "/crm/propiedades", label: "Propiedades", icon: "🏘️", permission: "properties.read", group: "operacion" },
   { href: "/crm/contactos", label: "Contactos", icon: "👥", permission: "contacts.read", group: "operacion" },
   { href: "/crm/agenda", label: "Agenda", icon: "📅", permission: "agenda.manage", group: "operacion" },
   { href: "/crm/mis-visitas", label: "Mis visitas", icon: "🚗", permission: "visits.operate", group: "operacion", flag: "visits_operations" },
   { href: "/crm/centro-operativo", label: "Centro operativo", icon: "🛰️", permission: "visits.monitor", group: "operacion", flag: "visits_operations" },
   { href: "/crm/tareas", label: "Tareas", icon: "✅", permission: "tasks.manage", group: "operacion" },
+  { href: "/crm/tareas-sugeridas", label: "Tareas sugeridas", icon: "📌", permission: "tasks.manage", group: "operacion", flag: "ai_task_center" },
   { href: "/crm/leads", label: "Leads", icon: "🎯", permission: "leads.read_own", group: "comercial" },
   { href: "/crm/pipeline", label: "Pipeline", icon: "📊", permission: "opportunities.read_own", group: "comercial" },
   { href: "/crm/conversaciones", label: "Conversaciones", icon: "💬", permission: "conversations.read", group: "comercial" },

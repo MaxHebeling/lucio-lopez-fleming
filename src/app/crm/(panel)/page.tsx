@@ -4,10 +4,14 @@ import type { ReactNode } from "react";
 import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
+import { errorFields, log } from "@/server/log";
 import { getDashboard } from "@/server/dashboard/queries";
 import { STATUS_LABEL, type PropertyStatus } from "@/server/properties/schema";
 import { Alert, Badge, buttonClass, ButtonLink, Card, Field, formatDate, formatDateTime, Input, PageHeader, Select } from "@/components/ui";
 import { INTEGRATION_STATUS, PROPERTY_STATUS_TONE } from "@/components/crm/labels";
+import { getDailyBrief } from "@/server/ai/brief/service";
+import { DailyBriefCard } from "@/components/crm/management/daily-brief-card";
+import { refreshDailyBriefFormAction } from "./_management/actions";
 import { first } from "./_lib/params";
 
 export const metadata: Metadata = { title: "Tablero" };
@@ -53,9 +57,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/crm">) {
   }
 
   const db = getDb();
-  const [d, branches] = await Promise.all([
+  const [d, branches, brief] = await Promise.all([
     getDashboard(db, actor, { branchId: first(sp, "branchId"), from: first(sp, "from"), to: first(sp, "to") }),
     db.selectFrom("branches").select(["id", "name"]).where("is_active", "=", true).orderBy("is_main", "desc").orderBy("name").execute(),
+    // «Resumen de hoy» (Fase 5): cache por usuario y día; si falla, el tablero sigue igual.
+    getDailyBrief(db, actor).catch((e: unknown) => {
+      log.error("ai.daily_brief_failed", { requestId: actor.requestId, ...errorFields(e) });
+      return null;
+    }),
   ]);
   const branchName = branches.find((b) => b.id === d.branchId)?.name;
 
@@ -65,6 +74,12 @@ export default async function Dashboard({ searchParams }: PageProps<"/crm">) {
       {denied ? (
         <div className="mb-4">
           <Alert tone="warning">No tenés permiso para la sección a la que intentaste entrar.</Alert>
+        </div>
+      ) : null}
+
+      {brief ? (
+        <div className="mb-5">
+          <DailyBriefCard brief={brief} refreshAction={refreshDailyBriefFormAction} />
         </div>
       ) : null}
 

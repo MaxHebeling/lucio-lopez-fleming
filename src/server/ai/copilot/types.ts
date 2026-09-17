@@ -37,6 +37,7 @@ export type CopilotFactGroup = {
   truncated: boolean;
   source: { label: string; href: string | null };
   scope: "own" | "all" | null;
+  period?: string | null;
 };
 
 export type GuideExcerpt = { heading: string; document: string; excerpt: string; href: string | null };

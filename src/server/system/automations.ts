@@ -3,7 +3,7 @@ import { z } from "zod";
 import { sql, type Database } from "../db";
 import { audit } from "../audit";
 import { requirePermission, type Actor } from "../auth/actor";
-import { notFound } from "../errors";
+import { conflict, notFound } from "../errors";
 
 export async function listAutomations(db: Database, actor: Actor) {
   requirePermission(actor, "automations.read");
@@ -13,6 +13,9 @@ export async function listAutomations(db: Database, actor: Actor) {
       "d.id", "d.key", "d.name", "d.description", "d.trigger_event", "d.conditions", "d.actions", "d.is_enabled", "d.is_system", "d.version", "d.updated_at",
       sql<number>`(select count(*)::int from automation_runs r where r.automation_id = d.id and r.started_at > now() - interval '7 days')`.as("runs_7d"),
       sql<number>`(select count(*)::int from automation_runs r where r.automation_id = d.id and r.status = 'failed' and r.started_at > now() - interval '7 days')`.as("failed_7d"),
+      sql<number>`(select count(*)::int from automation_runs r where r.automation_id = d.id and r.status = 'skipped' and r.started_at > now() - interval '7 days')`.as("skipped_7d"),
+      sql<number | null>`(select round(percentile_cont(0.5) within group (order by extract(epoch from (r.finished_at - r.started_at)) * 1000))::int from automation_runs r where r.automation_id = d.id and r.finished_at is not null and r.started_at > now() - interval '7 days')`.as("p50_ms"),
+      sql<number | null>`(select round(percentile_cont(0.95) within group (order by extract(epoch from (r.finished_at - r.started_at)) * 1000))::int from automation_runs r where r.automation_id = d.id and r.finished_at is not null and r.started_at > now() - interval '7 days')`.as("p95_ms"),
       sql<Date | null>`(select max(r.started_at) from automation_runs r where r.automation_id = d.id)`.as("last_run_at"),
     ])
     .orderBy("d.is_enabled", "desc")
@@ -38,6 +41,8 @@ export async function setAutomationEnabled(db: Database, actor: Actor, id: strin
   await db.transaction().execute(async (trx) => {
     const d = await trx.selectFrom("automation_definitions").select(["id", "key", "is_enabled"]).where("id", "=", id).forUpdate().executeTakeFirst();
     if (!d) throw notFound("Automatización");
+    // Las reacciones de IA se controlan con el flag `ai_automations` (activación segura, ver docs/ai/AUTOMATION.md).
+    if (d.key.startsWith("ai_reaction_")) throw conflict("Esta reacción de IA se activa y desactiva con el flag «ai_automations» en Integraciones → Feature flags.");
     if (d.is_enabled === enabled) return;
     await trx.updateTable("automation_definitions").set({ is_enabled: enabled }).where("id", "=", id).execute();
     await audit(trx, actor, { action: enabled ? "AUTOMATION_ENABLED" : "AUTOMATION_DISABLED", entityType: "automation", entityId: id, before: { is_enabled: d.is_enabled }, after: { is_enabled: enabled }, metadata: { key: d.key } });

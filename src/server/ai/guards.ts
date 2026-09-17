@@ -16,7 +16,7 @@ export type GroundingFacts = {
   routes: Set<string>;
 };
 
-export type ViolationKind = "property_code" | "amount" | "area" | "percentage" | "url" | "phone" | "email" | "crm_route";
+export type ViolationKind = "property_code" | "amount" | "area" | "percentage" | "url" | "phone" | "email" | "crm_route" | "count";
 export type Violation = { kind: ViolationKind; value: string };
 
 export function emptyFacts(): GroundingFacts {
@@ -171,4 +171,17 @@ export function findViolations(reply: string, facts: GroundingFacts): Violation[
     if (!facts.contacts.has(d.slice(-10))) add("phone", m.trim());
   }
   return violations;
+}
+
+/**
+ * Preguntas de dirección (Fase 5): además de montos y porcentajes, TODA cifra suelta (conteos, horas, días) tiene que
+ * figurar en los resultados de las herramientas del turno o en la pregunta. Un «entraron 48 leads» inventado se descarta.
+ */
+export function findUngroundedCounts(reply: string, facts: GroundingFacts): Violation[] {
+  const out: Violation[] = [];
+  const text = reply.replace(CRM_ROUTE_RE, " ").replace(URL_RE, " ");
+  for (const n of extractAnyNumbers(text)) {
+    if (!facts.amounts.has(n) && !out.some((v) => v.value === String(n))) out.push({ kind: "count", value: String(n) });
+  }
+  return out;
 }

@@ -5,6 +5,7 @@
  * - fallas: backoff exponencial con jitter hasta max_attempts; luego `dead` + alerta.
  */
 import { sql, type Executor } from "../db";
+import { currentEventCause, type EventCause } from "../events";
 import { backoffMs } from "../resilience";
 
 export type JobRow = {
@@ -14,7 +15,16 @@ export type JobRow = {
   attempts: number;
   max_attempts: number;
   timeout_ms: number;
+  causation_event_id?: string | null;
+  causation_depth?: number | null;
+  caused_by_automation?: string | null;
 };
+
+/** Causa heredada por un job encolado dentro de una automatización (el runner la restaura al ejecutarlo). */
+export function jobCause(job: Pick<JobRow, "causation_event_id" | "causation_depth" | "caused_by_automation">): EventCause | null {
+  if (!job.causation_event_id) return null;
+  return { eventId: String(job.causation_event_id), correlationId: String(job.causation_event_id), depth: job.causation_depth ?? 0, automationKey: job.caused_by_automation ?? null };
+}
 
 /** Tope de duración de un job: debe entrar en el presupuesto del cron (maxDuration 300 s en Vercel Pro). */
 export const MAX_JOB_TIMEOUT_MS = 240_000;
@@ -31,10 +41,13 @@ export type EnqueueInput = {
 
 /** Encola un job. Devuelve el id, o null si ya había uno vivo con el mismo dedupe_key. */
 export async function enqueue(db: Executor, input: EnqueueInput): Promise<string | null> {
+  // Dentro de una automatización el job hereda la causa: lo que emita después sigue siendo parte de la misma cadena.
+  const cause = currentEventCause();
   const r = await sql<{ id: string }>`
-    insert into jobs(type, payload, dedupe_key, run_at, max_attempts, timeout_ms, priority)
+    insert into jobs(type, payload, dedupe_key, run_at, max_attempts, timeout_ms, priority, causation_event_id, causation_depth, caused_by_automation)
     values (${input.type}, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.dedupeKey ?? null},
-            ${input.runAt ?? new Date()}, ${input.maxAttempts ?? 5}, ${Math.min(input.timeoutMs ?? 30_000, MAX_JOB_TIMEOUT_MS)}, ${input.priority ?? 100})
+            ${input.runAt ?? new Date()}, ${input.maxAttempts ?? 5}, ${Math.min(input.timeoutMs ?? 30_000, MAX_JOB_TIMEOUT_MS)}, ${input.priority ?? 100},
+            ${cause ? cause.eventId : null}, ${cause ? cause.depth : null}, ${cause?.automationKey ?? null})
     on conflict (dedupe_key) where dedupe_key is not null and status in ('queued', 'running', 'failed') do nothing
     returning id`.execute(db);
   return r.rows[0]?.id ?? null;
@@ -56,7 +69,7 @@ export async function claimJobs(db: Executor, workerId: string, limit: number, m
     update jobs j set status = 'running', attempts = j.attempts + 1, locked_by = ${workerId},
            started_at = now(), lease_expires_at = now() + make_interval(secs => (j.timeout_ms + 30000) / 1000.0)
       from c where j.id = c.id
-    returning j.id, j.type, j.payload, j.attempts, j.max_attempts, j.timeout_ms`.execute(db);
+    returning j.id, j.type, j.payload, j.attempts, j.max_attempts, j.timeout_ms, j.causation_event_id, j.causation_depth, j.caused_by_automation`.execute(db);
   return r.rows;
 }
 

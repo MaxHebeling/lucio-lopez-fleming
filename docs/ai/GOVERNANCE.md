@@ -139,3 +139,24 @@ Detalle en [SALES.md](./SALES.md). Las reglas de arriba se aplican igual; ademá
 Capabilities: todas las herramientas nuevas siguen siendo `read` (`client_briefing`). Las propuestas (sugerencias del
 perfil, candidatos, recomendaciones) se persisten como estados que una persona decide; ningún proceso ejecuta acciones
 sobre clientes (mensajes, estados, asignaciones).
+
+## 11. Fases 5 y 6 · Gestión y automatización (2026-09)
+
+Detalle en [MANAGEMENT.md](./MANAGEMENT.md) y [AUTOMATION.md](./AUTOMATION.md).
+
+| Regla | Dónde vive | Test |
+| --- | --- | --- |
+| Hechos de dirección con cifra + definición + período + origen; interpretación aparte | `domains/executive-management.ts`, `copilot-panel.tsx` | `ai-management.test.ts` › dirección |
+| Sin % ni tendencias con muestra chica (n < 5; medianas n < 3) | `executive/metrics.ts` | `ai-management-rules.test.ts` › métricas |
+| Cifras sueltas inventadas en respuestas de dirección se descartan | `guards.ts` (`findUngroundedCounts`) | › copiloto con IA |
+| Resumen de hoy: la redacción solo usa cifras de los conteos | `brief/rules.ts` (`narrativeViolations`) | › Resumen de hoy con clave |
+| La IA recomienda, la persona decide: aceptar crea la tarea real (sin duplicar), descartar/posponer auditados | `task-center/service.ts` | › Tareas sugeridas |
+| Anomalías prudentes (ventana, muestra mínima, magnitud y probabilidad) sin afirmar causas | `anomalies/rules.ts` | › caída de consultas con n chico |
+| Sin spam: aviso único por anomalía y tope diario por persona | `anomalies/service.ts` | › tope diario |
+| La ubicación de agentes nunca alimenta recomendaciones ni métricas | módulos de gestión (sin `appointment_checkins`) | › escaneo estático |
+| Reacciones solo sugieren/preparan: sin envíos, sin publicar, perfil siempre sugerido | `automation/reactions.ts` | `ai-automation.test.ts` › reacciones |
+| Sin loops: profundidad máxima y misma cadena | `automation/loop-guard.ts`, `automation/engine.ts` | › protección contra loops |
+| Despliegue seguro: reacciones desactivadas en la migración, activadas por el código; acción desconocida = omitida | 0531, `automation/sync.ts`, `engine.ts` | › despliegue seguro |
+
+Capabilities: todas las herramientas nuevas son `read`. `execute` sigue prohibido. Las reacciones no son herramientas del
+modelo: son automatizaciones de sistema que escriben sugerencias, borradores o datos sugeridos por servicios normales.

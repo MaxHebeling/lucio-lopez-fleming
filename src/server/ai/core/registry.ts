@@ -35,7 +35,8 @@ export type ToolRunContext = {
   screen: ScreenContext | null;
 };
 
-export type ToolItem = { label: string; detail?: string | null; href?: string | null; badge?: string | null };
+/** `definition`: qué cuenta la cifra (Executive AI: hecho = cifra + definición + período + origen). */
+export type ToolItem = { label: string; detail?: string | null; href?: string | null; badge?: string | null; definition?: string | null };
 
 /** Resultado determinista de una herramienta: son los HECHOS que ve el usuario, con su origen. */
 export type ToolResult = {
@@ -47,6 +48,8 @@ export type ToolResult = {
   source: { label: string; href: string | null };
   /** Alcance aplicado: propio (lo asignado a uno) o de todo el equipo. */
   scope: "own" | "all" | null;
+  /** Período de los hechos (y el de comparación), si aplica. */
+  period?: string | null;
   /** Contenido libre cargado por personas (descripciones, notas): se envía al modelo como datos no confiables. */
   untrusted?: Array<{ source: string; text: string }>;
 };
@@ -59,6 +62,8 @@ export type QuickQuery = {
   requiresEntity?: ScreenEntityType | ScreenEntityType[];
   /** Feature flag del módulo: con el flag apagado la consulta rápida no se ofrece. */
   flag?: string;
+  /** false = no se muestra como chip (solo se reconoce por palabras clave). */
+  chip?: boolean;
 };
 
 /** Flags encendidos (para filtrar consultas rápidas de módulos apagados). */
@@ -119,7 +124,7 @@ export class ToolRegistry {
 
   quickQueries(actor: StaffActor, screen: ScreenContext | null, flags: EnabledFlags = new Set()): Array<{ id: string; label: string; tool: string }> {
     return this.available(actor, ["read"])
-      .filter((t) => this.quickAllowed(t, screen, flags))
+      .filter((t) => this.quickAllowed(t, screen, flags) && t.quick!.chip !== false)
       .map((t) => ({ id: t.quick!.id, label: t.quick!.label, tool: t.name }));
   }
 

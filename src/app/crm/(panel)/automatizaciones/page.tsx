@@ -49,7 +49,9 @@ export default async function AutomationsPage({ searchParams }: PageProps<"/crm/
                 {a.description ? <p className="text-sm text-ink-2">{a.description}</p> : null}
                 <p className="text-xs text-stone">
                   Evento: <span className="font-mono">{a.trigger_event}</span> · Últimos 7 días: {a.runs_7d} ejecuciones
-                  {a.failed_7d ? <span className="text-danger">, {a.failed_7d} con error</span> : null} · Última: {a.last_run_at ? formatDateTime(a.last_run_at) : "nunca"}
+                  {a.failed_7d ? <span className="text-danger">, {a.failed_7d} con error</span> : null}
+                  {a.skipped_7d ? `, ${a.skipped_7d} omitidas` : ""}
+                  {a.p50_ms !== null ? ` · duración p50 ${a.p50_ms} ms / p95 ${a.p95_ms} ms` : ""} · Última: {a.last_run_at ? formatDateTime(a.last_run_at) : "nunca"}
                 </p>
                 <details>
                   <summary className="cursor-pointer text-xs font-semibold text-ink-2">Ver condiciones y acciones</summary>
@@ -58,7 +60,15 @@ export default async function AutomationsPage({ searchParams }: PageProps<"/crm/
                     <JsonView label="Acciones" value={a.actions} />
                   </div>
                 </details>
-                {manage ? (
+                {a.key.startsWith("ai_reaction_") ? (
+                  <p className="text-xs text-ink-2">
+                    Reacción de IA: se activa con el flag <span className="font-mono">ai_automations</span> en{" "}
+                    <Link href="/crm/integraciones" className="underline underline-offset-2">
+                      Integraciones
+                    </Link>{" "}
+                    (solo sugerencias y borradores; nunca envía ni publica).
+                  </p>
+                ) : manage ? (
                   <div>
                     <ActionButton
                       action={setAutomationEnabledAction.bind(null, a.id, !a.is_enabled)}

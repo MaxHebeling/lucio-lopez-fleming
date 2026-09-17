@@ -15,6 +15,12 @@
 | Alertas de visitas no aparecen / llegan tarde | job `visits.alerts` (cada 5 min) en CRM → Sistema → Jobs, cron | verificar cron y flag `visits_operations`; reintentar el job |
 | Check-in «requiere revisión» en todas las visitas de una propiedad | coordenadas de la propiedad vacías o erróneas | corregir latitud/longitud en la ficha; los check-ins ya registrados no se recalculan |
 | Pedido de borrar ubicaciones de un agente | `appointment_checkins` | la retención diaria las anonimiza; para adelantar: `update appointment_checkins set latitude=null, longitude=null, accuracy_m=null, coords_purged_at=now() where user_id = …` (auditar el pedido) |
+| «Resumen de hoy» no aparece o muestra datos viejos | flag `ai_daily_brief`; `ai_daily_briefs` (fila del usuario/día, `computed_at`, `stale`); log `ai.daily_brief_failed` | «Actualizar» en la tarjeta o `update ai_daily_briefs set stale = true where user_id = …`; el Tablero sigue funcionando sin la tarjeta |
+| Tareas sugeridas vacías o desactualizadas | flag `ai_task_center`; jobs `ai.task_center_refresh_fast` (5 min) y `ai.task_center_refresh` (horaria) en Sistema → Jobs; log `ai.task_center_source_failed` | «Actualizar sugerencias» o reintentar el job; revisar que el cron corra |
+| Demasiados avisos de anomalías / ninguno | `ai_anomalies` (abiertas, `notified_at`), setting `ai.anomalies.max_notifications_per_user_per_day` y umbrales `ai.anomalies.*` | ajustar umbrales en settings (docs/ai/MANAGEMENT.md › Anomalías) |
+| Reacciones de IA no corren | flag `ai_automations`; `automation_definitions.is_enabled` de `ai_reaction_*`; job `ai.reactions_sync`; `automation_runs` omitidas | encender el flag en Integraciones (sincroniza en el acto) |
+| Ejecuciones «omitidas por protección contra loops» | `automation_runs.result.loopGuard`, `domain_events.depth/causation_id`, setting `ai.events.max_depth` | revisar qué automatización escucha eventos derivados; no subir la profundidad sin entender la cadena |
+| Rollback de código con reacciones activas | versión anterior no conoce `ai_react_*` | ANTES del rollback apagar `ai_automations` (docs/ai/AUTOMATION.md › Rollback) |
 | Propietario ve datos ajenos (reporte) | Sev 1 | apagar `owner_portal`, preservar evidencia, revisar queries del portal y tests de aislamiento |
 
 ## Tareas periódicas del equipo técnico

@@ -2,6 +2,7 @@
  * Outbox de eventos de dominio: se inserta en la misma transacción que el cambio.
  * El despachador (jobs) los procesa después y dispara automatizaciones de forma idempotente.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Executor } from "./db";
 import { actorUserId, type Actor } from "./auth/actor";
 
@@ -59,14 +60,46 @@ export const EVENT_TYPES = [
   "marketing.draft_created",
   "visit.brief_prepared",
   "visit.report_structured",
+  // IA Fases 5 y 6 (docs/ai/EVENTS.md). Metadatos sin PII.
+  // Informe de visita confirmado por una persona (src/server/visits/service.ts): dispara la reacción que propone
+  // datos SUGERIDOS del perfil y el seguimiento.
+  "visit.report_confirmed",
+  // Agregados diarios desde site_events (job ai.site_events_rollup): nunca uno por request.
+  "property.viewed",
+  "tour.started",
+  "tour.completed",
+  // Tareas sugeridas y anomalías. Ninguna automatización del sistema los escucha (y el motor corta loops por causalidad).
+  "ai.recommendation.created",
+  "ai.recommendation.accepted",
+  "ai.recommendation.dismissed",
+  "ai.recommendation.snoozed",
+  "ai.anomaly.detected",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
+
+/**
+ * Causa del trabajo en curso (protección contra loops, docs/ai/AUTOMATION.md). El motor la fija al correr una
+ * automatización y el runner al correr un job encolado por ella: todo evento emitido adentro queda marcado como
+ * derivado (causation_id, correlation_id, depth + 1, caused_by_automation).
+ */
+export type EventCause = { eventId: string; correlationId: string; depth: number; automationKey: string | null };
+
+const causeStorage = new AsyncLocalStorage<EventCause>();
+
+export function currentEventCause(): EventCause | undefined {
+  return causeStorage.getStore();
+}
+
+export function withEventCause<T>(cause: EventCause | null | undefined, fn: () => Promise<T>): Promise<T> {
+  return cause ? causeStorage.run(cause, fn) : fn();
+}
 
 export async function emitEvent(
   db: Executor,
   actor: Actor,
   e: { type: EventType; aggregateType: string; aggregateId: string; payload?: Record<string, unknown>; dedupeKey?: string },
 ): Promise<string | null> {
+  const cause = causeStorage.getStore();
   const row = await db
     .insertInto("domain_events")
     .values({
@@ -76,6 +109,7 @@ export async function emitEvent(
       payload: JSON.stringify(e.payload ?? {}),
       actor_user_id: actorUserId(actor),
       dedupe_key: e.dedupeKey ?? null,
+      ...(cause ? { causation_id: cause.eventId, correlation_id: cause.correlationId, depth: Math.min(50, cause.depth + 1), caused_by_automation: cause.automationKey } : {}),
     })
     .onConflict((oc) => oc.column("dedupe_key").doNothing())
     .returning("id")
