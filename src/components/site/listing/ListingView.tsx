@@ -66,7 +66,7 @@ function ListRow({ p, preload = false }: { p: PublicPropertyCard; preload?: bool
   return (
     <article className="card grid gap-4 border-b border-line pb-6 sm:grid-cols-[minmax(0,17rem)_1fr] sm:gap-6">
       <div className="media-frame relative aspect-[4/3] overflow-hidden rounded-[var(--radius-lg)] bg-paper-2">
-        {p.cover ? <Image src={p.cover.url} alt={p.cover.alt} fill sizes="(min-width: 640px) 17rem, 90vw" className="card-img object-cover" {...(preload ? { preload: true } : {})} /> : null}
+        {p.cover ? <Image src={p.cover.url} alt={p.cover.alt} fill sizes="(min-width: 640px) 17rem, 90vw" className="card-img object-cover" loading={preload ? "eager" : "lazy"} fetchPriority={preload ? "high" : undefined} /> : null}
         <StatusBadge status={p.status} className="absolute left-3 top-3" />
       </div>
       <div className="flex flex-col">

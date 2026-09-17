@@ -22,7 +22,7 @@ export function PropertyCard({
   sizes?: string;
   headingLevel?: 2 | 3;
   eager?: boolean;
-  /** Candidata a LCP (primera tarjeta visible): se precarga con prioridad alta. */
+  /** Candidata a LCP (primera tarjeta visible): carga inmediata con prioridad alta (fetchpriority="high"). */
   preload?: boolean;
   ratio?: string;
 }) {
@@ -32,7 +32,7 @@ export function PropertyCard({
     <article className="card group flex h-full flex-col">
       <div className={`media-frame relative ${ratio} overflow-hidden rounded-[var(--radius-lg)] bg-paper-2`}>
         {p.cover ? (
-          <Image src={p.cover.url} alt={p.cover.alt} fill sizes={sizes} className="card-img object-cover" {...(preload ? { preload: true } : { loading: eager ? "eager" : "lazy" })} />
+          <Image src={p.cover.url} alt={p.cover.alt} fill sizes={sizes} className="card-img object-cover" loading={eager || preload ? "eager" : "lazy"} fetchPriority={preload ? "high" : undefined} />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-line">
             <Monogram className="h-16 w-auto" />
