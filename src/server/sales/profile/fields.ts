@@ -78,7 +78,7 @@ export const SOURCE_LABEL: Record<PreferenceSource, string> = {
   concierge: "Búsqueda en el sitio (concierge)",
   conversation: "Conversación",
   agent: "Cargado por el equipo",
-  lead_message: "Consulta escrita (IA)",
+  lead_message: "Consulta escrita",
 };
 
 export const TRANSACTION_LABEL = { sale: "Compra", rent: "Alquiler", temporary_rent: "Alquiler temporario" } as const;

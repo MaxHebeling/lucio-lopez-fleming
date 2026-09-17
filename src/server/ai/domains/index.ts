@@ -9,11 +9,13 @@ import { registerKnowledgeTools } from "./knowledge";
 import { registerOperationsTools } from "./operations";
 import { registerPropertyTools } from "./property";
 import { registerSalesTools } from "./sales";
+import { registerSalesBriefingTools } from "./sales-briefing";
 
 export function createDefaultRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
   registerKnowledgeTools(registry);
   registerSalesTools(registry);
+  registerSalesBriefingTools(registry);
   registerPropertyTools(registry);
   registerOperationsTools(registry);
   registerExecutiveTools(registry);

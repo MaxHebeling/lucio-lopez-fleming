@@ -68,8 +68,9 @@ export async function resolvePublicProvider(db: Database, deps: PublicAIDeps): P
 }
 
 export type PublicUsage = {
-  purpose: "concierge" | "property_qa" | "compare_summary";
-  feature: `public.${string}`;
+  purpose: "concierge" | "property_qa" | "compare_summary" | "lead_qualification";
+  /** `public.*` cuenta contra el presupuesto del sitio; `sales.*` (jobs del sistema), solo contra el general. */
+  feature: `public.${string}` | `sales.${string}`;
   task: AITask;
   provider: string;
   model: string;
