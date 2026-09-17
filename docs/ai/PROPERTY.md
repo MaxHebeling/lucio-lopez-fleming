@@ -185,3 +185,31 @@ Unit: `ai-property-images` (sintéticas), `ai-property-quality-rules`, `ai-prope
 inventario), `tours-guide`, `ai-visits-rules`. Integración: `ai-property-quality` (jobs, eventos, source_only, RBAC,
 orden auditado, visión falsa), `ai-property-marketing`, `ai-property-site` (captación, fotos, guía con IA), `ai-visits`.
 E2E: `ai-property.spec.ts` (1440), `ai-property.mobile.spec.ts` (390), `site.spec.ts` (captación paso a paso).
+
+## Verificación final (tras mergear `origin/main` @622cc98, IA Fase 2)
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm lint` | OK, 0 errores / 0 avisos |
+| `pnpm typecheck` | OK |
+| `pnpm db:codegen:verify` | OK (tipos al día con 0510–0511 + 0520–0521) |
+| `pnpm test` | **68 archivos, 676 tests OK** (línea base: 54 / 522; incluye los de la Fase 2) |
+| `pnpm build` | OK |
+| E2E completo (`E2E_PORT=3117 E2E_DB=llf_e2e_property E2E_TEMPLATE_DB=llf_dev_property bash scripts/e2e.sh`) | **47/47 OK**, dos corridas consecutivas |
+
+Estabilización previa al verde: la captación paso a paso enfocaba el título del paso (o el primer campo inválido) en el
+frame siguiente aunque la persona ya hubiera pasado a otro campo; ahora `focusLater` solo enfoca si nadie movió el foco
+(el texto tipeado rápido ya no cae en «Teléfono»). El axe de la prueba 390 se acota a `#vender` (la portada completa la
+revisa `mobile.spec.ts` en reposo; al hacer scroll las animaciones de entrada daban contraste falso a mitad del fundido).
+
+**Rendimiento, antes/después con el mismo método** (build de producción local, base `llf_dev_property`,
+Chrome for Testing 151, Lighthouse 13, mediana de 3 corridas; «antes» = `origin/main` @622cc98, «después» = esta rama):
+
+| Página | Mobile antes → después | Desktop antes → después | JS de carga inicial (gzip) |
+| --- | --- | --- | --- |
+| `/` | 90 → 92 (LCP 3,64 → 3,37 s; TBT 5 ms; CLS 0) | 100 → 100 | 195,1 → 196,0 KiB (+0,9: captación paso a paso) |
+| `/propiedades` | 90 → 91 | 100 → 100 | 191,4 → 191,4 KiB |
+| `/propiedades/[slug]` | 93 → 93 | 100 → 100 | 196,2 → 196,3 KiB (la guía del tour vive en el chunk diferido del tour) |
+
+Accesibilidad y buenas prácticas 100 en todas; SEO 69 en ambas por `APP_ENV=development` (`noindex`). Las diferencias
+mobile de ±2 puntos están dentro del ruido de LCP entre corridas.
