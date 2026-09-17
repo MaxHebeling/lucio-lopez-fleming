@@ -22,7 +22,8 @@ export const PROFILE_FIELDS = [
 ] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 
-export const PREFERENCE_SOURCES = ["form", "concierge", "conversation", "agent", "lead_message"] as const;
+// `visit_report`: reacción de IA al confirmar un informe de visita (Fase 6); siempre SUGERIDO.
+export const PREFERENCE_SOURCES = ["form", "concierge", "conversation", "agent", "lead_message", "visit_report"] as const;
 export type PreferenceSource = (typeof PREFERENCE_SOURCES)[number];
 
 export const GOALS = ["live", "invest", "business", "other"] as const;
@@ -79,6 +80,7 @@ export const SOURCE_LABEL: Record<PreferenceSource, string> = {
   conversation: "Conversación",
   agent: "Cargado por el equipo",
   lead_message: "Consulta escrita",
+  visit_report: "Informe de visita",
 };
 
 export const TRANSACTION_LABEL = { sale: "Compra", rent: "Alquiler", temporary_rent: "Alquiler temporario" } as const;

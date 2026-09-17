@@ -7,6 +7,8 @@ import { parseInput } from "../validate";
 import { jsonArrayFrom } from "kysely/helpers/postgres";
 import { sql, type Database, type Executor } from "../db";
 import { can, requirePermission, type Actor } from "../auth/actor";
+import { leadScope, tryScope } from "../crm/access";
+import { contactInScopeSql } from "../sales/scope";
 import { notFound } from "../errors";
 import { likePattern, pageWindow, toPage, type Page } from "../pagination";
 import { CURRENCIES, OPERATIONS, PROPERTY_STATUSES, type FieldSchemaEntry } from "./schema";
@@ -32,6 +34,8 @@ export const propertyListFiltersSchema = z.object({
   agentId: z.preprocess(emptyToUndef, z.uuid().optional()),
   sort: z.preprocess(emptyToUndef, z.enum(PROPERTY_SORTS).optional()),
   quality: z.preprocess(emptyToUndef, z.enum(QUALITY_FILTERS).optional()),
+  /** `recientes`: publicadas en los últimos 7 días con clientes compatibles (coincidencias vigentes) dentro del alcance comercial. */
+  compatibles: z.preprocess(emptyToUndef, z.enum(["recientes"]).optional()),
   page: z.preprocess(emptyToUndef, z.coerce.number().int().min(1).max(100_000).optional()),
   pageSize: z.preprocess(emptyToUndef, z.coerce.number().int().min(1).max(100).optional()),
 });
@@ -109,6 +113,17 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
       if (f.priceMax !== undefined) sub = sub.where("po.amount", "<=", String(f.priceMax));
       return eb.exists(sub);
     });
+  }
+
+  if (f.compatibles) {
+    // Coincidencias del match inverso (Fase 2) con contactos que el usuario puede ver; sin alcance comercial, ninguna.
+    const scope = can(actor, "contacts.read") ? tryScope(leadScope, actor) : null;
+    q = q.where("p.published_at", ">=", sql<Date>`now() - interval '7 days'`).where("p.is_published", "=", true);
+    q = scope
+      ? q.where(sql<boolean>`exists (select 1 from property_matches m join contacts c on c.id = m.contact_id
+          where m.property_id = p.id and m.status = 'candidate' and c.organization_id = p.organization_id and c.deleted_at is null
+            and ${contactInScopeSql(scope, "c")})`)
+      : q.where(sql<boolean>`false`);
   }
 
   if (f.quality) {

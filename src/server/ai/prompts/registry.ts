@@ -7,6 +7,7 @@ import type { z } from "zod";
 import type { AITask } from "../core/types";
 import { copilotAnalystPrompt } from "./copilot-analyst";
 import { copilotAssistantPrompt } from "./copilot-assistant";
+import { dailyBriefPrompt } from "./management";
 import { marketingDirectorPrompt } from "./marketing-director";
 import { photoTagsPrompt } from "./photo-tags";
 import { tourIntentPrompt } from "./tour-intent";
@@ -42,6 +43,8 @@ export const PROMPTS = {
   [visitBriefPrompt.id]: visitBriefPrompt,
   [visitReportPrompt.id]: visitReportPrompt,
   [visitThanksPrompt.id]: visitThanksPrompt,
+  // Fase 5 (gestión)
+  [dailyBriefPrompt.id]: dailyBriefPrompt,
 } as const satisfies Record<string, PromptDefinition>;
 
 export function listPrompts(): Array<Pick<PromptDefinition, "id" | "version" | "task" | "notes">> {

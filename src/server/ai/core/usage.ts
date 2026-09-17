@@ -10,7 +10,7 @@ import { estimateCostMicros } from "../pricing";
 import type { AIFailureReason } from "./errors";
 import type { AITask, TokenUsage } from "./types";
 
-export type AIPurpose = "copilot_assistant" | "copilot_analyst" | "photo_tags" | "marketing_draft" | "tour_intent" | "visit_brief" | "visit_report" | "visit_thanks";
+export type AIPurpose = "copilot_assistant" | "copilot_analyst" | "photo_tags" | "marketing_draft" | "tour_intent" | "visit_brief" | "visit_report" | "visit_thanks" | "daily_brief" | "visit_report_profile";
 export type AIStatus = "ok" | "error" | "timeout" | "invalid_output" | "budget_exceeded" | "fallback" | "unavailable" | "rate_limited" | "blocked";
 
 export type ToolUseLog = { name: string; ok: boolean; code?: string; ms: number };

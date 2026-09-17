@@ -55,4 +55,10 @@ export async function setFeatureFlag(db: Database, actor: Actor, key: string, en
   });
   // Esta instancia lo ve al instante; las demás al vencer su cache (15 s).
   resetFlagCache();
+  // Las reacciones de IA se activan/desactivan con su flag (docs/ai/AUTOMATION.md). El job ai.reactions_sync lo repite
+  // cada 5 minutos por si esta instancia no tiene registradas las acciones.
+  if (key === "ai_automations") {
+    const { syncAiReactions } = await import("../ai/automation/sync");
+    await syncAiReactions(db, actor);
+  }
 }
