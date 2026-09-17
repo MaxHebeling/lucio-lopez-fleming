@@ -4,22 +4,32 @@
  * - Idempotente: con external_post_id no republica. Pasa a `publishing` antes de llamar a Meta; si un proceso muere
  *   a mitad, NO se reintenta a ciegas: en Instagram se consulta el contenedor guardado; en Facebook queda `failed`
  *   pidiendo verificación humana (evita posts duplicados).
+ * - Instagram guarda `external_container_id` apenas se crea el contenedor. Cualquier intento posterior (reintento por
+ *   falla transitoria, lease vencido, reprogramación) consulta ese contenedor antes de nada: PUBLISHED → publicado;
+ *   listo/en proceso → se publica ESE contenedor; ERROR/EXPIRED → se crea otro. Si no se puede consultar → `failed`
+ *   pidiendo verificar en Meta.
+ * - Timeout / corte / 5xx en el POST que publica → resultado incierto: `failed` pidiendo verificación (sin reintento).
  * - Sin credenciales: el post sigue `scheduled` con el motivo visible y se retoma cuando se configuren.
  */
 import { sql, type Database, type Executor } from "../db";
 import { isEnabled } from "../flags";
 import { log } from "../log";
-import { RetryableError } from "../resilience";
+import { RetryableError, UncertainOutcomeError } from "../resilience";
 import { enqueue } from "../jobs/queue";
 import { PermanentJobError, registerJobHandler } from "../jobs/registry";
 import { addScheduledTask } from "../jobs/scheduled";
 import { NotConfiguredError, PermanentIntegrationError } from "../integrations/http";
 import { reflectIntegrationConfig } from "../integrations/status";
-import { META_INTEGRATION_KEY, instagramContainerStatus, metaConfig, publishFacebookPost, publishInstagramPost } from "../integrations/meta/graph";
+import { META_INTEGRATION_KEY, instagramContainerStatus, metaConfig, publishFacebookPost, publishInstagramContainer, publishInstagramPost } from "../integrations/meta/graph";
 import { socialImageUrls } from "./images";
 
 export const SOCIAL_PUBLISH_MAX_ATTEMPTS = 4;
 const PUBLISHING_LEASE_MS = 15 * 60_000;
+
+export function uncertainPublishMessage(channel: "instagram" | "facebook", detail?: string): string {
+  const where = channel === "instagram" ? "Instagram" : "Facebook";
+  return `Resultado incierto: Meta no confirmó la publicación y pudo haber salido. Verificá en ${where} si el post está publicado antes de reprogramarlo.${detail ? ` (${detail})` : ""}`.slice(0, 1000);
+}
 
 export function socialPublishDedupeKey(postId: string, scheduledAt: Date): string {
   return `social.publish:${postId}:${scheduledAt.toISOString()}`;
@@ -67,6 +77,8 @@ export async function publishSocialPost(db: Database, postId: string, opts: { at
     } else {
       if (post.status !== "scheduled") return { kind: "return", result: { status: "skipped", detail: `estado ${post.status}` } };
       if (!post.scheduled_at || new Date(post.scheduled_at).getTime() > Date.now() + 30_000) return { kind: "return", result: { status: "skipped", detail: "todavía no es la hora programada" } };
+      // Un intento anterior ya creó el contenedor: se consulta antes de crear/publicar otro.
+      if (channel === "instagram" && post.external_container_id) recoverContainerId = post.external_container_id;
     }
     if (!post.approved_by) throw new PermanentJobError("Post sin aprobación humana");
     const cfg = metaConfig(channel);
@@ -80,14 +92,36 @@ export async function publishSocialPost(db: Database, postId: string, opts: { at
   });
   if (claim.kind === "return") return claim.result;
 
+  const markPublished = async (externalPostId: string) => {
+    await db.updateTable("social_posts").set({ status: "published", published_at: new Date(), external_post_id: externalPostId, last_error: null }).where("id", "=", postId).execute();
+  };
+  const markFailed = async (error: string): Promise<PublishResult> => {
+    await db.updateTable("social_posts").set({ status: "failed", last_error: error }).where("id", "=", postId).execute();
+    log.warn("social.publish_uncertain", { postId, error });
+    return { status: "failed", detail: error };
+  };
+
   try {
     if (claim.recoverContainerId) {
-      const status = await instagramContainerStatus(db, claim.recoverContainerId, postId);
+      let status: Awaited<ReturnType<typeof instagramContainerStatus>>;
+      try {
+        status = await instagramContainerStatus(db, claim.recoverContainerId, postId);
+      } catch (e) {
+        if (e instanceof NotConfiguredError) throw e;
+        return await markFailed(uncertainPublishMessage("instagram", `no se pudo consultar el contenedor ${claim.recoverContainerId}: ${(e as Error).message}`));
+      }
       if (status === "PUBLISHED") {
         const externalPostId = `container:${claim.recoverContainerId}`;
-        await db.updateTable("social_posts").set({ status: "published", published_at: new Date(), external_post_id: externalPostId, last_error: null }).where("id", "=", postId).execute();
+        await markPublished(externalPostId);
         return { status: "published", externalPostId, detail: "recuperado desde el contenedor de Instagram" };
       }
+      if (status === "FINISHED" || status === "IN_PROGRESS") {
+        const r = await publishInstagramContainer(db, claim.recoverContainerId, { postId, sleep: opts.sleep });
+        await markPublished(r.externalPostId);
+        return { status: "published", externalPostId: r.externalPostId, detail: "publicado desde el contenedor ya creado" };
+      }
+      // ERROR / EXPIRED: ese contenedor no se publicó ni se va a publicar; se crea otro.
+      await db.updateTable("social_posts").set({ external_container_id: null }).where("id", "=", postId).execute();
     }
     const imageUrls = await socialImageUrls(db, postId);
     const r =
@@ -99,7 +133,7 @@ export async function publishSocialPost(db: Database, postId: string, opts: { at
               await db.updateTable("social_posts").set({ external_container_id: containerId }).where("id", "=", postId).execute();
             },
           });
-    await db.updateTable("social_posts").set({ status: "published", published_at: new Date(), external_post_id: r.externalPostId, last_error: null }).where("id", "=", postId).execute();
+    await markPublished(r.externalPostId);
     return { status: "published", externalPostId: r.externalPostId };
   } catch (e) {
     const message = ((e as Error).message ?? String(e)).slice(0, 1000);
@@ -107,13 +141,28 @@ export async function publishSocialPost(db: Database, postId: string, opts: { at
       await db.updateTable("social_posts").set({ status: "scheduled", last_error: message }).where("id", "=", postId).execute();
       return { status: "awaiting_credentials", detail: message };
     }
+    const containerId =
+      claim.channel === "instagram" ? ((await db.selectFrom("social_posts").select("external_container_id").where("id", "=", postId).executeTakeFirst())?.external_container_id ?? null) : null;
+    if (e instanceof UncertainOutcomeError) {
+      // No se republica a ciegas. En Instagram se consulta una vez el contenedor por si ya figura publicado.
+      if (containerId) {
+        const status = await instagramContainerStatus(db, containerId, postId).catch(() => null);
+        if (status === "PUBLISHED") {
+          const externalPostId = `container:${containerId}`;
+          await markPublished(externalPostId);
+          return { status: "published", externalPostId, detail: "confirmado desde el contenedor de Instagram" };
+        }
+      }
+      return await markFailed(uncertainPublishMessage(claim.channel, message));
+    }
     if (e instanceof PermanentIntegrationError) {
       await db.updateTable("social_posts").set({ status: "failed", last_error: message }).where("id", "=", postId).execute();
       throw new PermanentJobError(message);
     }
     const final = attempt >= SOCIAL_PUBLISH_MAX_ATTEMPTS;
+    // Falla transitoria segura. Si ya hay contenedor guardado, el reintento lo consulta antes de hacer nada.
     await db.updateTable("social_posts").set({ status: final ? "failed" : "scheduled", last_error: message }).where("id", "=", postId).execute();
-    log.warn("social.publish_failed", { postId, attempt, final, error: message });
+    log.warn("social.publish_failed", { postId, attempt, final, error: message, containerId });
     throw e;
   }
 }

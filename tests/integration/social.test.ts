@@ -5,6 +5,7 @@ import "@/server/jobs/handlers";
 import { dispatchPendingEvents } from "@/server/automation/engine";
 import { runJobs } from "@/server/jobs/runner";
 import { PermanentJobError } from "@/server/jobs/registry";
+import { RetryableError } from "@/server/resilience";
 import { approvePost, rejectPost, schedulePost, setPostAssets, unschedulePost, updatePostCaption } from "@/server/marketing/service";
 import { dispatchDueSocialPosts, publishSocialPost } from "@/server/marketing/publish";
 import { setStorageForTests } from "@/server/storage";
@@ -311,5 +312,114 @@ describe("motor de contenido y redes", () => {
     } finally {
       http.restore();
     }
+  });
+
+  describe("resultados inciertos y contenedores (sin publicar dos veces)", () => {
+    it("Facebook: 5xx/timeout en el POST que publica → una sola llamada, failed 'verificá en Facebook', sin reintento", async () => {
+      const db = testDb();
+      await setFlag(db, "social_publishing", true);
+      const postId = await approvedAndDue("facebook");
+      let photo = 0;
+      const http = mockHttp([
+        imageRoute,
+        (c) => (c.url === `https://graph.facebook.com/v26.0/${META_ENV.META_PAGE_ID}/photos` ? json({ id: `photo-${++photo}` }) : undefined),
+        (c) => (c.url === `https://graph.facebook.com/v26.0/${META_ENV.META_PAGE_ID}/feed` ? json({ error: { message: "An unknown error occurred", code: 1 } }, 500) : undefined),
+      ]);
+      try {
+        const r = await publishSocialPost(db, postId);
+        expect(r.status).toBe("failed");
+        expect(http.calls.filter((c) => c.url.endsWith("/feed"))).toHaveLength(1);
+        const post = await db.selectFrom("social_posts").select(["status", "last_error", "external_post_id"]).where("id", "=", postId).executeTakeFirstOrThrow();
+        expect(post).toMatchObject({ status: "failed", external_post_id: null });
+        expect(post.last_error).toMatch(/Resultado incierto.*Verificá en Facebook/);
+        // Ni el sweep horario ni un reintento del job lo vuelven a publicar
+        await dispatchDueSocialPosts(db);
+        expect(await db.selectFrom("jobs").select("id").where("type", "=", "social.publish").where(sql<string>`payload->>'postId'`, "=", postId).execute()).toHaveLength(0);
+        expect((await publishSocialPost(db, postId)).status).toBe("skipped");
+        expect(http.calls.filter((c) => c.url.endsWith("/feed"))).toHaveLength(1);
+      } finally {
+        http.restore();
+      }
+    });
+
+    it("Instagram: falla transitoria después de crear el contenedor → se guarda y el reintento lo consulta en vez de crear otro", async () => {
+      const db = testDb();
+      await setFlag(db, "social_publishing", true);
+      const postId = await approvedAndDue("instagram");
+      const ig = `https://graph.facebook.com/v26.0/${META_ENV.META_IG_USER_ID}`;
+      let statusCalls = 0;
+      let mediaPosts = 0;
+      let published = 0;
+      const state = { statusDown: true, containerStatus: "FINISHED" };
+      const http = mockHttp([
+        imageRoute,
+        (c) => {
+          if (c.url !== `${ig}/media`) return undefined;
+          mediaPosts++;
+          const body = new URLSearchParams(c.body);
+          return json({ id: body.get("media_type") === "CAROUSEL" ? "cont-carousel" : `cont-child-${mediaPosts}` });
+        },
+        (c) => {
+          if (!c.url.includes("fields=status_code")) return undefined;
+          statusCalls++;
+          if (c.url.includes("cont-carousel") && state.statusDown) return json({ error: { message: "Service temporarily unavailable", code: 2 } }, 503);
+          return json({ status_code: c.url.includes("cont-carousel") ? state.containerStatus : "FINISHED" });
+        },
+        (c) => {
+          if (c.url !== `${ig}/media_publish`) return undefined;
+          published++;
+          return json({ id: "17900000000000077" });
+        },
+      ]);
+      try {
+        await expect(publishSocialPost(db, postId, { sleep: async () => {} })).rejects.toBeInstanceOf(RetryableError);
+        let post = await db.selectFrom("social_posts").select(["status", "external_container_id"]).where("id", "=", postId).executeTakeFirstOrThrow();
+        expect(post).toEqual({ status: "scheduled", external_container_id: "cont-carousel" });
+        const createdBefore = mediaPosts;
+
+        // Meta vuelve y el contenedor ya figura publicado (p. ej. lo publicó un proceso anterior): no se republica
+        state.statusDown = false;
+        state.containerStatus = "PUBLISHED";
+        const again = await publishSocialPost(db, postId, { sleep: async () => {} });
+        expect(again.status).toBe("published");
+        expect(mediaPosts).toBe(createdBefore);
+        expect(published).toBe(0);
+        post = await db.selectFrom("social_posts").select(["status", "external_container_id"]).where("id", "=", postId).executeTakeFirstOrThrow();
+        expect(post.status).toBe("published");
+        expect(statusCalls).toBeGreaterThan(0);
+      } finally {
+        http.restore();
+      }
+    });
+
+    it("Instagram: timeout/5xx en media_publish → una sola llamada; si el contenedor no figura publicado, failed 'verificá en Instagram'", async () => {
+      const db = testDb();
+      await setFlag(db, "social_publishing", true);
+      await sql`update integrations set circuit_open_until = null, consecutive_failures = 0`.execute(db);
+      const postId = await approvedAndDue("instagram");
+      const ig = `https://graph.facebook.com/v26.0/${META_ENV.META_IG_USER_ID}`;
+      let published = 0;
+      const http = mockHttp([
+        imageRoute,
+        (c) => (c.url === `${ig}/media` ? json({ id: new URLSearchParams(c.body).get("media_type") === "CAROUSEL" ? "cont-c2" : `cont-x-${Math.random()}` }) : undefined),
+        (c) => (c.url.includes("fields=status_code") ? json({ status_code: "FINISHED" }) : undefined),
+        (c) => {
+          if (c.url !== `${ig}/media_publish`) return undefined;
+          published++;
+          return json({ error: { message: "Please retry your request later", code: 2 } }, 500);
+        },
+      ]);
+      try {
+        const r = await publishSocialPost(db, postId, { sleep: async () => {} });
+        expect(r.status).toBe("failed");
+        expect(published).toBe(1);
+        const post = await db.selectFrom("social_posts").select(["status", "last_error", "external_container_id"]).where("id", "=", postId).executeTakeFirstOrThrow();
+        expect(post.status).toBe("failed");
+        expect(post.external_container_id).toBe("cont-c2");
+        expect(post.last_error).toMatch(/Verificá en Instagram/);
+      } finally {
+        http.restore();
+      }
+    });
   });
 });
