@@ -4,11 +4,13 @@ import Link from "next/link";
 import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
+import { isEnabled } from "@/server/flags";
+import { tryVisitScope } from "@/server/visits/access";
 import { agendaScope } from "@/server/crm/access";
 import { getAppointmentDetail } from "@/server/agenda/queries";
 import { listStaffUsers } from "@/server/crm/lookups";
 import { utcToLocalInput } from "@/server/crm/time";
-import { Badge, Card, PageHeader, formatDateTime } from "@/components/ui";
+import { Badge, ButtonLink, Card, PageHeader, formatDateTime } from "@/components/ui";
 import { ContactButtons } from "@/components/crm/contact-actions";
 import { NotesSection } from "@/components/crm/notes-section";
 import { APPOINTMENT_KIND_LABEL, APPOINTMENT_STATUS_LABEL, APPOINTMENT_STATUS_TONE } from "@/components/crm/labels";
@@ -28,6 +30,8 @@ export default async function AppointmentPage({ params }: PageProps<"/crm/agenda
   const scopeAll = agendaScope(actor).all;
   const users = canManage && scopeAll ? await listStaffUsers(db, actor) : [];
   const localStart = utcToLocalInput(a.starts_at);
+  const visitScope = a.kind === "visit" && (await isEnabled(db, "visits_operations")) ? tryVisitScope(actor) : null;
+  const showVisitPortal = Boolean(visitScope && (visitScope.all || a.assigned_user_id === actor.userId));
   return (
     <>
       <nav aria-label="Migas" className="mb-2 text-sm">
@@ -45,6 +49,13 @@ export default async function AppointmentPage({ params }: PageProps<"/crm/agenda
               {formatDateTime(a.starts_at)} – {utcToLocalInput(a.ends_at).slice(11)} · {d.agent.full_name}
             </span>
           </span>
+        }
+        actions={
+          showVisitPortal ? (
+            <ButtonLink href={`/crm/mis-visitas/${a.id}`} variant="secondary">
+              Abrir en Mis visitas
+            </ButtonLink>
+          ) : null
         }
       />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">

@@ -78,7 +78,7 @@ export async function getDashboard(db: Database, actor: Actor, raw: unknown) {
           .innerJoin("users as u", "u.id", "a.assigned_user_id")
           .leftJoin("properties as p", "p.id", "a.property_id")
           .where("a.kind", "=", "visit")
-          .where("a.status", "in", ["scheduled", "confirmed"])
+          .where("a.status", "in", ["scheduled", "confirmed", "en_route", "checked_in", "in_progress"])
           .where("a.starts_at", ">=", sql<Date>`now()`)
           .where("a.starts_at", "<", sql<Date>`now() + interval '7 days'`);
         if (branch) q = q.where("p.branch_id", "=", branch);
