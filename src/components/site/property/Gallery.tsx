@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight, Grid2x2, X } from "lucide-react";
 import type { PublicPhoto } from "@/server/properties/public";
 import { pauseSmoothScroll, resumeSmoothScroll } from "@/components/experience/motion/smooth-scroll";
@@ -9,6 +9,7 @@ import { pauseSmoothScroll, resumeSmoothScroll } from "@/components/experience/m
 /**
  * Galería de la ficha.
  * - En página: mosaico (desktop) / carrusel con swipe nativo (mobile). La primera foto es el LCP (eager + high).
+ *   En el carrusel mobile hay un solo tab stop (roving tabindex): ← → cambian de foto y Enter la amplía.
  * - Pantalla completa: diálogo con foco atrapado; ← → recorren, Esc cierra, swipe nativo (scroll-snap),
  *   contador anunciado y foco de vuelta al disparador. Solo se montan la foto actual y sus vecinas.
  */
@@ -20,7 +21,17 @@ export function Gallery({ photos, title }: { photos: PublicPhoto[]; title: strin
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const inlineRef = useRef<HTMLDivElement>(null);
+  const [mosaicMode, setMosaicMode] = useState(false);
   const total = photos.length;
+
+  // Desde md el carrusel es un mosaico de hasta 5 fotos: cada una es un tab stop. Debajo, un único tab stop.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setMosaicMode(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const openAt = (i: number, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -74,7 +85,16 @@ export function Gallery({ photos, title }: { photos: PublicPhoto[]; title: strin
         e.preventDefault();
         goTo(total - 1);
       } else if (e.key === "Tab" && dialogRef.current) {
-        const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button"));
+        // Solo lo que realmente recibe foco: sin deshabilitados ni ocultos (flechas ocultas en mobile).
+        const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button, a[href], [tabindex]:not([tabindex='-1'])")).filter(
+          (el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden",
+        );
+        if (!items.length) return;
+        if (!items.includes(document.activeElement as HTMLElement)) {
+          e.preventDefault();
+          (e.shiftKey ? items[items.length - 1] : items[0])?.focus();
+          return;
+        }
         const first = items[0];
         const last = items[items.length - 1];
         if (e.shiftKey && document.activeElement === first) {
@@ -102,6 +122,17 @@ export function Gallery({ photos, title }: { photos: PublicPhoto[]; title: strin
     const i = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
     if (i !== inlineIndex) setInlineIndex(i);
   };
+  const onInlineKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const el = inlineRef.current;
+    if (mosaicMode || !el) return;
+    const map: Record<string, number> = { ArrowRight: inlineIndex + 1, ArrowLeft: inlineIndex - 1, Home: 0, End: total - 1 };
+    if (!(e.key in map)) return;
+    e.preventDefault();
+    const i = Math.max(0, Math.min(total - 1, map[e.key]!));
+    setInlineIndex(i);
+    el.querySelectorAll<HTMLElement>("[data-slide]")[i]?.focus({ preventScroll: true });
+    el.scrollTo({ left: i * el.clientWidth, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
 
   if (!total) return null;
   const mosaic = photos.slice(0, photos.length >= 5 ? 5 : photos.length >= 3 ? 3 : 1);
@@ -113,18 +144,22 @@ export function Gallery({ photos, title }: { photos: PublicPhoto[]; title: strin
       <div
         ref={inlineRef}
         onScroll={onInlineScroll}
+        onKeyDown={onInlineKey}
         className={`gallery-track aspect-[4/3] overflow-y-hidden rounded-[var(--radius-lg)] bg-paper-2 md:aspect-auto md:h-[min(72svh,640px)] md:gap-2 md:overflow-visible md:bg-transparent ${mosaicGrid}`}
-        tabIndex={0}
         role="region"
         aria-label={`Fotos de ${title}`}
+        aria-roledescription={mosaicMode ? undefined : "carrusel"}
       >
         {photos.map((p, i) => (
           <button
             key={p.url}
             type="button"
+            data-slide
+            tabIndex={mosaicMode || i === inlineIndex ? 0 : -1}
             onClick={(e) => openAt(i, e.currentTarget)}
             className={`gallery-slide group overflow-hidden bg-paper-2 md:rounded-[var(--radius-md)] ${i === 0 && mosaic.length >= 3 ? "md:col-span-2 md:row-span-2" : ""} ${i >= mosaic.length ? "md:hidden" : ""}`}
             aria-label={`Ampliar foto ${i + 1} de ${total}`}
+            aria-keyshortcuts={mosaicMode || total < 2 ? undefined : "ArrowLeft ArrowRight"}
           >
             <Image
               src={p.url}

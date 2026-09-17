@@ -6,7 +6,7 @@
  * Pasar a una etapa "perdida" pide el motivo antes de enviar.
  */
 import Link from "next/link";
-import { startTransition, useOptimistic, useState } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { Alert, Button, Textarea, cx, formatMoney } from "@/components/ui";
 import { Modal } from "@/components/crm/dialog-button";
 import type { ClientActionResult } from "@/components/crm/action-form";
@@ -47,6 +47,20 @@ export function Board({ stages, cards, canMove, move }: { stages: Stage[]; cards
   const [pendingLost, setPendingLost] = useState<{ card: Card; stage: Stage } | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const [moving, startTransition] = useTransition();
+  // Tarjeta movida con el menú "Mover a…": al cambiar de columna se vuelve a montar, así que el foco se lleva a su
+  // control en la columna nueva (y se mantiene ahí si el servidor rechaza y vuelve a la original).
+  const focusAfterMove = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusAfterMove.current;
+    if (!id) return;
+    const el = document.getElementById(`mv-${id}`);
+    if (el && document.activeElement !== el) {
+      el.focus({ preventScroll: true });
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    if (!moving) focusAfterMove.current = null;
+  }, [optimistic, moving]);
 
   function request(card: Card, stageId: string) {
     const stage = stages.find((s) => s.id === stageId);
@@ -58,6 +72,14 @@ export function Board({ stages, cards, canMove, move }: { stages: Stage[]; cards
       return;
     }
     send(card, stage);
+  }
+
+  function cancelLost() {
+    const id = pendingLost?.card.id;
+    setPendingLost(null);
+    focusAfterMove.current = null;
+    // El <dialog> devuelve el foco al elemento previo; si era el menú de la tarjeta, sigue en su lugar.
+    if (id) requestAnimationFrame(() => document.getElementById(`mv-${id}`)?.focus());
   }
 
   function send(card: Card, stage: Stage, lostReason?: string) {
@@ -146,7 +168,9 @@ export function Board({ stages, cards, canMove, move }: { stages: Stage[]; cards
                           onSubmit={(e) => {
                             e.preventDefault();
                             const v = new FormData(e.currentTarget).get("stageId");
-                            if (typeof v === "string") request(c, v);
+                            if (typeof v !== "string" || v === c.stageId) return;
+                            focusAfterMove.current = c.id;
+                            request(c, v);
                           }}
                         >
                           <label className="sr-only" htmlFor={`mv-${c.id}`}>
@@ -173,7 +197,7 @@ export function Board({ stages, cards, canMove, move }: { stages: Stage[]; cards
         </div>
       </div>
       {pendingLost ? (
-        <Modal title={`Marcar como perdida: ${pendingLost.card.title}`} onClose={() => setPendingLost(null)}>
+        <Modal title={`Marcar como perdida: ${pendingLost.card.title}`} onClose={cancelLost}>
           <form
             className="flex flex-col gap-3"
             onSubmit={(e) => {
@@ -200,7 +224,7 @@ export function Board({ stages, cards, canMove, move }: { stages: Stage[]; cards
               <Button type="submit" variant="danger">
                 Marcar perdida
               </Button>
-              <Button variant="ghost" onClick={() => setPendingLost(null)}>
+              <Button variant="ghost" onClick={cancelLost}>
                 Cancelar
               </Button>
             </div>
