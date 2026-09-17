@@ -19,6 +19,9 @@ import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
 import { getTourSummary } from "@/server/tours/queries";
+import { getPropertyQuality } from "@/server/ai/property/quality";
+import { getPhotoDirector } from "@/server/ai/property/photo-director";
+import { QualityPanel } from "@/components/ai-property/quality-panel";
 
 export const metadata: Metadata = { title: "Propiedad" };
 
@@ -66,7 +69,11 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
-  const tour = await getTourSummary(db, actor, d.property.id);
+  const [tour, quality, director] = await Promise.all([
+    getTourSummary(db, actor, d.property.id),
+    d.property.is_demo ? Promise.resolve({ enabled: false, report: null }) : getPropertyQuality(db, actor, d.property.id),
+    getPhotoDirector(db, actor, d.property.id),
+  ]);
   const p = d.property;
   const canUpdate = can(actor, "properties.update");
   const canPrice = can(actor, "properties.change_price");
@@ -83,6 +90,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
   const addressLeakWhere = addressLeak && addressLeakInText({ street: p.address_street, title: p.title, description: null }) ? "título" : "texto de la descripción";
 
   const sections = [
+    ...(quality.enabled ? [["calidad", "Calidad"]] : []),
     ["datos", "Datos"],
     ["precios", "Precios"],
     ["estado", "Estado"],
@@ -181,6 +189,11 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
       </nav>
 
       <div className="flex flex-col gap-5">
+        {quality.enabled ? (
+          <section id="calidad" className="scroll-mt-28">
+            <QualityPanel propertyId={p.id} report={quality.report} canRecompute />
+          </section>
+        ) : null}
         <section id="datos" className="scroll-mt-28">
           <Card title="Datos">
             <div className="flex flex-col gap-5">
@@ -337,7 +350,23 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="multimedia" className="scroll-mt-28">
           <Card title="Multimedia">
-            <MediaManager propertyId={p.id} media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))} canManage={canMedia} />
+            <MediaManager
+              propertyId={p.id}
+              media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))}
+              canManage={canMedia}
+              director={
+                director.enabled && !p.is_demo
+                  ? {
+                      items: Object.fromEntries(director.items.map(({ id, ...rest }) => [id, rest])),
+                      suggestion: director.suggestion,
+                      pendingSuggestions: director.pendingSuggestions,
+                      visionCandidates: director.visionCandidates,
+                      aiAvailable: director.aiAvailable,
+                      visionJobQueued: director.visionJobQueued,
+                    }
+                  : null
+              }
+            />
           </Card>
         </section>
 

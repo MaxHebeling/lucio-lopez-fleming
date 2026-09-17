@@ -136,6 +136,17 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
     baseline.current = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, JSON.stringify(v)]));
   }, [mode, build]);
 
+  // Links «Completar» del informe de calidad (/editar#campo): llevar al campo y enfocarlo sin que lo tape el encabezado fijo.
+  useEffect(() => {
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    if (!/^[A-Za-z][\w.-]{0,60}$/.test(hash)) return;
+    const el = document.getElementById(hash);
+    if (!el || !formRef.current?.contains(el)) return;
+    el.scrollIntoView({ block: "center" });
+    const focusable = el.matches("input, select, textarea") ? el : el.querySelector<HTMLElement>("input, select, textarea");
+    focusable?.focus({ preventScroll: true });
+  }, []);
+
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setNotice(null);
@@ -223,7 +234,7 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
         </div>
       </Card>
 
-      <Card title="Ubicación">
+      <Card title="Ubicación" className="scroll-mt-28" id="ubicacion">
         <div className="flex flex-col gap-4">
           <LocationPicker provinces={options.provinces} initialChain={initialChain} canCreate={canCreateLocation} onChange={onLocation} error={fe.locationId} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -286,7 +297,7 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
         </Card>
       ) : null}
 
-      <Card title="Características">
+      <Card title="Características" className="scroll-mt-28" id="caracteristicas">
         {options.features.length === 0 ? (
           <p className="text-sm text-stone">Todavía no hay un catálogo de características cargado en el sistema.</p>
         ) : (

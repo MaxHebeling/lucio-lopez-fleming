@@ -27,9 +27,9 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-export function Card({ children, className, title, actions }: { children: ReactNode; className?: string; title?: string; actions?: ReactNode }) {
+export function Card({ children, className, title, actions, id }: { children: ReactNode; className?: string; title?: string; actions?: ReactNode; id?: string }) {
   return (
-    <section className={cx("min-w-0 rounded-[var(--radius-lg)] border border-line bg-white p-4 sm:p-5", className)}>
+    <section id={id} className={cx("min-w-0 rounded-[var(--radius-lg)] border border-line bg-white p-4 sm:p-5", className)}>
       {title ? (
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-ink-2">{title}</h2>

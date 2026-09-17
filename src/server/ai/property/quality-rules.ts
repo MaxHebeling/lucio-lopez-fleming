@@ -7,25 +7,12 @@
  * Nada de esto modifica datos: produce un informe. El lenguaje es prudente ("revisá", "puede ser correcto si…").
  */
 import { MIN_DESCRIPTION_CHARS, MIN_PHOTOS } from "../domains/property-completeness";
-import { duplicateGroups, isBlurry, isDark, type ImageMetrics } from "./image-metrics";
+import { duplicateGroups, isBlurry, isDark, type ImageMetrics } from "./image-rules";
+import type { RoomKey } from "./rooms";
 
 export const QUALITY_RULES_VERSION = "2026-09-17.1";
 
-export const ROOM_KEYS = ["fachada", "living", "cocina", "comedor", "dormitorio", "bano", "jardin", "piscina", "exterior", "plano", "otro"] as const;
-export type RoomKey = (typeof ROOM_KEYS)[number];
-export const ROOM_LABEL: Record<RoomKey, string> = {
-  fachada: "Fachada",
-  living: "Living",
-  cocina: "Cocina",
-  comedor: "Comedor",
-  dormitorio: "Dormitorio",
-  bano: "Baño",
-  jardin: "Jardín",
-  piscina: "Piscina",
-  exterior: "Exterior",
-  plano: "Plano",
-  otro: "Otro",
-};
+export { ROOM_KEYS, ROOM_LABEL, type RoomKey } from "./rooms";
 
 export type QualityMedia = {
   id: string;
