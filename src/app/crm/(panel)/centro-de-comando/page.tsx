@@ -79,8 +79,7 @@ export default async function CommandCenterPage() {
             </Card>
           ) : null}
 
-          <section id="anomalias" className="scroll-mt-28">
-            <Card title="Alertas y anomalías" actions={<More href="/crm/tareas-sugeridas?vista=equipo&origen=anomalias">Tareas sugeridas</More>}>
+          <Card id="anomalias" title="Alertas y anomalías" actions={<More href="/crm/tareas-sugeridas?vista=equipo&origen=anomalias">Tareas sugeridas</More>}>
               {c.anomalies.length ? (
                 <ul className="flex flex-col gap-2 text-sm">
                   {c.anomalies.map((a) => (
@@ -114,7 +113,6 @@ export default async function CommandCenterPage() {
                 <p className="text-sm text-stone">Sin anomalías abiertas. Se revisan cada hora con umbrales documentados.</p>
               )}
             </Card>
-          </section>
 
           {c.visits ? (
             <Card title="Visitas de hoy" actions={<More href="/crm/centro-operativo">Centro operativo</More>}>
@@ -138,7 +136,7 @@ export default async function CommandCenterPage() {
           ) : null}
 
           {c.matches ? (
-            <Card title="Oportunidades: clientes compatibles (7 días)" actions={<More href="/crm/propiedades?compatibles=recientes">Propiedades nuevas con compatibles</More>}>
+            <Card title="Clientes compatibles (7 días)" actions={<More href="/crm/propiedades?compatibles=recientes">Ver propiedades</More>}>
               {c.matches.length ? (
                 <ul className="divide-y divide-line text-sm">
                   {c.matches.map((m) => (
@@ -173,7 +171,7 @@ export default async function CommandCenterPage() {
                         {a.agent}
                       </Link>
                       <span className="text-xs text-stone">
-                        {a.total} vencidas · {a.follow_ups} de seguimiento
+                        {a.total} {a.total === 1 ? "vencida" : "vencidas"} · {a.follow_ups} de seguimiento
                       </span>
                     </li>
                   ))}
@@ -198,7 +196,7 @@ export default async function CommandCenterPage() {
 
           {c.aiHealth ? (
             <Card title="Salud de la IA (24 h)" actions={<More href="/crm/integraciones/ia">Uso de IA</More>}>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2">
                 <Num label="Pedidos" value={c.aiHealth.usage.requests} href="/crm/integraciones/ia?dias=1" />
                 <Num label="Con error" value={c.aiHealth.usage.errors} tone="danger" href="/crm/integraciones/ia?dias=1" />
                 <Num label="Respaldo" value={c.aiHealth.usage.requests ? `${Math.round((c.aiHealth.usage.fallbacks / c.aiHealth.usage.requests) * 100)} %` : "—"} />
