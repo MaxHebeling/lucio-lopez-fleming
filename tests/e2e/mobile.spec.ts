@@ -62,3 +62,46 @@ test("mobile 390: el carrusel de la ficha es un solo tab stop y se recorre con f
   await page.keyboard.press("Escape");
   await expect(second).toBeFocused();
 });
+
+test("mobile 390: portada, servicios en acordeón y sin desborde", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: /Buenos negocios/ })).toBeVisible();
+  const list = page.locator(".svc-list");
+  await list.scrollIntoViewIfNeeded();
+  await expect(list).toHaveAttribute("data-layout", "accordion");
+  const alquileres = list.getByRole("button", { name: "Alquileres", exact: true });
+  await expect(alquileres).toHaveAttribute("aria-expanded", "false");
+  await alquileres.click();
+  await expect(alquileres).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("region", { name: "Alquileres", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Venta de inmuebles y lotes", exact: true })).toBeHidden();
+  await alquileres.press("Enter");
+  await expect(alquileres).toHaveAttribute("aria-expanded", "false");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  // Motor de escenas: nunca en mobile.
+  await page.waitForTimeout(3500);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("lenis"))).toBe(false);
+});
+
+test("mobile 390: accesibilidad (axe) de home, listado, ficha, contacto, tasaciones y empresa", async ({ page }) => {
+  test.setTimeout(150_000);
+  const { default: AxeBuilder } = await import("@axe-core/playwright");
+  const slug = (await pool.query<{ slug: string }>("select slug from properties where is_published and status = 'available' order by code desc limit 1")).rows[0]!.slug;
+  for (const path of ["/", "/propiedades", `/propiedades/${slug}`, "/contacto", "/tasaciones", "/empresa"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 500) {
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      window.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(1200);
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious.map((v) => `${path}: ${v.id} (${v.nodes.length}) ${v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
+  }
+});

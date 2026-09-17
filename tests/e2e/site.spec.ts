@@ -122,7 +122,7 @@ test("pipeline: «Mover a…» deja el foco en el control de la tarjeta en su nu
     await page.keyboard.press("Tab");
     await expect(page.locator(`#mv-${opp.id} + button`)).toBeFocused();
     await page.keyboard.press("Enter");
-    const column = page.getByRole("region", { name: "Tablero de oportunidades" }).locator("section", { has: page.locator(`#mv-${opp.id}`) });
+    const column = page.getByRole("region", { name: "Tablero de oportunidades", exact: true }).locator("section", { has: page.locator(`#mv-${opp.id}`) });
     await expect(column).toHaveAttribute("aria-label", new RegExp(`^${target.name}:`));
     await expect(page.locator(`#mv-${opp.id}`)).toBeFocused();
     await expect.poll(async () => (await pool.query("select stage_id from opportunities where id = $1", [opp.id])).rows[0].stage_id).toBe(target.id);
@@ -253,9 +253,14 @@ test("reduced motion: todo visible y sin atributo de movimiento activo", async (
   const page = await ctx.newPage();
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
-  await page.getByRole("heading", { name: /Explorá por zona/ }).scrollIntoViewIfNeeded();
+  await page.getByRole("heading", { name: /a los cerros del valle/ }).scrollIntoViewIfNeeded();
   const hidden = await page.evaluate(() => Array.from(document.querySelectorAll("[data-reveal]")).filter((el) => Number(getComputedStyle(el).opacity) < 1).length);
   expect(hidden).toBe(0);
+  // Sin movimiento: la portada no queda fija debajo, no se carga el motor de scroll y el manifiesto no se atenúa.
+  expect(await page.locator("[data-hero]").evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
+  await page.waitForTimeout(3500);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("lenis"))).toBe(false);
+  expect(await page.evaluate(() => Array.from(document.querySelectorAll(".word")).every((w) => getComputedStyle(w).opacity === "1"))).toBe(true);
   await ctx.close();
 });
 
@@ -265,14 +270,20 @@ test("sin JavaScript el contenido y el buscador siguen ahí", async ({ browser }
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: /Buenos negocios/ })).toBeVisible();
   await expect(page.getByRole("search", { name: "Buscar propiedades" })).toBeVisible();
+  // Servicios: sin JS se leen todos los paneles; la captación de propietarios sigue siendo un formulario usable.
+  for (const name of ["Venta de inmuebles y lotes", "Alquileres", "Administración de alquileres", "Tasaciones"]) {
+    await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.locator("#vender form")).toBeVisible();
   await page.goto("/propiedades");
   await expect(page.locator("article").first()).toBeVisible();
   await ctx.close();
 });
 
-test("accesibilidad (axe): home, listado, ficha y contacto sin violaciones serias", async ({ page }) => {
+test("accesibilidad (axe) 1440: home, listado, ficha, contacto, tasaciones y empresa sin violaciones serias", async ({ page }) => {
+  test.setTimeout(150_000);
   const { slug } = await publishedSlug();
-  for (const path of ["/", "/propiedades", `/propiedades/${slug}`, "/contacto"]) {
+  for (const path of ["/", "/propiedades", `/propiedades/${slug}`, "/contacto", "/tasaciones", "/empresa"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     // Revelar todo (los revelados pendientes bajarían la opacidad en el análisis de contraste)
@@ -288,4 +299,118 @@ test("accesibilidad (axe): home, listado, ficha y contacto sin violaciones seria
     const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious.map((v) => `${path}: ${v.id} (${v.nodes.length}) ${v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
   }
+});
+
+test("home: portada con la foto de la oficina (explícita y precargada), destacadas reales y buscador con precio", async ({ page }) => {
+  await page.goto("/");
+  const cover = page.locator("[data-hero] .cover-img");
+  await expect(cover).toBeVisible();
+  expect(await cover.getAttribute("src")).toContain("oficina-modular");
+  expect(await cover.getAttribute("alt")).toMatch(/Oficina modular/);
+  expect(await page.locator('link[rel="preload"][as="image"]').count()).toBe(1);
+
+  const featured = page.getByRole("region", { name: /Propiedades para mirar dos veces/ }).or(page.locator('section[aria-labelledby="destacadas-title"]'));
+  await expect(featured).toBeVisible();
+  const links = featured.locator('h3 a[href^="/propiedades/"]');
+  await expect(links).toHaveCount(3);
+  // Las destacadas son publicadas de verdad: la primera abre su ficha.
+  const href = await links.first().getAttribute("href");
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+
+  const search = page.getByRole("search", { name: "Buscar propiedades" });
+  await search.getByLabel("Operación").selectOption("venta");
+  await search.getByLabel("Precio hasta").selectOption("250000");
+  await search.getByRole("button", { name: "Buscar" }).click();
+  await expect(page).toHaveURL(/\/propiedades\/venta\?.*moneda=USD.*precio_max=250000|\/propiedades\/venta\?.*precio_max=250000.*moneda=USD/);
+});
+
+test("servicios 1440: índice interactivo con teclado (foco cambia la lámina, Tab entra a su CTA)", async ({ page }) => {
+  await page.goto("/");
+  const list = page.locator(".svc-list");
+  await list.scrollIntoViewIfNeeded();
+  await expect(list).toHaveAttribute("data-layout", "index");
+  const first = list.getByRole("button", { name: "Venta de inmuebles y lotes", exact: true });
+  const second = list.getByRole("button", { name: "Alquileres", exact: true });
+  await first.focus();
+  await expect(first).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: /propiedades? en venta/ })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute("aria-expanded", "true");
+  await expect(first).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("region", { name: "Alquileres", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Venta de inmuebles y lotes", exact: true })).toBeHidden();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: /propiedades? en alquiler/ })).toBeFocused();
+});
+
+test("captación: «Quiero vender mi propiedad» crea un único lead sell_my_property en el CRM", async ({ page }) => {
+  const stamp = Date.now();
+  const email = `e2e-owner-${stamp}@prueba.test`;
+  try {
+    await page.goto("/");
+    await page.getByRole("link", { name: "Quiero vender mi propiedad" }).first().click();
+    const form = page.locator("#vender form");
+    await expect(form.getByRole("radio", { name: "Vender" })).toBeInViewport();
+    await expect(form.getByRole("radio", { name: "Vender" })).toBeChecked();
+    const submit = form.getByRole("button", { name: "Quiero vender mi propiedad" });
+    // Validación visible: sin ubicación el navegador no deja enviar; sin teléfono ni email, error propio.
+    await form.getByLabel("Nombre y apellido").fill("Propietaria E2E");
+    await form.getByLabel("¿Dónde está?").fill("Villa San Lorenzo");
+    await submit.click();
+    await expect(form.getByText("Dejanos un teléfono o un email para responderte")).toBeVisible();
+    await form.getByLabel("Tipo de propiedad").selectOption({ index: 1 });
+    await form.getByLabel("Email").fill(email);
+    await form.getByLabel("Contanos algo más (opcional)").fill(`Casa con pileta ${stamp}`);
+    await submit.dblclick();
+    await expect(form.getByRole("status")).toContainText("Recibimos los datos de tu propiedad");
+    const leads = await pool.query<{ source_key: string; operation_interest: string; message: string; idempotency_key: string | null }>(
+      `select l.source_key, l.operation_interest, l.message, l.idempotency_key from leads l
+       join contact_emails ce on ce.contact_id = l.contact_id where ce.email = $1`,
+      [email],
+    );
+    expect(leads.rows).toHaveLength(1);
+    expect(leads.rows[0]).toMatchObject({ source_key: "web_appraisal", operation_interest: "sell_my_property" });
+    expect(leads.rows[0]!.message).toContain("Ubicación: Villa San Lorenzo");
+    expect(leads.rows[0]!.idempotency_key).toMatch(/^web:/);
+    // Tras el éxito el objetivo vuelve a "Vender" y el botón a su texto.
+    await expect(form.getByRole("button", { name: "Quiero vender mi propiedad" })).toBeVisible();
+  } finally {
+    await cleanupE2eContact(pool, email);
+  }
+});
+
+test("tasación: el formulario de /tasaciones crea un lead web_appraisal", async ({ page }) => {
+  const stamp = Date.now();
+  const email = `e2e-tasacion-${stamp}@prueba.test`;
+  try {
+    await page.goto("/tasaciones");
+    const form = page.locator("form", { has: page.getByRole("button", { name: "Pedir tasación" }) });
+    await form.getByLabel("Nombre y apellido").fill("Tasación E2E");
+    await form.getByLabel("Email").fill(email);
+    await form.getByLabel("Dirección o zona").fill("Tres Cerritos");
+    await form.getByRole("button", { name: "Pedir tasación" }).click();
+    await expect(form.getByRole("status")).toContainText("Recibimos tu pedido de tasación");
+    const leads = await pool.query<{ source_key: string; operation_interest: string }>(
+      "select l.source_key, l.operation_interest from leads l join contact_emails ce on ce.contact_id = l.contact_id where ce.email = $1",
+      [email],
+    );
+    expect(leads.rows).toEqual([{ source_key: "web_appraisal", operation_interest: "appraisal" }]);
+  } finally {
+    await cleanupE2eContact(pool, email);
+  }
+});
+
+test("motor de escenas desktop: Lenis y la portada fija se activan sin romper anclas ni el foco", async ({ page }) => {
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains("lenis")), { timeout: 8000 }).toBe(true);
+  expect(await page.locator("[data-hero]").evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+  // Ancla interna: el enlace de la portada lleva a la captación.
+  await page.getByRole("link", { name: "Quiero vender mi propiedad" }).first().click();
+  await expect.poll(() => page.locator("#vender").evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBeLessThan(200);
+  // Volver con teclado al buscador de la portada lo deja a la vista (no queda tapado por la escena siguiente).
+  await page.getByRole("search", { name: "Buscar propiedades" }).getByLabel("Operación").focus();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(50);
 });
