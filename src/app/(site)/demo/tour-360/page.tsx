@@ -7,9 +7,10 @@ import { getSiteDemoShowcase } from "@/server/site/public-data";
 import { mediaTabs } from "@/server/tours/model";
 import { DEMO_TOUR_PATH } from "@/server/tours/demo-constants";
 import { Gallery } from "@/components/site/property/Gallery";
-import { PropertyMediaTabs } from "@/components/site/property/PropertyMediaTabs";
+import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
 import { Fact, Paragraphs } from "@/components/site/property/facts";
 import { siteUrl } from "@/components/site/seo";
+
 
 /**
  * Demo pública del tour 360° sobre una propiedad FICTICIA. Reutiliza los componentes de la ficha real, no se indexa
@@ -75,7 +76,7 @@ export default async function DemoTourPage() {
       </div>
 
       <div className="container-site mt-8">
-        <PropertyMediaTabs
+        <PropertyMediaSection
           tabs={tabs}
           photos={<Gallery photos={photos} title={p.title} />}
           tour={tour}

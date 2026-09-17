@@ -403,7 +403,7 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
         {announce}
       </p>
 
-      <header className="tour-top">
+      <div className="tour-top">
         <div className="tour-title-block">
           <p className="tour-eyebrow">Tour 360° · {propertyTitle}</p>
           <h2 id="tour-title" className="tour-scene-name">
@@ -414,7 +414,7 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
         <button type="button" data-autofocus className="tour-exit" onClick={requestClose}>
           <X aria-hidden className="size-5" /> Salir del tour
         </button>
-      </header>
+      </div>
 
       <nav className="tour-tools" aria-label="Herramientas del tour">
         {tour.floorPlan ? <ToolButton label="Plano" icon={<MapIcon aria-hidden className="size-4" />} onClick={() => openPanel("plan")} pressed={panel === "plan"} /> : null}
@@ -605,7 +605,7 @@ function ExternalTour({ tour, propertyTitle, shareUrl, analytics, entry, onClose
   const provider = PROVIDER_LABEL[tour.provider];
   return createPortal(
     <div ref={ref} className="tour-root tour-root--external" data-state="open" data-reduced={reduced || undefined} role="dialog" aria-modal="true" aria-labelledby="tour-title">
-      <header className="tour-top">
+      <div className="tour-top">
         <div className="tour-title-block">
           <p className="tour-eyebrow">Tour 360° · {provider}</p>
           <h2 id="tour-title" className="tour-scene-name">
@@ -615,7 +615,7 @@ function ExternalTour({ tour, propertyTitle, shareUrl, analytics, entry, onClose
         <button type="button" data-autofocus className="tour-exit" onClick={requestClose}>
           <X aria-hidden className="size-5" /> Salir del tour
         </button>
-      </header>
+      </div>
       {tour.display.mode === "embed" ? (
         <iframe
           className="tour-iframe"

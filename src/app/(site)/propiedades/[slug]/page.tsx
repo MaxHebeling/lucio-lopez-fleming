@@ -17,8 +17,9 @@ import { WhatsAppIcon } from "@/components/site/icons";
 import { JsonLd } from "@/components/site/JsonLd";
 import { pageMetadata, siteUrl } from "@/components/site/seo";
 import { Fact, Paragraphs } from "@/components/site/property/facts";
-import { PropertyMediaTabs } from "@/components/site/property/PropertyMediaTabs";
+import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
 import { mediaTabs } from "@/server/tours/model";
+
 
 /**
  * ISR: ninguna ficha se genera en el build; cada una se genera en su primera visita, se sirve desde caché y se
@@ -170,7 +171,7 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
 
       <div className="container-site mt-8">
         {tabs.length && extras.tour ? (
-          <PropertyMediaTabs
+          <PropertyMediaSection
             tabs={tabs}
             photos={p.photos.length ? gallery : null}
             tour={extras.tour}

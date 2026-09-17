@@ -87,6 +87,9 @@ function hotspotElement(h: TourHotspot, sceneNames: Record<string, string>, onCl
   });
   // Que un arrastre que empieza sobre el punto no lo "clickee" ni mueva la vista de golpe.
   btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+  // Las transiciones CSS del punto (hover/foco) no deben llegar al contenedor del MarkersPlugin: su listener de
+  // "transitionend" falla si el marcador ya se destruyó (cambio de escena mientras termina la transición).
+  btn.addEventListener("transitionend", (e) => e.stopPropagation());
   wrap.append(btn);
   return wrap;
 }
