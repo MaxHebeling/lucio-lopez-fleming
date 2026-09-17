@@ -21,6 +21,7 @@
     "db:codegen:verify": "tsx scripts/db/codegen.ts --verify",
     "db:recreate": "tsx scripts/db/recreate.ts",
     "db:seed": "tsx scripts/db/seed.ts",
+    "seed:demo-tour": "tsx --conditions=react-server scripts/seed-demo-tour.ts",
     "jobs:run": "tsx --conditions=react-server scripts/jobs-run.ts",
     "user:invite": "tsx --conditions=react-server scripts/user-invite.ts",
     "import:adinco": "tsx scripts/import-existing-properties.ts",
@@ -31,6 +32,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.126.0",
     "@node-rs/argon2": "2.2.1",
+    "@photo-sphere-viewer/core": "5.15.1",
+    "@photo-sphere-viewer/gyroscope-plugin": "5.15.1",
+    "@photo-sphere-viewer/markers-plugin": "5.15.1",
     "@vercel/functions": "3.9.8",
     "aws4fetch": "1.0.20",
     "gsap": "3.15.0",
@@ -43,6 +47,7 @@
     "react-dom": "19.2.8",
     "server-only": "0.0.1",
     "sharp": "0.35.4",
+    "three": "0.185.1",
     "zod": "4.6.5"
   },
   "devDependencies": {

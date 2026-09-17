@@ -16,6 +16,8 @@ PostgreSQL ≥ 15 (probado en 17). Migraciones SQL en `db/migrations/NNNN_nombre
 | CRM comercial | lead_sources, campaigns, leads, pipelines, pipeline_stages, opportunities, opportunity_stage_history, tasks, appointments, conversations, conversation_messages | lead idempotente por `idempotency_key`; **exclusión**: un agente no puede tener dos citas activas superpuestas |
 | Alquileres | adjustment_indices, index_values, rental_contracts, rental_contract_parties, rent_adjustments, rent_obligations, rent_payments, owner_settlements, settlement_lines, outbound_messages | **exclusión**: un inmueble no tiene dos contratos activos superpuestos; pagos no se borran (se anulan); ajuste aplicado inmutable; neto = bruto − honorarios − deducciones (CHECK) |
 | Propietarios y marketing | owner_reports, content_templates, social_posts, social_assets, ai_interactions | un post no puede quedar aprobado/programado/publicado sin `approved_by` (CHECK) |
+| Tours virtuales 360° | virtual_tours, virtual_tour_scenes, virtual_tour_hotspots; `properties.is_demo` | un tour por propiedad; externo exige proveedor + https; escena inicial y destino de cada punto del mismo tour (FK compuesta + trigger); 2:1 y ángulos en rango (checks); URLs de assets seguras (`is_tour_asset_url`); **una demo nunca se publica** (`properties_demo_never_published`). Ver docs/VIRTUAL_TOURS.md |
+| Analítica del sitio | site_events | append-only sin FK; allowlist de eventos (check); **sin IP, user agent ni datos personales**; `props` ≤ 1 KB; retención 13 meses (`site.events_purge`) |
 | Migración | migration_runs, migration_records, migration_warnings, external_refs | `unique(source, external_id)`; advertencias no se duplican entre corridas |
 
 ## Convenciones

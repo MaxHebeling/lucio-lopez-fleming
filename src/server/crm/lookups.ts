@@ -68,6 +68,7 @@ export async function searchProperties(db: Executor, actor: Actor, q: string, li
     .selectFrom("properties")
     .select(["id", "code", "title", "status", "address_street", "address_number"])
     .where("deleted_at", "is", null)
+    .where("is_demo", "=", false) // la demo no se vincula a leads, oportunidades, agenda ni contratos
     .where("status", "<>", "archived");
   if (/^\d{1,9}$/.test(term)) {
     query = query.where("code", "=", Number(term));

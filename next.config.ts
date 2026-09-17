@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { ALL_EMBED_HOSTS } from "./src/server/tours/model";
 
 const storagePublic = process.env.STORAGE_PUBLIC_BASE_URL ? new URL(process.env.STORAGE_PUBLIC_BASE_URL) : null;
 
@@ -12,9 +13,11 @@ const csp = [
   `img-src 'self' data: blob: https://static1.adinco.net https://tile.openstreetmap.org https://*.tile.openstreetmap.org${storagePublic ? ` ${storagePublic.origin}` : ""}`,
   "font-src 'self'",
   // Subida directa de fotos al storage (URL firmada): el navegador hace PUT al endpoint S3.
-  `connect-src 'self'${process.env.STORAGE_DRIVER === "s3" && process.env.STORAGE_ENDPOINT ? ` ${new URL(process.env.STORAGE_ENDPOINT).origin}` : ""}`,
+  // Tours 360°: el visor descarga las panorámicas con fetch (blob) desde el storage público.
+  `connect-src 'self'${process.env.STORAGE_DRIVER === "s3" && process.env.STORAGE_ENDPOINT ? ` ${new URL(process.env.STORAGE_ENDPOINT).origin}` : ""}${storagePublic ? ` ${storagePublic.origin}` : ""}`,
   "media-src 'self' blob:" + (storagePublic ? ` ${storagePublic.origin}` : ""),
-  "frame-src https://www.openstreetmap.org",
+  // Tours 360° externos: solo los hosts de la allowlist de proveedores (src/server/tours/model.ts → EMBED_HOSTS).
+  `frame-src https://www.openstreetmap.org ${ALL_EMBED_HOSTS.map((h) => `https://${h}`).join(" ")}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -42,6 +45,8 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
     // 75 por defecto; 65 solo para la foto de la portada (LCP): cielo y texturas suaves, sin pérdida visible y ~30 % menos bytes.
     qualities: [65, 75],
+    // Locales sin query string, salvo los assets estáticos de tours (/tours/...?v=<hash> para invalidar caché al reemplazarlos).
+    localPatterns: [{ pathname: "/**", search: "" }, { pathname: "/tours/**" }],
     remotePatterns: [
       { protocol: "https", hostname: "static1.adinco.net" },
       ...(storagePublic ? [{ protocol: storagePublic.protocol.replace(":", "") as "https", hostname: storagePublic.hostname }] : []),
@@ -77,6 +82,7 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
       { source: "/crm/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/propietarios/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/demo/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
 };

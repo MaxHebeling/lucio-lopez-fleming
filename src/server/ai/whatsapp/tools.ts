@@ -210,6 +210,7 @@ function baseQuery(db: Database) {
       "p.description",
     ])
     .where("p.is_published", "=", true)
+    .where("p.is_demo", "=", false)
     .where("p.deleted_at", "is", null);
 }
 

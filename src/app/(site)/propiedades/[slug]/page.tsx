@@ -5,7 +5,7 @@ import { ArrowRight, Check, MapPin, Phone } from "lucide-react";
 import type { PublicPropertyDetail } from "@/server/properties/public";
 import { OPERATION_NOUN, OPERATION_TO_SLUG, filtersToQuery, formatArea, propertyHeadline, propertyPageTitle, telHref, truncateAtWord, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
-import { getSiteProperty, getSiteSimilar } from "@/server/site/public-data";
+import { getSiteProperty, getSitePropertyMediaExtras, getSiteSimilar } from "@/server/site/public-data";
 import { Gallery } from "@/components/site/property/Gallery";
 import { ShareButton } from "@/components/site/property/ShareButton";
 import { propertyBreadcrumb, propertyJsonLd } from "@/components/site/property/property-schema";
@@ -16,6 +16,10 @@ import { StaticMap } from "@/components/site/StaticMap";
 import { WhatsAppIcon } from "@/components/site/icons";
 import { JsonLd } from "@/components/site/JsonLd";
 import { pageMetadata, siteUrl } from "@/components/site/seo";
+import { Fact, Paragraphs } from "@/components/site/property/facts";
+import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
+import { mediaTabs } from "@/server/tours/model";
+
 
 /**
  * ISR: ninguna ficha se genera en el build; cada una se genera en su primera visita, se sirve desde caché y se
@@ -72,33 +76,10 @@ export async function generateMetadata({ params }: PageProps<"/propiedades/[slug
   };
 }
 
-function Fact({ label, value }: { label: string; value: string | number | null | undefined }) {
-  if (value === null || value === undefined || value === "") return null;
-  return (
-    <div className="border-t border-line py-3">
-      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-2">{label}</dt>
-      <dd className="tabular mt-1 text-lg font-semibold">{value}</dd>
-    </div>
-  );
-}
-
-function Paragraphs({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}|\r\n\r\n/).map((b) => b.trim()).filter(Boolean);
-  return (
-    <div className="prose-llf max-w-[68ch] text-[1.0625rem] leading-relaxed text-ink-2">
-      {blocks.map((b, i) => (
-        <p key={i} className="whitespace-pre-line">
-          {b}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 export default async function PropertyPage({ params }: PageProps<"/propiedades/[slug]">) {
   const { slug } = await params;
   const p = await resolve(slug);
-  const [info, similar] = await Promise.all([getSiteInfo(), getSiteSimilar(p, 4)]);
+  const [info, similar, extras] = await Promise.all([getSiteInfo(), getSiteSimilar(p, 4), getSitePropertyMediaExtras(p.code)]);
   const crumbs = propertyBreadcrumb(p);
   const base = siteUrl();
   const url = `${base}/propiedades/${p.slug}`;
@@ -110,6 +91,22 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
   const phone = p.branch?.phone ?? info.mainPhone;
   const phoneHref = telHref(phone);
   const bool = (v: boolean | null) => (v === null ? null : v ? "Sí" : "No");
+  // Tour 360°: sin tour publicado (o con el flag apagado) no hay pestañas y la galería queda exactamente como siempre.
+  const tabs = extras.tour
+    ? mediaTabs({
+        flagEnabled: extras.flagEnabled,
+        hasTour: true,
+        photoCount: p.photos.length,
+        floorPlanCount: extras.floorPlans.length,
+        tourHasFloorPlan: extras.tour.kind === "internal" && Boolean(extras.tour.floorPlan),
+        videoCount: extras.videos.length,
+      })
+    : [];
+  const gallery = p.photos.length ? (
+    <Gallery photos={p.photos} title={p.headline} />
+  ) : (
+    <div className="grid aspect-[16/7] place-items-center rounded-[var(--radius-lg)] bg-paper-2 text-ink-2">Fotos a pedido: consultanos.</div>
+  );
 
   return (
     <article className="pb-28 lg:pb-24">
@@ -173,10 +170,23 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
       </div>
 
       <div className="container-site mt-8">
-        {p.photos.length ? (
-          <Gallery photos={p.photos} title={p.headline} />
+        {tabs.length && extras.tour ? (
+          <PropertyMediaSection
+            tabs={tabs}
+            photos={p.photos.length ? gallery : null}
+            tour={extras.tour}
+            floorPlans={extras.floorPlans}
+            videos={extras.videos}
+            headline={p.headline}
+            fallbackCoverUrl={p.cover?.url ?? null}
+            propertyCode={p.code}
+            operation={main?.operation}
+            shareUrl={url}
+            whatsappUrl={closed ? null : whatsappHref(waNumber, `Hola, estoy viendo el tour 360° de la propiedad Cód. ${p.code} (${p.headline}): ${url}`)}
+            isDemo={false}
+          />
         ) : (
-          <div className="grid aspect-[16/7] place-items-center rounded-[var(--radius-lg)] bg-paper-2 text-ink-2">Fotos a pedido: consultanos.</div>
+          gallery
         )}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="tabular text-sm text-ink-2">Código de propiedad: {p.code}</p>

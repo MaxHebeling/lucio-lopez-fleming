@@ -37,10 +37,10 @@ export async function getDashboard(db: Database, actor: Actor, raw: unknown) {
     ? (async () => {
         const rows = await sql<{ status: string; n: number; published: number }>`
           select status, count(*)::int as n, count(*) filter (where is_published)::int as published
-            from properties where deleted_at is null ${branch ? sql`and branch_id = ${branch}` : sql``}
+            from properties where deleted_at is null and not is_demo ${branch ? sql`and branch_id = ${branch}` : sql``}
            group by status`.execute(db);
         const created = await sql<{ n: number }>`select count(*)::int as n from properties
-          where deleted_at is null and created_at >= ${fromTs} and created_at < ${toTs} ${branch ? sql`and branch_id = ${branch}` : sql``}`.execute(db);
+          where deleted_at is null and not is_demo and created_at >= ${fromTs} and created_at < ${toTs} ${branch ? sql`and branch_id = ${branch}` : sql``}`.execute(db);
         return {
           byStatus: rows.rows.map((r) => ({ status: r.status, n: r.n })),
           published: rows.rows.reduce((s, r) => s + r.published, 0),

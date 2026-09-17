@@ -268,8 +268,10 @@ export async function changeStatus(db: Database | Tx, actor: Actor, id: string, 
 
 /** Qué falta para poder publicar (vacío = publicable). */
 export async function publishBlockers(trx: Tx | Database, id: string): Promise<string[]> {
-  const p = await trx.selectFrom("properties").select(["title", "status", "location_id", "description"]).where("id", "=", id).executeTakeFirst();
+  const p = await trx.selectFrom("properties").select(["title", "status", "location_id", "description", "is_demo"]).where("id", "=", id).executeTakeFirst();
   if (!p) return ["La propiedad no existe"];
+  // Una propiedad demo (ficticia) nunca se publica: la base también lo impide (properties_demo_never_published).
+  if (p.is_demo) return ["Es una propiedad DEMO ficticia: no se publica en el sitio, portales ni redes"];
   const blockers: string[] = [];
   if (!["available", "reserved", "sold", "rented"].includes(p.status)) blockers.push("El estado debe ser Disponible, Reservada, Vendida o Alquilada");
   if (!p.location_id) blockers.push("Falta la ubicación");
@@ -398,6 +400,7 @@ export async function duplicateProperty(db: Database, actor: Actor, id: string):
   return db.transaction().execute(async (trx) => {
     const src = await trx.selectFrom("properties").selectAll().where("id", "=", id).where("deleted_at", "is", null).executeTakeFirst();
     if (!src) throw notFound("Propiedad");
+    if (src.is_demo) throw forbidden("La propiedad demo no se duplica: es ficticia");
     const code = Number((await sql<{ code: string }>`select nextval('property_code_seq') as code`.execute(trx)).rows[0]!.code);
     const suffix = " (copia)";
     const title = `${src.title.slice(0, 200 - suffix.length)}${suffix}`;

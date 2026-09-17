@@ -82,7 +82,7 @@ export async function createAppointment(db: Database, actor: Actor, raw: SchemaI
       let property: { code: number; title: string; address_street: string | null; address_number: string | null } | undefined;
       if (propertyId) {
         requirePermission(actor, "properties.read");
-        property = await trx.selectFrom("properties").select(["code", "title", "address_street", "address_number"]).where("id", "=", propertyId).where("deleted_at", "is", null).executeTakeFirst();
+        property = await trx.selectFrom("properties").select(["code", "title", "address_street", "address_number"]).where("id", "=", propertyId).where("deleted_at", "is", null).where("is_demo", "=", false).executeTakeFirst();
         if (!property) throw invalid("Propiedad inválida", { propertyId: ["Propiedad inexistente"] });
       }
       if (input.kind === "visit" && !property) throw invalid("Elegí la propiedad a visitar", { propertyId: ["Elegí la propiedad a visitar"] });

@@ -40,7 +40,7 @@ export async function getZoneShowcase(db: Executor, facets: Pick<Facets, "zones"
                     and v.status <> 'failed') desc,
             p.published_at desc nulls last, p.code desc) as rn
       from properties p join zone_locs z on z.id = p.location_id
-      where p.is_published and p.deleted_at is null and p.status in ('available', 'reserved')
+      where p.is_published and not p.is_demo and p.deleted_at is null and p.status in ('available', 'reserved')
     )
     select r.zone_slug, m.source_url, f.storage_driver, f.storage_key, f.visibility,
       coalesce(m.width, f.width) as width, coalesce(m.height, f.height) as height
@@ -78,7 +78,7 @@ export type LegacyTarget =
 export async function resolveLegacyTarget(db: Executor, path: string): Promise<LegacyTarget> {
   if (!/^\/[A-Za-z0-9/_.-]{1,200}$/.test(path)) return { kind: "not_found" };
   const r = await sql<{ slug: string; published: boolean; type_key: string; location_id: string | null; operation: string | null }>`
-    select p.slug, (p.is_published and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')) as published,
+    select p.slug, (p.is_published and not p.is_demo and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')) as published,
       p.type_key, p.location_id,
       (select o.operation from property_operations o where o.property_id = p.id order by o.is_active desc, o.operation limit 1) as operation
     from property_redirects r join properties p on p.id = r.property_id
@@ -121,7 +121,7 @@ export async function listListingCombinations(db: Executor): Promise<ListingComb
     from properties p
     join property_operations o on o.property_id = p.id and o.is_active and o.operation in ('sale', 'rent')
     left join loc_locality ll on ll.id = p.location_id
-    where p.is_published and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')
+    where p.is_published and not p.is_demo and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')
     group by grouping sets ((o.operation, p.type_key), (o.operation, ll.zone_slug), (o.operation, p.type_key, ll.zone_slug))`.execute(db);
   return r.rows
     .filter((x) => x.n > 0 && (x.g_zone === 1 || x.zone_slug !== null))
