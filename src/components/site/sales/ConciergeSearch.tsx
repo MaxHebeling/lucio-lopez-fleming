@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import type { ConciergeResponse } from "@/server/sales/concierge";
-import { readConcierge, trackSite, writeConcierge } from "./site-track";
+import { conciergeSnapshot, trackSite, writeConcierge, type StoredConcierge } from "./site-track";
 import "./sales.css";
 
 type Ok = Extract<ConciergeResponse, { status: "ok" }>;
+
+const noopSubscribe = () => () => {};
 
 const PLACEHOLDER = "Contanos qué buscás: «casa con jardín hasta USD 180.000 en San Lorenzo»";
 
@@ -20,23 +22,25 @@ const PLACEHOLDER = "Contanos qué buscás: «casa con jardín hasta USD 180.000
 export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"; page: "home" | "listing" }) {
   const router = useRouter();
   const id = useId();
-  const [text, setText] = useState("");
+  const [typed, setText] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<Ok | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const inflight = useRef(false);
 
   // En el listado: si la URL actual es la que armó la última interpretación de esta pestaña, se explica.
-  useEffect(() => {
-    if (page !== "listing") return;
-    const stored = readConcierge();
-    if (!stored) return;
-    const here = `${window.location.pathname}${window.location.search}`;
-    if (stored.href === here) {
-      setText(stored.text);
-      setResult(stored.response as Ok);
+  const storedRaw = useSyncExternalStore(noopSubscribe, conciergeSnapshot, () => "");
+  const restored = useMemo(() => {
+    if (page !== "listing" || !storedRaw) return null;
+    try {
+      const stored = JSON.parse(storedRaw) as StoredConcierge;
+      return stored.href === `${window.location.pathname}${window.location.search}` ? stored : null;
+    } catch {
+      return null;
     }
-  }, [page]);
+  }, [page, storedRaw]);
+  const text = typed ?? restored?.text ?? "";
+  const shown = result ?? (restored?.response as Ok | undefined) ?? null;
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -74,7 +78,7 @@ export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"
     }
   };
 
-  const showSummary = result && (page === "listing" || !result.hasFilters);
+  const showSummary = shown && (page === "listing" || !shown.hasFilters);
   return (
     <div className={page === "listing" ? "concierge-summary" : undefined}>
       <form action="/api/site/concierge" method="post" onSubmit={onSubmit} role="search" aria-label="Búsqueda en lenguaje natural" className={`concierge ${variant === "hero" ? "concierge-dark" : ""}`} aria-busy={pending || undefined}>
@@ -104,7 +108,7 @@ export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"
 
       <div aria-live="polite" className={page === "home" ? "empty:hidden" : undefined}>
         {message ? <p className="concierge-feedback">{message}</p> : null}
-        {showSummary ? <Understood result={result} home={page === "home"} /> : null}
+        {showSummary ? <Understood result={shown} home={page === "home"} /> : null}
       </div>
     </div>
   );

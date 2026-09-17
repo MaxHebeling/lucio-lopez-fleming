@@ -13,6 +13,8 @@ import { APPOINTMENT_KIND_LABEL, APPOINTMENT_STATUS_LABEL, APPOINTMENT_STATUS_TO
 import { logOutreachAction } from "../../_shared/actions";
 import { orNotFound, requireUuid } from "../../_shared/load";
 import { AssignOpportunityForm, CloseButtons, EditOpportunityButton, MoveStageForm } from "../opportunity-forms";
+import { nextActionsPanel } from "@/server/sales/crm-panels";
+import { NextActionsCard } from "@/components/crm/sales/sales-cards";
 
 export const metadata: Metadata = { title: "Oportunidad" };
 
@@ -25,7 +27,7 @@ export default async function OpportunityPage({ params }: PageProps<"/crm/pipeli
   const stage = pipeline.stages.find((s) => s.id === opp.stage_id);
   const canUpdate = can(actor, "opportunities.update");
   const canAssign = can(actor, "opportunities.assign");
-  const users = canAssign ? await listStaffUsers(db, actor) : [];
+  const [users, next] = await Promise.all([canAssign ? listStaffUsers(db, actor) : Promise.resolve([]), nextActionsPanel(db, actor, "opportunity", id)]);
   const req = (opp.requirements ?? {}) as { text?: string; zones?: string; bedroomsMin?: number | null };
   const cur = opp.budget_currency ?? "USD";
   const budget = opp.budget_min || opp.budget_max ? [opp.budget_min ? formatMoney(opp.budget_min, cur) : null, opp.budget_max ? formatMoney(opp.budget_max, cur) : null].filter(Boolean).join(" – ") : "—";
@@ -59,6 +61,7 @@ export default async function OpportunityPage({ params }: PageProps<"/crm/pipeli
       />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="flex min-w-0 flex-col gap-4">
+          {next ? <NextActionsCard items={next.items} canAccept={next.canAccept} canDecide={next.canDecide} /> : null}
           <Card title="Contacto">
             <p className="mb-3 font-semibold">
               <Link href={`/crm/contactos/${d.contact.id}`} className="underline-offset-4 hover:underline">

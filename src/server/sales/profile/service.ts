@@ -9,7 +9,7 @@ import "server-only";
 import { z } from "zod";
 import { sql, type Database, type Executor } from "../../db";
 import { audit } from "../../audit";
-import { actorUserId, can, type Actor } from "../../auth/actor";
+import { can, type Actor } from "../../auth/actor";
 import { forbidden, invalid, notFound } from "../../errors";
 import { enqueue } from "../../jobs/queue";
 import { loadSalesContact } from "../scope";

@@ -1,23 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Check, Columns3, Plus, X } from "lucide-react";
-import { COMPARE_EVENT, COMPARE_MAX, readCompare, writeCompare, type CompareItem } from "./site-track";
+import { COMPARE_MAX, compareSnapshot, hydrationStore, parseCompare, subscribeCompare, writeCompare, type CompareItem } from "./site-track";
 import "./sales.css";
 
 function useCompare(): [CompareItem[], (next: CompareItem[]) => void] {
-  const [list, setList] = useState<CompareItem[]>([]);
-  useEffect(() => {
-    setList(readCompare());
-    const on = () => setList(readCompare());
-    window.addEventListener(COMPARE_EVENT, on);
-    window.addEventListener("storage", on);
-    return () => {
-      window.removeEventListener(COMPARE_EVENT, on);
-      window.removeEventListener("storage", on);
-    };
-  }, []);
+  const raw = useSyncExternalStore(subscribeCompare, compareSnapshot, () => "[]");
+  const list = useMemo(() => parseCompare(raw), [raw]);
   return [list, (next) => writeCompare(next)];
 }
 
@@ -27,8 +18,7 @@ function useCompare(): [CompareItem[], (next: CompareItem[]) => void] {
  */
 export function CompareToggle({ code, label, className = "" }: { code: number; label: string; className?: string }) {
   const [list, save] = useCompare();
-  const [ready, setReady] = useState(false);
-  useEffect(() => setReady(true), []);
+  const ready = useSyncExternalStore(hydrationStore.subscribe, hydrationStore.client, hydrationStore.server);
   if (!ready) return null;
   const selected = list.some((x) => x.code === code);
   const full = !selected && list.length >= COMPARE_MAX;

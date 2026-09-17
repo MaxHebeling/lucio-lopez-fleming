@@ -85,11 +85,18 @@ export const COMPARE_EVENT = "llf:compare";
 export const COMPARE_MAX = 3;
 export type CompareItem = { code: number; label: string };
 
-export function readCompare(): CompareItem[] {
+export function parseCompare(raw: string | null): CompareItem[] {
   try {
-    const raw = window.sessionStorage.getItem(COMPARE_KEY);
     const list = raw ? (JSON.parse(raw) as CompareItem[]) : [];
     return Array.isArray(list) ? list.filter((x) => Number.isInteger(x?.code) && typeof x.label === "string").slice(0, COMPARE_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function readCompare(): CompareItem[] {
+  try {
+    return parseCompare(window.sessionStorage.getItem(COMPARE_KEY));
   } catch {
     return [];
   }
@@ -102,4 +109,35 @@ export function writeCompare(list: CompareItem[]): void {
     // sin almacenamiento: la selección vive solo en esta página
   }
   window.dispatchEvent(new CustomEvent(COMPARE_EVENT, { detail: list }));
+}
+
+// ───────── Suscripciones (useSyncExternalStore) ─────────
+
+const noop = () => () => {};
+/** true solo en el navegador después de hidratar (para no mostrar controles sin JS). */
+export const hydrationStore = { subscribe: noop, client: () => true, server: () => false };
+
+export function subscribeCompare(cb: () => void): () => void {
+  window.addEventListener(COMPARE_EVENT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(COMPARE_EVENT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+export function compareSnapshot(): string {
+  try {
+    return window.sessionStorage.getItem(COMPARE_KEY) ?? "[]";
+  } catch {
+    return "[]";
+  }
+}
+
+export function conciergeSnapshot(): string {
+  try {
+    return window.sessionStorage.getItem(CONCIERGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
 }

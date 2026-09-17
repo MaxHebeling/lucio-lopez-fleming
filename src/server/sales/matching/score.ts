@@ -80,7 +80,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
   const consider: string[] = [];
   const blockers: string[] = [];
   let unconfirmed = false;
-  const use = <T>(e: Eff<T> | undefined): Eff<T> | undefined => {
+  const track = <T>(e: Eff<T> | undefined): Eff<T> | undefined => {
     if (e && !e.confirmed) unconfirmed = true;
     return e;
   };
@@ -89,12 +89,12 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
   if (!prop.published) blockers.push("No está publicada");
   if (prop.status !== "available") blockers.push(prop.status === "reserved" ? "Está reservada" : "No está disponible");
 
-  const op = use(p.transactionType)?.value;
+  const op = track(p.transactionType)?.value;
   const ops = op ? prop.operations.filter((o) => o.operation === op) : prop.operations;
   if (op && !ops.length) blockers.push(op === "sale" ? "No está en venta" : "No está en alquiler");
   else if (op) matched.push(op === "sale" ? "En venta" : op === "rent" ? "En alquiler" : "Alquiler temporario");
 
-  const types = use(p.propertyTypes)?.value;
+  const types = track(p.propertyTypes)?.value;
   if (types?.length) {
     if (types.includes(prop.typeKey)) matched.push(prop.typeName);
     else blockers.push(`Es ${prop.typeName.toLowerCase()}, no el tipo buscado`);
@@ -103,7 +103,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
   let earned = 0;
   let possible = 0;
 
-  const budget = use(p.budget)?.value;
+  const budget = track(p.budget)?.value;
   if (budget) {
     possible += WEIGHTS.budget;
     const sameCurrency = ops.filter((o) => o.currency === budget.currency);
@@ -129,7 +129,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
     }
   }
 
-  const locs = use(p.locations)?.value;
+  const locs = track(p.locations)?.value;
   if (locs?.length) {
     possible += WEIGHTS.locations;
     const exact = locs.find((l) => (l.kind === "area" ? l.slug === prop.areaSlug && (!l.localitySlug || l.localitySlug === prop.localitySlug) : l.slug === prop.localitySlug));
@@ -143,7 +143,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
     } else consider.push("Fuera de las zonas preferidas");
   }
 
-  const beds = use(p.bedroomsMin)?.value;
+  const beds = track(p.bedroomsMin)?.value;
   if (beds !== undefined && beds > 0) {
     possible += WEIGHTS.bedrooms;
     if (prop.bedrooms === null) {
@@ -158,7 +158,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
     } else consider.push(`Menos dormitorios (${prop.bedrooms})`);
   }
 
-  const baths = use(p.bathroomsMin)?.value;
+  const baths = track(p.bathroomsMin)?.value;
   if (baths !== undefined) {
     possible += WEIGHTS.bathrooms;
     if (prop.bathrooms === null) {
@@ -170,7 +170,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
     } else consider.push(`Menos baños (${prop.bathrooms})`);
   }
 
-  const surface = use(p.surface)?.value;
+  const surface = track(p.surface)?.value;
   if (surface) {
     possible += WEIGHTS.surface;
     const s = prop.surfaceM2;
@@ -189,7 +189,7 @@ export function scoreMatch(p: MatchProfile, prop: MatchProperty, opts: { toleran
     }
   }
 
-  const feats = use(p.features)?.value;
+  const feats = track(p.features)?.value;
   if (feats?.length) {
     possible += WEIGHTS.features;
     const have = feats.filter((k) => prop.featureKeys.includes(k));

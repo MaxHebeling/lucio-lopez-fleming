@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { ArrowRight } from "lucide-react";
 import type { PropertyQaResponse } from "@/server/sales/property-qa/service";
-import { trackSite } from "./site-track";
+import { hydrationStore, trackSite } from "./site-track";
 import "./sales.css";
 
 type Ok = Extract<PropertyQaResponse, { status: "ok" }>;
@@ -35,14 +35,13 @@ function openVisit() {
  */
 export function PropertyQA({ code, suggestions, visitable }: { code: number; suggestions: string[]; visitable: boolean }) {
   const id = useId();
-  const [ready, setReady] = useState(false);
+  const ready = useSyncExternalStore(hydrationStore.subscribe, hydrationStore.client, hydrationStore.server);
   const [question, setQuestion] = useState("");
   const [asked, setAsked] = useState("");
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<Ok | null>(null);
   const [error, setError] = useState<string | null>(null);
   const answerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setReady(true), []);
 
   const ask = async (q: string) => {
     const value = q.trim();

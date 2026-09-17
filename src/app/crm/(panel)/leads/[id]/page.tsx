@@ -13,6 +13,9 @@ import { INTEREST_LABEL, LEAD_STATUS_LABEL, LEAD_STATUS_TONE, OPP_STATUS_LABEL, 
 import { logOutreachAction } from "../../_shared/actions";
 import { orNotFound, requireUuid } from "../../_shared/load";
 import { AssignForm, ConvertButton, FirstContactButton, PriorityForm, StatusForm } from "./lead-controls";
+import { leadSalesPanels } from "@/server/sales/crm-panels";
+import { NextActionsCard } from "@/components/crm/sales/sales-cards";
+import { LeadQualificationCard } from "@/components/crm/sales/sales-panels";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -26,7 +29,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
   const d = await orNotFound(getLeadDetail(db, actor, id));
   const { lead } = d;
   const canUpdate = can(actor, "leads.update");
-  const [users, pipelines] = await Promise.all([can(actor, "leads.assign") ? listStaffUsers(db, actor) : Promise.resolve([]), listPipelines(db, actor)]);
+  const [users, pipelines, sales] = await Promise.all([can(actor, "leads.assign") ? listStaffUsers(db, actor) : Promise.resolve([]), listPipelines(db, actor), leadSalesPanels(db, actor, id)]);
   const utmEntries = Object.entries((lead.utm ?? {}) as Record<string, string>);
   return (
     <>
@@ -111,6 +114,9 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
               </dl>
             </Alert>
           ) : null}
+
+          {sales?.next ? <NextActionsCard items={sales.next.items} canAccept={sales.next.canAccept} canDecide={sales.next.canDecide} /> : null}
+          {sales?.qualification ? <LeadQualificationCard summary={sales.qualification} contactHref={`/crm/contactos/${d.contact.id}`} /> : null}
 
           <Card title="Consulta">
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
