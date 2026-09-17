@@ -31,7 +31,9 @@ export async function listingTitle(f: SearchFilters): Promise<string> {
   if (f.operacion === "venta") t += " en venta";
   else if (f.operacion === "alquiler") t += " en alquiler";
   else if (f.operacion === "temporario") t += " en alquiler temporario";
-  t += zone ? ` en ${zone}` : " en Salta";
+  // Sin zona el listado abarca toda la oferta ("en Salta"); la localidad Salta es la ciudad: título propio, no duplicado.
+  const isCity = zone && !f.barrio && zone.localeCompare("Salta", "es", { sensitivity: "base" }) === 0;
+  t += isCity ? " en la ciudad de Salta" : zone ? ` en ${zone}` : " en Salta";
   return t;
 }
 

@@ -33,7 +33,9 @@ export function revalidatePublicSiteInRequest(tags: SiteCacheTag[] = ALL_SITE_CA
     revalidatePath("/", "layout");
     return true;
   } catch (e) {
-    log.warn("site.revalidate_no_request_context", errorFields(e));
+    // Esperado en procesos fuera de Next ("static generation store missing"): se sigue por HTTP. Otro error se registra.
+    if (/store missing/i.test((e as Error).message)) log.info("site.revalidate_outside_request");
+    else log.warn("site.revalidate_in_request_failed", errorFields(e));
     return false;
   }
 }

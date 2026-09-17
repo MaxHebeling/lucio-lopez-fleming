@@ -92,5 +92,22 @@ solo en desktop); limpieza de observers/listeners al desmontar; CLS = 0; el LCP 
 
 - Metadata por página, canonical, OpenGraph con foto real, JSON-LD (`RealEstateAgent` para la empresa con sus dos
   sedes; `Offer`/`SingleFamilyResidence`/`Apartment`/`Place` en fichas según corresponda), sitemap dinámico, robots.
-- URLs estables `/propiedades/{slug}`; URLs del sitio anterior `/luciolopez-{código}` → 301 a la ficha nueva.
+- URLs estables `/propiedades/{slug}`; URLs del sitio anterior `/luciolopez-{código}` → 301 a la ficha nueva; si ya no
+  está publicada, 301 a la búsqueda por su tipo/operación/localidad; código inexistente → 404 real.
 - Propiedad vendida/alquilada: la ficha se mantiene con estado visible y similares; archivada → 301 a búsqueda filtrada.
+- Titulares con diferencial real (dormitorios, ambientes o superficie) y `<title>` ≤ 60 caracteres sin cortar palabras
+  (la marca se agrega solo si entra). Listados por operación + tipo y/o localidad con resultados: canonical propio y en
+  el sitemap; con refinamientos (precio, dormitorios, texto…) o sin resultados: `noindex` y canonical a la base.
+
+## 8. Caché e invalidación
+
+- Lecturas públicas en la caché de datos de Next (`unstable_cache`, `src/server/site/public-data.ts`) con etiquetas
+  `site:properties` / `site:info` y vencimiento de respaldo de 5 minutos. Home, fichas (ISR, generadas en la primera
+  visita), empresa, contacto, tasaciones, términos y privacidad se sirven desde caché (`s-maxage=300`). Los listados
+  dependen de la URL y siguen dinámicos (con facetas y nombres cacheados).
+- Invalidación inmediata (`src/server/site/revalidate.ts`): las Server Actions y route handlers del CRM que cambian algo
+  visible en el sitio llaman `revalidatePublicSiteInRequest()` después del servicio; los eventos `property.*` disparan la
+  automatización de sistema `revalidate_public_site` (cubre alquileres, jobs e importador); fuera de Next (worker local,
+  scripts) se pide por HTTP a `POST /api/site/revalidate` con `CRON_SECRET`.
+- Nunca usar APIs dinámicas (`connection()`, `headers()`, `cookies()`) en el layout del sitio ni en `app/not-found.tsx`:
+  el 404 raíz forma parte del árbol de todas las páginas y volvería dinámico al sitio entero.
