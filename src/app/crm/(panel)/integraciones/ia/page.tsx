@@ -29,8 +29,30 @@ const REASON_LABEL: Record<string, string> = {
 
 const FEATURE_LABEL: Record<string, string> = {
   "copilot.assistant": "Asistente IA · guía",
-  "copilot.analyst": "Asistente IA · analista",
+  "copilot.analyst": "Asistente IA · analista (incluye preguntas de dirección)",
   whatsapp_reply: "Asistente de WhatsApp",
+  "public.concierge": "Sitio · concierge (Fase 2)",
+  "public.property_qa": "Sitio · preguntas a la propiedad (Fase 2)",
+  "public.compare_summary": "Sitio · resumen del comparador (Fase 2)",
+  "sales.lead_qualification": "Ventas · calificación de leads (Fase 2)",
+  "ai.photo_director.tags": "Propiedades · ambientes de fotos (Fase 3)",
+  "ai.marketing_director": "Propiedades · borradores de marketing (Fase 3)",
+  "ai.tour_guide": "Sitio · guía del tour (Fase 3)",
+  "ai.visit_brief": "Visitas · brief previo (Fase 4b)",
+  "ai.visit_report": "Visitas · propuesta de informe (Fase 4b)",
+  "ai.visit_thanks": "Visitas · agradecimiento (Fase 4b)",
+  "management.daily_brief": "Gestión · Resumen de hoy (Fase 5)",
+  "ai.visit_report_profile": "Automatización · perfil desde informe de visita (Fase 6)",
+};
+
+const SOURCE_NAME: Record<string, string> = {
+  sales_nba: "Ventas · siguiente acción",
+  visit: "Visitas · cierre",
+  property_quality: "Calidad de la publicación",
+  marketing: "Marketing · borradores",
+  ops_alert: "Centro operativo · alerta",
+  assignment: "Asignaciones",
+  anomaly: "Anomalías",
 };
 
 const usd = (n: number) => `USD ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
@@ -127,8 +149,10 @@ export default async function AiUsagePage({ searchParams }: PageProps<"/crm/inte
                   <th scope="col">Pedidos</th>
                   <th scope="col">Errores</th>
                   <th scope="col">Respaldo</th>
+                  <th scope="col">Fallas de herramientas / búsqueda</th>
                   <th scope="col">Latencia p50 / p95</th>
                   <th scope="col">Costo</th>
+                  <th scope="col">Feedback</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,11 +161,22 @@ export default async function AiUsagePage({ searchParams }: PageProps<"/crm/inte
                     <td className="font-semibold">{FEATURE_LABEL[r.feature] ?? r.feature}</td>
                     <td>{r.requests}</td>
                     <td>{r.errors}</td>
-                    <td>{r.fallbacks}</td>
+                    <td className="whitespace-nowrap">
+                      {r.fallbacks} ({pct(r.fallbackRate)})
+                    </td>
+                    <td>
+                      {r.tool_failures} / {r.retrieval_failures}
+                    </td>
                     <td className="whitespace-nowrap">
                       {ms(r.p50)} / {ms(r.p95)}
                     </td>
                     <td className="whitespace-nowrap">{usd(r.costUsd)}</td>
+                    <td className="whitespace-nowrap">
+                      {(() => {
+                        const fb = data.feedback.byFeature.find((f) => f.feature === r.feature);
+                        return fb ? `👍 ${fb.up} · 👎 ${fb.down}` : "—";
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -183,6 +218,94 @@ export default async function AiUsagePage({ searchParams }: PageProps<"/crm/inte
             )}
           </Card>
         </div>
+
+        <Card title="Automatizaciones de IA">
+          <Table label="Ejecuciones de automatizaciones de IA">
+            <thead>
+              <tr>
+                <th scope="col">Automatización</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Ejecuciones</th>
+                <th scope="col">Con error</th>
+                <th scope="col">Omitidas (loops)</th>
+                <th scope="col">Duración p50 / p95</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.automations.map((a) => (
+                <tr key={a.key}>
+                  <td>
+                    <span className="font-semibold">{a.name}</span>
+                    <span className="block font-mono text-[11px] text-stone">{a.key}</span>
+                  </td>
+                  <td>
+                    <Badge tone={a.is_enabled ? "success" : "neutral"}>{a.is_enabled ? "Activa" : "Desactivada"}</Badge>
+                  </td>
+                  <td>{a.runs}</td>
+                  <td className={a.failed ? "text-danger" : undefined}>{a.failed}</td>
+                  <td>
+                    {a.skipped} ({a.loop_guard})
+                  </td>
+                  <td className="whitespace-nowrap">
+                    {ms(a.p50)} / {ms(a.p95)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          <p className="mt-2 text-xs text-stone">
+            Jobs muertos de IA en el período: {data.deadJobs.length ? data.deadJobs.map((j) => `${j.type} (${j.n})`).join(", ") : "ninguno"}. Detalle en{" "}
+            <Link href="/crm/automatizaciones" className="underline underline-offset-2">
+              Automatizaciones
+            </Link>{" "}
+            y{" "}
+            <Link href="/crm/sistema/jobs?status=dead" className="underline underline-offset-2">
+              Jobs
+            </Link>
+            .
+          </p>
+        </Card>
+
+        <Card title="Gestión con IA">
+          <p className="text-sm">
+            <span className="font-semibold">Resumen de hoy:</span> {data.management.briefs.briefs} cálculos en el período · {data.management.briefs.with_ai} con redacción de IA.
+          </p>
+          {data.management.suggestions.length ? (
+            <div className="mt-3">
+              <Table label="Tareas sugeridas por origen">
+                <thead>
+                  <tr>
+                    <th scope="col">Origen</th>
+                    <th scope="col">Creadas</th>
+                    <th scope="col">Aceptadas</th>
+                    <th scope="col">Descartadas</th>
+                    <th scope="col">Pospuestas</th>
+                    <th scope="col">Vencidas solas</th>
+                    <th scope="col">Pendientes hoy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.management.suggestions.map((s) => (
+                    <tr key={s.source}>
+                      <td className="font-semibold">{SOURCE_NAME[s.source] ?? s.source}</td>
+                      <td>{s.created}</td>
+                      <td>{s.accepted}</td>
+                      <td>{s.dismissed}</td>
+                      <td>{s.snoozed}</td>
+                      <td>{s.expired}</td>
+                      <td>{s.open}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-stone">Todavía no hay tareas sugeridas.</p>
+          )}
+          <p className="mt-3 text-sm">
+            <span className="font-semibold">Anomalías abiertas:</span> {data.management.anomalies.length ? data.management.anomalies.map((a) => `${a.kind} (${a.n})`).join(", ") : "ninguna"}.
+          </p>
+        </Card>
 
         <Card title="Por día">
           {data.daily.length ? (

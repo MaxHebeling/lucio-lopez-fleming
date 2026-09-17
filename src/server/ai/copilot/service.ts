@@ -132,7 +132,8 @@ export function toolResultForModel(r: ToolResult): string {
     total: r.total,
     truncated: r.truncated,
     scope: r.scope,
-    items: r.items.map((i) => ({ label: i.label, detail: i.detail ?? undefined, badge: i.badge ?? undefined })),
+    period: r.period ?? undefined,
+    items: r.items.map((i) => ({ label: i.label, detail: i.detail ?? undefined, badge: i.badge ?? undefined, definition: i.definition ?? undefined })),
   };
   const parts = [redactForModel(JSON.stringify(payload))];
   for (const u of r.untrusted ?? []) parts.push(untrustedData(u.source, redactForModel(u.text), 2000));
@@ -144,7 +145,7 @@ export function toolResultForModel(r: ToolResult): string {
  * NO cuenta como evidencia: un precio escrito en una descripción (o inyectado) no habilita al modelo a afirmarlo.
  */
 function groundToolResult(facts: GroundingFacts, r: ToolResult): void {
-  const texts = [r.title, r.summary, String(r.total), ...r.items.flatMap((i) => [i.label, i.detail ?? "", i.badge ?? ""])];
+  const texts = [r.title, r.summary, String(r.total), r.period ?? "", ...r.items.flatMap((i) => [i.label, i.detail ?? "", i.badge ?? "", i.definition ?? ""])];
   for (const t of texts) {
     addGroundedText(facts, t);
     addGroundedRoutes(facts, t);
@@ -155,7 +156,7 @@ function groundToolResult(facts: GroundingFacts, r: ToolResult): void {
 }
 
 function factGroup(r: ToolResult): CopilotFactGroup {
-  return { title: r.title, summary: r.summary, items: r.items, total: r.total, truncated: r.truncated, source: r.source, scope: r.scope };
+  return { title: r.title, summary: r.summary, items: r.items, total: r.total, truncated: r.truncated, source: r.source, scope: r.scope, period: r.period ?? null };
 }
 
 function guideExcerpts(hits: KnowledgeHit[], screen: ScreenContext | null, max = 3): GuideExcerpt[] {

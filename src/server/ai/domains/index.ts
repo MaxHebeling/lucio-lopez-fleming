@@ -5,6 +5,7 @@
  */
 import { ToolRegistry } from "../core/registry";
 import { registerExecutiveTools } from "./executive";
+import { registerExecutiveManagementTools } from "./executive-management";
 import { registerKnowledgeTools } from "./knowledge";
 import { registerOperationsTools } from "./operations";
 import { registerPropertyTools } from "./property";
@@ -21,6 +22,7 @@ export function createDefaultRegistry(): ToolRegistry {
   registerPropertyQualityTools(registry);
   registerOperationsTools(registry);
   registerExecutiveTools(registry);
+  registerExecutiveManagementTools(registry);
   return registry;
 }
 

@@ -24,7 +24,7 @@ export async function getAiUsage(db: Database, actor: Actor, raw: unknown) {
   const org = sql`(i.organization_id = ${actor.organizationId}${primary ? sql` or i.organization_id is null` : sql``})`;
   const since = sql<Date>`now() - make_interval(days => ${days})`;
 
-  const [byFeature, reasons, daily, costs, tools, feedback, comments, routing, knowledge, integration, flags, budget, budgetUsd] = await Promise.all([
+  const [byFeature, reasons, daily, costs, tools, feedback, comments, routing, knowledge, integration, flags, budget, budgetUsd, feedbackByFeature, automations, deadAiJobs, management] = await Promise.all([
     sql<{
       feature: string;
       requests: number;
@@ -92,6 +92,37 @@ export async function getAiUsage(db: Database, actor: Actor, raw: unknown) {
     db.selectFrom("feature_flags").select(["key", "enabled", "description"]).where("key", "like", "ai\\_%").orderBy("key").execute(),
     budgetStatus(db),
     dailyBudgetUsd(db),
+    // Feedback por función (Fases 1–5)
+    sql<{ feature: string; up: number; down: number }>`
+      select coalesce(feature, 'copilot') as feature, count(*) filter (where rating = 1)::int as up, count(*) filter (where rating = -1)::int as down
+        from ai_feedback where organization_id = ${actor.organizationId} and created_at >= ${since} group by 1`.execute(db),
+    // Automatizaciones de sistema de IA (Fases 2, 3 y 6): ejecuciones, fallas, omitidas, protección contra loops y duración
+    sql<{ key: string; name: string; is_enabled: boolean; runs: number; failed: number; skipped: number; loop_guard: number; p50: number | null; p95: number | null }>`
+      select d.key, d.name, d.is_enabled, count(r.id)::int as runs,
+             count(r.id) filter (where r.status = 'failed')::int as failed,
+             count(r.id) filter (where r.status = 'skipped')::int as skipped,
+             count(r.id) filter (where r.result ? 'loopGuard')::int as loop_guard,
+             round(percentile_cont(0.5) within group (order by extract(epoch from (r.finished_at - r.started_at)) * 1000))::int as p50,
+             round(percentile_cont(0.95) within group (order by extract(epoch from (r.finished_at - r.started_at)) * 1000))::int as p95
+        from automation_definitions d left join automation_runs r on r.automation_id = d.id and r.started_at >= ${since}
+       where d.key like 'ai\_%' or d.key like 'sales\_%'
+       group by d.id order by d.key`.execute(db),
+    sql<{ type: string; n: number }>`
+      select type, count(*)::int as n from jobs where status = 'dead' and finished_at >= ${since} and (type like 'ai.%' or type = 'automation.run' and payload->>'automationId' in (select id::text from automation_definitions where key like 'ai\_%' or key like 'sales\_%'))
+       group by 1 order by 2 desc`.execute(db),
+    // Gestión con IA (Fase 5): resúmenes calculados, decisiones sobre tareas sugeridas y anomalías abiertas
+    Promise.all([
+      sql<{ briefs: number; with_ai: number }>`select count(*)::int as briefs, count(*) filter (where narrative is not null)::int as with_ai from ai_daily_briefs where organization_id = ${actor.organizationId} and computed_at >= ${since}`.execute(db),
+      sql<{ source: string; created: number; accepted: number; dismissed: number; snoozed: number; expired: number; open: number }>`
+        select source, count(*) filter (where created_at >= ${since})::int as created,
+               count(*) filter (where status = 'accepted' and decided_at >= ${since})::int as accepted,
+               count(*) filter (where status = 'dismissed' and decided_at >= ${since})::int as dismissed,
+               count(*) filter (where status = 'snoozed' and decided_at >= ${since})::int as snoozed,
+               count(*) filter (where status = 'expired' and resolved_at >= ${since})::int as expired,
+               count(*) filter (where status = 'open')::int as open
+          from sales_recommendations where organization_id = ${actor.organizationId} group by 1 order by 1`.execute(db),
+      sql<{ kind: string; n: number }>`select kind, count(*)::int as n from ai_anomalies where organization_id = ${actor.organizationId} and resolved_at is null group by 1 order by 2 desc`.execute(db),
+    ]),
   ]);
 
   const totals = byFeature.rows.reduce(
@@ -103,7 +134,7 @@ export async function getAiUsage(db: Database, actor: Actor, raw: unknown) {
   return {
     days,
     totals: { ...totals, fallbackRate: totals.requests ? totals.fallbacks / totals.requests : null },
-    byFeature: byFeature.rows.map((r) => ({ ...r, p50: r.p50 === null ? null : Math.round(r.p50), p95: r.p95 === null ? null : Math.round(r.p95), costUsd: Number(r.cost_micros) / 1e6 })),
+    byFeature: byFeature.rows.map((r) => ({ ...r, p50: r.p50 === null ? null : Math.round(r.p50), p95: r.p95 === null ? null : Math.round(r.p95), costUsd: Number(r.cost_micros) / 1e6, fallbackRate: r.requests ? r.fallbacks / r.requests : null })),
     reasons: reasons.rows,
     daily: daily.rows.map((r) => ({ ...r, costUsd: Number(r.cost_micros) / 1e6 })),
     cost: {
@@ -115,7 +146,10 @@ export async function getAiUsage(db: Database, actor: Actor, raw: unknown) {
       budgetExhausted: budget.exhausted,
     },
     tools: tools.rows,
-    feedback: { up: feedback.rows[0]?.up ?? 0, down: feedback.rows[0]?.down ?? 0, comments },
+    feedback: { up: feedback.rows[0]?.up ?? 0, down: feedback.rows[0]?.down ?? 0, comments, byFeature: feedbackByFeature.rows },
+    automations: automations.rows,
+    deadJobs: deadAiJobs.rows,
+    management: { briefs: management[0].rows[0] ?? { briefs: 0, with_ai: 0 }, suggestions: management[1].rows, anomalies: management[2].rows },
     routing: Object.values(routing),
     prompts: listPrompts(),
     knowledge,

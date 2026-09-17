@@ -38,7 +38,7 @@ function QualityBadge({ score }: { score: number | null }) {
   );
 }
 
-const FILTER_KEYS = ["q", "status", "published", "typeKey", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "quality", "sort"] as const;
+const FILTER_KEYS = ["q", "status", "published", "typeKey", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "quality", "compatibles", "sort"] as const;
 
 function price(p: PropertyListItem) {
   if (!p.operations.length) return <span className="text-stone">Sin operación</span>;
@@ -117,7 +117,19 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
         </div>
       ) : null}
 
+      {params.compatibles ? (
+        <div className="mb-4">
+          <Alert tone="info">
+            Mostrando propiedades publicadas en los últimos 7 días con clientes compatibles (coincidencia estimada) en tu alcance.{" "}
+            <Link href="/crm/propiedades" className="font-semibold underline underline-offset-4">
+              Quitar filtro
+            </Link>
+          </Alert>
+        </div>
+      ) : null}
+
       <form method="get" action="/crm/propiedades" className="mb-5 flex flex-col gap-3 rounded-[var(--radius-lg)] border border-line bg-white p-4" role="search" aria-label="Filtrar propiedades">
+        {params.compatibles ? <input type="hidden" name="compatibles" value={params.compatibles} /> : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
           <Field label="Buscar" htmlFor="f-q">
             <Input id="f-q" name="q" type="search" defaultValue={params.q} placeholder="Código, título o dirección" />

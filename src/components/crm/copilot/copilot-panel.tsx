@@ -325,6 +325,7 @@ function AnswerView({ answer, statusNotice, onNavigate, onSuggestion }: { answer
             <section key={`${f.title}-${i}`} aria-label={`Hechos: ${f.title}`}>
               <h3 className="text-xs font-bold uppercase tracking-wide text-ink-2">Hechos · {f.title}</h3>
               {answer.generatedBy === "ai" ? <p className="text-xs text-stone">{f.summary}</p> : null}
+              {f.period ? <p className="text-[11px] text-stone">Período: {f.period}</p> : null}
               {f.items.length ? (
                 <ul className="mt-1.5 divide-y divide-line rounded-[var(--radius-md)] border border-line">
                   {f.items.map((it, j) => (
@@ -338,6 +339,7 @@ function AnswerView({ answer, statusNotice, onNavigate, onSuggestion }: { answer
                           <p className="font-semibold">{it.label}</p>
                         )}
                         {it.detail ? <p className="text-xs text-stone">{it.detail}</p> : null}
+                        {it.definition ? <p className="mt-0.5 text-[11px] text-stone">Definición: {it.definition}</p> : null}
                       </div>
                       {it.badge ? <span className="shrink-0 rounded-full bg-paper-2 px-2 py-0.5 text-[11px] font-semibold text-ink-2">{it.badge}</span> : null}
                     </li>
