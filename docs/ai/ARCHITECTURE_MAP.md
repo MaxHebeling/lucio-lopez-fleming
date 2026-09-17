@@ -46,3 +46,15 @@ el AI Core. Nada de esto se reemplazó.
   estado de portales distintas entre pantallas, `branchIds` sin uso, `notifyRole("administrador")` no incluye a
   Dirección, eventos perdidos al desactivar una automatización, renovar un contrato finalizado sin UI, entre otras.
   Detalle en el informe de entrega de la Fase 1.
+
+## Verificación final de la Fase 1 (2026-09-17, rama `feat/ai-foundation` con `origin/main` @ 8490788 mergeado)
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm lint` | OK, 0 errores / 0 avisos |
+| `pnpm typecheck` | OK |
+| `pnpm db:codegen:verify` | OK (tipos al día con 0180–0181 y 0500–0501) |
+| `pnpm test` | **54 archivos, 522 tests OK** (post-merge; antes del merge: 52 / 485; línea base: 50 / 437) |
+| `pnpm build` | OK |
+| `E2E_PORT=3111 E2E_DB=llf_e2e_ai E2E_TEMPLATE_DB=llf_dev_ai bash scripts/e2e.sh` | **38/38** (3 nuevos del copiloto: desktop ×2, mobile 390 ×1; axe sin violaciones serias en el panel; consola limpia). En 2 de 4 corridas completas falló por tiempo `tour.spec.ts › demo 1440` («TypeError: Failed to fetch» del beacon de analítica del tour, código no modificado); aislado pasa 2/2 |
+| First Load JS (`.next/diagnostics/route-bundle-stats.json`, antes del merge) | CRM +1,37 KB sin comprimir por ruta (solo el botón y el cargador diferido); sitio público `(site)` **+0 B** en las 19 rutas; portal de propietarios +84 B (hash de chunk compartido) |
