@@ -33,6 +33,10 @@ export function memoryStorage(opts: { publicBase?: string | null } = {}): Storag
       if (!o) throw new Error("Archivo inexistente en storage");
       return o.body;
     },
+    head: async (bucket, key) => {
+      const o = objects.get(`${bucket}/${key}`);
+      return o ? { size: o.body.byteLength, contentType: o.contentType } : null;
+    },
     remove: async (bucket, key) => {
       objects.delete(`${bucket}/${key}`);
     },

@@ -11,7 +11,7 @@ export function normalizeIp(raw: string | null | undefined): string | null {
   return isIP(s) ? s : null;
 }
 
-type IpEnv = { VERCEL?: string; APP_ENV?: string; TRUSTED_PROXY_HOPS?: string };
+type IpEnv = Record<string, string | undefined>;
 
 function firstValid(list: string | null): string | null {
   for (const part of (list ?? "").split(",")) {

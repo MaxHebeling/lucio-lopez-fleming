@@ -127,7 +127,7 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
       seoTitle: s("seoTitle"),
       seoDescription: s("seoDescription"),
     };
-  }, [schema, typeKey, locationId]);
+  }, [schema, typeKey, locationId, lockHideExactAddress]);
 
   // Edición: se envían solo los campos modificados (el servidor protege lo editado a mano en propiedades migradas).
   useEffect(() => {
