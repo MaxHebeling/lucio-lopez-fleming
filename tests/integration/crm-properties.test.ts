@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { assignAgents, changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
 import { createLocation } from "@/server/properties/locations";
-import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
+import { addPropertyImage, deletePropertyMedia, removeDeletedPublicMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
 import { consumeDirectUpload, createUploadIntent, verifyUploadToken } from "@/server/storage/direct-upload";
 import { authorizeFileAccess } from "@/server/files/access";
 import { setStorageForTests } from "@/server/storage";
@@ -312,6 +312,44 @@ describe("multimedia", () => {
     await expect(deletePropertyMedia(db, readonly, p.id, m1.mediaId)).rejects.toThrow(/permiso/);
     const actions = (await db.selectFrom("audit_logs").select("action").where("entity_id", "=", p.id).execute()).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["PROPERTY_MEDIA_REORDERED", "PROPERTY_MEDIA_COVER_SET", "PROPERTY_MEDIA_UPDATED", "PROPERTY_MEDIA_DELETED"]));
+  });
+
+  it("borrar multimedia elimina el objeto del bucket público (el original privado queda); si el storage falla, se reintenta después", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const p = await createProperty(db, admin, input(hood.id));
+    const m1 = await addPropertyImage(db, admin, p.id, await jpeg(20, 20));
+    const m2 = await addPropertyImage(db, admin, p.id, await jpeg(20, 20));
+    const filesOf = (mediaId: string) =>
+      db
+        .selectFrom("property_media as m")
+        .innerJoin("files as pub", "pub.id", "m.file_id")
+        .innerJoin("files as orig", "orig.id", "m.original_file_id")
+        .select(["pub.id as pub_id", "pub.bucket as pub_bucket", "pub.storage_key as pub_key", "pub.storage_removed_at", "orig.bucket as orig_bucket", "orig.storage_key as orig_key"])
+        .where("m.id", "=", mediaId)
+        .executeTakeFirstOrThrow();
+
+    const f1 = await filesOf(m1.mediaId);
+    expect(store.objects.has(`${f1.pub_bucket}/${f1.pub_key}`)).toBe(true);
+    await deletePropertyMedia(db, admin, p.id, m1.mediaId);
+    expect(store.objects.has(`${f1.pub_bucket}/${f1.pub_key}`)).toBe(false);
+    expect(store.objects.has(`${f1.orig_bucket}/${f1.orig_key}`)).toBe(true);
+    expect((await filesOf(m1.mediaId)).storage_removed_at).not.toBeNull();
+
+    // Falla del storage: la baja lógica se confirma igual y el objeto queda pendiente
+    const f2 = await filesOf(m2.mediaId);
+    const removeSpy = vi.spyOn(store, "remove").mockRejectedValueOnce(new Error("storage caído"));
+    try {
+      await deletePropertyMedia(db, admin, p.id, m2.mediaId);
+    } finally {
+      removeSpy.mockRestore();
+    }
+    expect(store.objects.has(`${f2.pub_bucket}/${f2.pub_key}`)).toBe(true);
+    expect((await filesOf(m2.mediaId)).storage_removed_at).toBeNull();
+    expect(await removeDeletedPublicMedia(db)).toMatchObject({ removed: 1, failed: 0 });
+    expect(store.objects.has(`${f2.pub_bucket}/${f2.pub_key}`)).toBe(false);
+    expect((await filesOf(m2.mediaId)).storage_removed_at).not.toBeNull();
+    expect(await removeDeletedPublicMedia(db)).toMatchObject({ removed: 0, failed: 0 });
   });
 
   it("acceso a archivos: públicos sin sesión, originales con properties.read, documentos con read_private, borrados nunca", async () => {
