@@ -70,6 +70,72 @@ test("ficha: datos, galería con teclado y 404 de no publicadas", async ({ page 
   expect(missing?.status()).toBe(404);
 });
 
+test("galería 1440: el foco no escapa del diálogo ni cae en flechas deshabilitadas", async ({ page }) => {
+  const { slug } = await publishedSlug();
+  await page.goto(`/propiedades/${slug}`);
+  // Mosaico: cada foto visible es un tab stop (≤ 5) y las ocultas no.
+  const region = page.getByRole("region", { name: /^Fotos de / });
+  const tabbable = await region.evaluate((el) => Array.from(el.querySelectorAll("button")).filter((b) => b.tabIndex >= 0 && b.getClientRects().length > 0).length);
+  expect(tabbable).toBeGreaterThan(0);
+  expect(tabbable).toBeLessThanOrEqual(5);
+
+  const opener = page.getByRole("button", { name: /Ver las \d+ fotos/ });
+  await opener.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: /Galería/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cerrar galería" })).toBeFocused();
+  // En la primera foto "anterior" está deshabilitada: el ciclo es Cerrar ↔ Siguiente.
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate((d) => d.contains(document.activeElement) && !(document.activeElement as HTMLButtonElement).disabled)).toBe(true);
+  }
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press("Shift+Tab");
+    expect(await dialog.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test("pipeline: «Mover a…» deja el foco en el control de la tarjeta en su nueva columna", async ({ page }) => {
+  const r = await pool.query<{ id: string; stages: Array<{ id: string; name: string; outcome: string }> }>(
+    `with p as (select id from pipelines where key = 'ventas'),
+       c as (insert into contacts (organization_id, display_name) select id, 'Pipeline Foco E2E' from organizations order by created_at limit 1 returning id, organization_id)
+     insert into opportunities (organization_id, contact_id, pipeline_id, stage_id, title)
+       select c.organization_id, c.id, (select id from p), (select s.id from pipeline_stages s where s.pipeline_id = (select id from p) order by s.sort_order limit 1), 'Foco E2E ${Date.now()}' from c
+     returning id, (select json_agg(json_build_object('id', s.id, 'name', s.name, 'outcome', s.outcome) order by s.sort_order) from pipeline_stages s where s.pipeline_id = (select id from p)) as stages`,
+  );
+  const opp = r.rows[0]!;
+  const target = opp.stages.find((s, i) => i > 0 && s.outcome === "open")!;
+  try {
+    await page.goto("/crm/login");
+    await page.fill("#email", process.env.E2E_ADMIN_EMAIL ?? "admin@llf.local");
+    await page.fill("#password", process.env.E2E_ADMIN_PASSWORD ?? "Admin-local-2026");
+    await page.getByRole("button", { name: "Ingresar" }).click();
+    await expect(page).toHaveURL(/\/crm$/);
+    await page.goto("/crm/pipeline?pipeline=ventas");
+    const select = page.locator(`#mv-${opp.id}`);
+    await select.selectOption(target.id);
+    await select.focus();
+    await page.keyboard.press("Tab");
+    await expect(page.locator(`#mv-${opp.id} + button`)).toBeFocused();
+    await page.keyboard.press("Enter");
+    const column = page.getByRole("region", { name: "Tablero de oportunidades" }).locator("section", { has: page.locator(`#mv-${opp.id}`) });
+    await expect(column).toHaveAttribute("aria-label", new RegExp(`^${target.name}:`));
+    await expect(page.locator(`#mv-${opp.id}`)).toBeFocused();
+    await expect.poll(async () => (await pool.query("select stage_id from opportunities where id = $1", [opp.id])).rows[0].stage_id).toBe(target.id);
+    await expect(page.locator(`#mv-${opp.id}`)).toBeFocused();
+  } finally {
+    const c = await pool.query<{ contact_id: string }>("select contact_id from opportunities where id = $1", [opp.id]);
+    await pool.query("delete from opportunity_stage_history where opportunity_id = $1", [opp.id]).catch(() => undefined);
+    await pool.query("delete from activities where entity_type = 'opportunity' and entity_id = $1", [opp.id]).catch(() => undefined);
+    await pool.query("delete from opportunities where id = $1", [opp.id]);
+    await pool.query("delete from contacts where id = $1", [c.rows[0]!.contact_id]).catch(() => undefined);
+  }
+});
+
 test("consulta desde la ficha crea el lead en el CRM (una sola vez)", async ({ page }) => {
   const { slug, code } = await publishedSlug();
   const stamp = Date.now();
@@ -97,6 +163,51 @@ test("consulta desde la ficha crea el lead en el CRM (una sola vez)", async ({ p
   }
 });
 
+test("formulario: un rechazo del servidor conserva lo escrito y el reintento crea un único lead con la misma clave", async ({ page }) => {
+  const { slug } = await publishedSlug();
+  const stamp = Date.now();
+  const email = `e2e-retry-${stamp}@prueba.test`;
+  try {
+    await page.goto(`/propiedades/${slug}`);
+    const form = page.locator("#consulta form").first();
+    const submit = form.getByRole("button", { name: "Enviar consulta" });
+    const keyInput = form.locator('input[name="idempotencyKey"]');
+    await expect(keyInput).toHaveValue(/^[A-Za-z0-9-]{16,}$/);
+    const key = await keyInput.inputValue();
+    await form.getByLabel("Nombre y apellido").fill("Reintento E2E");
+    await form.getByLabel("Mensaje").fill(`Mensaje que no se pierde ${stamp}`);
+
+    // Sin teléfono ni email: se frena en el navegador, sin viajar al servidor.
+    await submit.click();
+    await expect(form.getByText("Dejanos un teléfono o un email para responderte")).toBeVisible();
+    await expect(form.getByLabel("Teléfono / WhatsApp")).toBeFocused();
+
+    // Teléfono inválido: lo rechaza el servidor y todo lo escrito sigue ahí.
+    await form.getByLabel("Teléfono / WhatsApp").fill("12");
+    await form.getByLabel("Email").fill(email);
+    await submit.click();
+    await expect(form.getByText("Revisá el teléfono (con código de área)")).toBeVisible();
+    await expect(form.getByLabel("Nombre y apellido")).toHaveValue("Reintento E2E");
+    await expect(form.getByLabel("Email")).toHaveValue(email);
+    await expect(form.getByLabel("Mensaje")).toHaveValue(`Mensaje que no se pierde ${stamp}`);
+    await expect(form.getByLabel("Teléfono / WhatsApp")).toHaveValue("12");
+    await expect(keyInput).toHaveValue(key);
+
+    // Corrección y reintento: mismo envío, misma clave; queda un solo lead.
+    await form.getByLabel("Teléfono / WhatsApp").fill(`387 5${String(stamp).slice(-6)}`);
+    await submit.click();
+    await expect(form.getByRole("status")).toContainText("Recibimos tu consulta");
+    // Tras el éxito: formulario limpio y clave nueva (la próxima consulta es otra).
+    await expect(form.getByLabel("Nombre y apellido")).toHaveValue("");
+    await expect(keyInput).not.toHaveValue(key);
+
+    const leads = await pool.query<{ idempotency_key: string | null }>("select l.idempotency_key from leads l join contact_emails ce on ce.contact_id = l.contact_id where ce.email = $1", [email]);
+    expect(leads.rows).toEqual([{ idempotency_key: `web:${key}` }]);
+  } finally {
+    await cleanupE2eContact(pool, email);
+  }
+});
+
 test("redirecciones del sitio anterior", async ({ request }) => {
   const r = await pool.query<{ path: string; slug: string }>(
     "select r.path, p.slug from property_redirects r join properties p on p.id = r.property_id where p.is_published and r.path like '/luciolopez-%' limit 1",
@@ -109,13 +220,32 @@ test("redirecciones del sitio anterior", async ({ request }) => {
     ["/properties/operation/forSale", "/propiedades/venta"],
     ["/properties/operation/forRent", "/propiedades/alquiler"],
     ["/company", "/empresa"],
+    ["/company/", "/empresa"],
     ["/contact", "/contacto"],
   ]) {
     const res = await request.get(from!, { maxRedirects: 0 });
     expect(res.status(), from).toBe(301);
     expect(res.headers()["location"]).toMatch(new RegExp(`${to}$`));
   }
+  // Barra final en rutas propias: un solo salto a la URL sin barra
+  const slash = await request.get("/propiedades/venta/", { maxRedirects: 0 });
+  expect(slash.status()).toBe(308);
+  expect(slash.headers()["location"]).toMatch(/\/propiedades\/venta$/);
   expect((await request.get("/tasaciones")).status()).toBe(200);
+
+  // Código del sitio anterior de una propiedad hoy no publicada → 301 a la búsqueda por su tipo (y operación/zona)
+  const gone = await pool.query<{ path: string; type_key: string }>(
+    "select r.path, p.type_key from property_redirects r join properties p on p.id = r.property_id where not p.is_published and r.path like '/luciolopez-%' limit 1",
+  );
+  if (gone.rows[0]) {
+    const res = await request.get(gone.rows[0].path, { maxRedirects: 0 });
+    expect(res.status()).toBe(301);
+    expect(res.headers()["location"]).toMatch(new RegExp(`/propiedades(/venta|/alquiler)?\\?tipo=${gone.rows[0].type_key}`));
+  }
+  // Código inexistente → 404 real con la página del sitio (enlaces para seguir)
+  const missing = await request.get("/luciolopez-9999999", { maxRedirects: 0 });
+  expect(missing.status()).toBe(404);
+  expect(await missing.text()).toContain("Ver propiedades");
 });
 
 test("reduced motion: todo visible y sin atributo de movimiento activo", async ({ browser }) => {
