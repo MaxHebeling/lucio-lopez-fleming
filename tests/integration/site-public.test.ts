@@ -385,6 +385,37 @@ describe("formularios públicos → CRM", () => {
     expect(visit.priority).toBe("high");
   });
 
+  it("propietario «Quiero vender mi propiedad» → web_appraisal + sell_my_property, rol propietario, una sola vez; alquilar → captación", async () => {
+    const db = testDb();
+    const key = "7c1d9e2a-4b3f-4e8a-9d61-2f0a5b7c0001";
+    const input = { kind: "owner", name: "Rosa Propietaria", phone: "387 5998877", appraisalGoal: "vender", appraisalType: "Casa", appraisalZone: "Villa San Lorenzo", message: "Casa de 3 dormitorios", idempotencyKey: key };
+    expect(await submitPublicLead(db, await anon(), "10.0.1.1", input)).toEqual({ status: "sent", duplicate: false });
+    expect(await submitPublicLead(db, await anon(), "10.0.1.1", input)).toEqual({ status: "sent", duplicate: true });
+    const leads = await db.selectFrom("leads").select(["source_key", "operation_interest", "message", "contact_id"]).where("idempotency_key", "=", `web:${key}`).execute();
+    expect(leads).toHaveLength(1);
+    expect(leads[0]).toMatchObject({ source_key: "web_appraisal", operation_interest: "sell_my_property" });
+    expect(leads[0]!.message).toContain("Propietario · Quiere vender su propiedad");
+    expect(leads[0]!.message).toContain("Ubicación: Villa San Lorenzo");
+    const roles = await db.selectFrom("contact_roles").select("role").where("contact_id", "=", leads[0]!.contact_id).execute();
+    expect(roles.map((r) => r.role)).toContain("owner");
+
+    const rent = await submitPublicLead(db, await anon(), "10.0.1.1", { kind: "owner", name: "Rosa Propietaria", phone: "387 5998877", appraisalGoal: "alquilar", appraisalZone: "Tres Cerritos", idempotencyKey: "7c1d9e2a-4b3f-4e8a-9d61-2f0a5b7c0002" });
+    expect(rent.status).toBe("sent");
+    const rentLead = await db.selectFrom("leads").select(["operation_interest", "message"]).where("idempotency_key", "=", "web:7c1d9e2a-4b3f-4e8a-9d61-2f0a5b7c0002").executeTakeFirstOrThrow();
+    expect(rentLead).toMatchObject({ operation_interest: "appraisal" });
+    expect(rentLead.message).toContain("Quiere alquilar su propiedad");
+  });
+
+  it("propietario sin ubicación o con objetivo inválido → errores por campo, nada guardado", async () => {
+    const db = testDb();
+    const before = await db.selectFrom("leads").select((eb) => eb.fn.countAll<string>().as("n")).executeTakeFirstOrThrow();
+    const r = await submitPublicLead(db, await anon(), "10.0.1.2", { kind: "owner", name: "Pedro", email: "pedro@test.local", appraisalGoal: "conocer" });
+    expect(r.status).toBe("invalid");
+    if (r.status === "invalid") expect(Object.keys(r.fieldErrors)).toEqual(expect.arrayContaining(["appraisalZone", "appraisalGoal"]));
+    const after = await db.selectFrom("leads").select((eb) => eb.fn.countAll<string>().as("n")).executeTakeFirstOrThrow();
+    expect(after.n).toBe(before.n);
+  });
+
   it("validación: sin teléfono ni email, o tasación sin zona → errores por campo, nada guardado", async () => {
     const db = testDb();
     const before = await db.selectFrom("leads").select((eb) => eb.fn.countAll<string>().as("n")).executeTakeFirstOrThrow();

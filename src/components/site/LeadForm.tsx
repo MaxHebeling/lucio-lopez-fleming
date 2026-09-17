@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { submitLeadAction, type LeadFormState } from "@/app/(site)/actions";
 import { clientLeadErrors } from "./lead-form-validation";
 
-type Kind = "property" | "visit" | "contact" | "appraisal";
+type Kind = "property" | "visit" | "contact" | "appraisal" | "owner";
 
 type Props = {
   kind: Kind;
@@ -17,6 +17,8 @@ type Props = {
   tone?: "light" | "dark";
   appraisalTypes?: string[];
   compact?: boolean;
+  /** "lg": controles más altos y texto más grande (captación de propietarios en el home). */
+  size?: "md" | "lg";
 };
 
 function newKey(): string {
@@ -32,7 +34,7 @@ const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm
  * de ese envío (un doble click o un reintento tras un error no duplica el lead) y una nueva recién después de un éxito.
  * Suma UTM de la URL y estados accesibles (aria-live, foco en el primer error).
  */
-export function LeadForm({ kind, propertyCode, operation, defaultMessage, submitLabel, tone = "light", appraisalTypes, compact }: Props) {
+export function LeadForm({ kind, propertyCode, operation, defaultMessage, submitLabel, tone = "light", appraisalTypes, compact, size = "md" }: Props) {
   const [state, action, pending] = useActionState<LeadFormState, FormData>(submitLeadAction, { status: "idle" });
   const keyRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -40,6 +42,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   const id = useId();
   const [clientErrors, setClientErrors] = useState<Record<string, string[]> | null>(null);
   const inFlight = useRef(false);
+  const [ownerGoal, setOwnerGoal] = useState<"vender" | "alquilar">("vender");
 
   // Valores que solo existen en el navegador: se escriben directo en los inputs ocultos (sin re-render).
   useEffect(() => {
@@ -83,7 +86,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   const values = state.status === "error" ? (state.values ?? {}) : {};
   const errors = clientErrors ?? (state.status === "error" ? (state.fieldErrors ?? {}) : {});
   const dark = tone === "dark";
-  const control = `field-control ${dark ? "!border-paper/25 !bg-paper/5 !text-paper placeholder:text-paper/50" : ""}`;
+  const control = `field-control ${size === "lg" ? "field-lg" : ""} ${dark ? "!border-paper/25 !bg-paper/5 !text-paper placeholder:text-paper/50" : ""}`;
   const label = `field-label ${dark ? "!text-paper/75" : ""}`;
   const err = (name: string) => errors[name]?.[0];
   const fieldProps = (name: string) => ({
@@ -99,8 +102,15 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
       </p>
     ) : null;
 
+  const typeOptions = (appraisalTypes ?? ["Casa", "Departamento", "Terreno", "Local", "Oficina", "Campo", "Otro"]).map((t) => (
+    <option key={t} value={t}>
+      {t}
+    </option>
+  ));
+  const ownerLabel = submitLabel && ownerGoal === "vender" ? submitLabel : ownerGoal === "alquilar" ? "Quiero alquilar mi propiedad" : "Quiero vender mi propiedad";
+
   return (
-    <form ref={formRef} action={action} onSubmit={onSubmit} className="grid gap-4" aria-describedby={`${id}-status`}>
+    <form ref={formRef} action={action} onSubmit={onSubmit} onReset={() => setOwnerGoal("vender")} className={`grid ${size === "lg" ? "gap-5" : "gap-4"}`} aria-describedby={`${id}-status`}>
       <input type="hidden" name="kind" value={kind} />
       {/* Sin value/defaultValue: los escribe el efecto de montaje y React no debe tocarlos al re-renderizar (en un input
           hidden, reasignar defaultValue pisa el valor: se perdían la clave y los UTM después de un error). */}
@@ -115,6 +125,45 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
         <label htmlFor={`${id}-website`}>No completar</label>
         <input id={`${id}-website`} name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
+
+      {kind === "owner" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset className="sm:col-span-2">
+            <legend className={label}>¿Qué querés hacer con tu propiedad?</legend>
+            <div className="segmented" role="presentation">
+              {(["vender", "alquilar"] as const).map((g) => (
+                <label key={g} className="segmented-option">
+                  <input
+                    type="radio"
+                    name="appraisalGoal"
+                    value={g}
+                    defaultChecked={(values.appraisalGoal ?? "vender") === g}
+                    onChange={() => setOwnerGoal(g)}
+                  />
+                  <span>{g === "vender" ? "Vender" : "Alquilar"}</span>
+                </label>
+              ))}
+            </div>
+            {errorText("appraisalGoal")}
+          </fieldset>
+          <div>
+            <label htmlFor={`${id}-appraisalType`} className={label}>
+              Tipo de propiedad
+            </label>
+            <select {...fieldProps("appraisalType")} className={control} defaultValue={values.appraisalType ?? ""}>
+              <option value="">Elegí</option>
+              {typeOptions}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${id}-appraisalZone`} className={label}>
+              ¿Dónde está?
+            </label>
+            <input {...fieldProps("appraisalZone")} className={control} type="text" maxLength={160} required placeholder="Barrio, localidad" defaultValue={values.appraisalZone} />
+            {errorText("appraisalZone")}
+          </div>
+        </div>
+      ) : null}
 
       <div className={`grid gap-4 ${compact ? "" : "sm:grid-cols-2"}`}>
         <div className={compact ? "" : "sm:col-span-2"}>
@@ -158,11 +207,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
             </label>
             <select {...fieldProps("appraisalType")} className={control} defaultValue={values.appraisalType ?? ""}>
               <option value="">Elegí</option>
-              {(appraisalTypes ?? ["Casa", "Departamento", "Terreno", "Local", "Oficina", "Campo", "Otro"]).map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              {typeOptions}
             </select>
           </div>
           <div className="sm:col-span-2">
@@ -186,7 +231,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
 
       <div>
         <label htmlFor={`${id}-message`} className={label}>
-          {kind === "appraisal" ? "Contanos algo más (opcional)" : "Mensaje"}
+          {kind === "appraisal" || kind === "owner" ? "Contanos algo más (opcional)" : "Mensaje"}
         </label>
         <textarea {...fieldProps("message")} className={`${control} min-h-28`} maxLength={2000} rows={compact ? 3 : 4} defaultValue={values.message ?? defaultMessage} />
         {errorText("message")}
@@ -213,8 +258,8 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button type="submit" disabled={pending} className={`btn ${dark ? "btn-primary" : "btn-ink"} disabled:opacity-60`} aria-disabled={pending}>
-          {pending ? "Enviando…" : (submitLabel ?? "Enviar consulta")}
+        <button type="submit" disabled={pending} className={`btn ${dark || kind === "owner" ? "btn-primary" : "btn-ink"} ${size === "lg" ? "btn-lg" : ""} disabled:opacity-60`} aria-disabled={pending}>
+          {pending ? "Enviando…" : kind === "owner" ? ownerLabel : (submitLabel ?? "Enviar consulta")}
         </button>
         <p className={`text-xs ${dark ? "text-paper/70" : "text-ink-2"}`}>
           Usamos tus datos solo para responderte.{" "}
