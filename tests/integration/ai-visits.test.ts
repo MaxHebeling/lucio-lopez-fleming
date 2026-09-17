@@ -89,6 +89,22 @@ describe("brief previo", () => {
     expect((await prepareVisitBrief(db, s.visitId, { actor: await testSystemActor(db) })).status).toBe("prepared");
   });
 
+  it("perfil del comprador (Fase 2): solo preferencias CONFIRMADAS entran al brief; las sugeridas no", async () => {
+    const db = testDb();
+    const s = await setup(db);
+    const org = await organizationId(db);
+    await db
+      .insertInto("client_preferences")
+      .values([
+        { organization_id: org, contact_id: s.contact.id, field: "budget", value: JSON.stringify({ min: null, max: 250000, currency: "USD" }), source: "agent", confidence: "1", status: "confirmed", decided_at: new Date() },
+        { organization_id: org, contact_id: s.contact.id, field: "bedrooms_min", value: JSON.stringify(3), source: "concierge", confidence: "0.6", status: "suggested" },
+      ])
+      .execute();
+    const busca = (await getVisitBriefView(db, s.agent, s.visitId))!.facts.filter((f) => f.section === "busca").map((f) => f.text);
+    expect(busca).toContain("Perfil confirmado · Presupuesto: Hasta USD 250.000");
+    expect(busca.join(" ")).not.toMatch(/Dormitorios/);
+  });
+
   it("refresco ~2 h antes: la tarea horaria encola solo las visitas en la ventana", async () => {
     const db = testDb();
     const soon = await setup(db, 120);

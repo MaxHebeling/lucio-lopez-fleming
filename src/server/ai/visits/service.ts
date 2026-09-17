@@ -26,6 +26,7 @@ import { registerJobHandler } from "../../jobs/registry";
 import { addScheduledTask } from "../../jobs/scheduled";
 import { publicZoneLabel } from "../../properties/public";
 import { assertCanManageVisit, loadVisit } from "../../visits/access";
+import { FIELD_LABEL, formatFieldValue, PROFILE_FIELDS, type ProfileField } from "../../sales/profile/fields";
 import { COMPANY_NAME, firstName, type Interest } from "../../visits/rules";
 import { addGroundedText, emptyFacts, findViolations } from "../guards";
 import { redactForModel, untrustedData } from "../core/governance";
@@ -92,6 +93,7 @@ async function loadBriefInputById(db: Executor, appointmentId: string): Promise<
           .execute()
       : Promise.resolve([]),
   ]);
+  const buyerProfile = a.contact_id ? await confirmedBuyerProfile(db, a.organization_id, a.contact_id) : [];
   const asked = [
     ...leadMessages.map((l) => ({ at: new Date(l.created_at), source: "consulta", text: l.message! })),
     ...inbound.map((m) => ({ at: new Date(m.created_at), source: m.channel === "whatsapp" ? "WhatsApp" : m.channel, text: m.body! })),
@@ -127,11 +129,31 @@ async function loadBriefInputById(db: Executor, appointmentId: string): Promise<
       operationInterest: lead?.operation_interest ?? opp?.operation ?? null,
       opportunity: opp ? { title: opp.title, stage: opp.stage ?? null, budgetMin: num(opp.budget_min), budgetMax: num(opp.budget_max), budgetCurrency: opp.budget_currency } : null,
       notes: [...(a.notes ? [a.notes] : []), ...notes.map((n) => n.body)],
-      // Punto de integración: el perfil del comprador (rama de ventas) completa esto sin cambiar el brief.
-      buyerProfile: null,
+      // Perfil del comprador (Fase 2): solo preferencias CONFIRMADAS por una persona (las sugeridas no son datos).
+      buyerProfile,
     },
     asked,
   };
+}
+
+/** «Perfil confirmado · Presupuesto: Hasta USD 250.000» por campo confirmado del perfil del comprador (client_preferences). */
+async function confirmedBuyerProfile(db: Executor, organizationId: string, contactId: string): Promise<string[]> {
+  const rows = await db
+    .selectFrom("client_preferences")
+    .select(["field", "value"])
+    .where("organization_id", "=", organizationId)
+    .where("contact_id", "=", contactId)
+    .where("status", "=", "confirmed")
+    .execute();
+  if (!rows.length) return [];
+  const [types, features] = await Promise.all([db.selectFrom("property_types").select(["key", "name"]).execute(), db.selectFrom("features").select(["key", "name"]).execute()]);
+  const names = { types: new Map(types.map((t) => [t.key, t.name])), features: new Map(features.map((f) => [f.key, f.name])) };
+  const order = new Map(PROFILE_FIELDS.map((f, i) => [f, i]));
+  return rows
+    .filter((r): r is typeof r & { field: ProfileField } => order.has(r.field as ProfileField))
+    .sort((x, y) => order.get(x.field)! - order.get(y.field)!)
+    .map((r) => `Perfil confirmado · ${FIELD_LABEL[r.field]}: ${formatFieldValue(r.field, r.value, names)}`)
+    .filter((t) => !t.endsWith(": —"));
 }
 
 // ───────────────────────────── Brief ─────────────────────────────

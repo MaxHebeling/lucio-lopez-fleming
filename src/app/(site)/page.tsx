@@ -13,6 +13,8 @@ import { OwnersCapture } from "@/components/experience/OwnersCapture";
 import { TrustLedger } from "@/components/experience/TrustLedger";
 import { FinalCover } from "@/components/experience/FinalCover";
 import { HeroSearch } from "@/components/site/home/HeroSearch";
+import { ConciergeSearch } from "@/components/site/sales/ConciergeSearch";
+import { getSiteFlag } from "@/server/site/public-flags";
 import { RecentRail } from "@/components/site/home/RecentRail";
 import { pageMetadata } from "@/components/site/seo";
 import coverPhoto from "../../../public/brand/photos/oficina-modular.jpg";
@@ -35,10 +37,10 @@ const ZONES = 6;
  * últimas dos propiedades en alquiler (fotos reales de los servicios de alquileres y administración).
  */
 const loadHome = cache(async () => {
-  const [info, facets, saleFacets, featured, rentals] = await Promise.all([getSiteInfo(), getSiteFacets(), getSiteFacets("sale"), getSiteShowcase(FEATURED), getSiteRecent(2, [], "rent")]);
+  const [info, facets, saleFacets, featured, rentals, conciergeOn] = await Promise.all([getSiteInfo(), getSiteFacets(), getSiteFacets("sale"), getSiteShowcase(FEATURED), getSiteRecent(2, [], "rent"), getSiteFlag("ai_concierge")]);
   const exclude = featured.map((p) => p.code);
   const [zones, recent] = await Promise.all([getSiteZoneShowcase(facets.zones, ZONES), getSiteRecent(10, exclude)]);
-  return { info, facets, saleFacets, featured, zones, recent, rentals };
+  return { info, facets, saleFacets, featured, zones, recent, rentals, conciergeOn };
 });
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -57,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [{ info, facets, saleFacets, featured, zones, recent, rentals }, capture] = await Promise.all([loadHome(), getSiteOwnerCapture()]);
+  const [{ info, facets, saleFacets, featured, zones, recent, rentals, conciergeOn }, capture] = await Promise.all([loadHome(), getSiteOwnerCapture()]);
   const [rentalA, rentalB] = rentals;
   const year = info.foundedYear;
   const phoneHref = telHref(info.mainPhone);
@@ -109,7 +111,16 @@ export default async function HomePage() {
         primary={{ href: "/propiedades", label: "Ver propiedades" }}
         secondary={{ href: "#vender", label: "Quiero vender mi propiedad" }}
         ghost={year ? String(year) : null}
-        search={<HeroSearch facets={saleFacets} total={facets.total} />}
+        search={
+          <>
+            {conciergeOn ? (
+              <div className="mb-2">
+                <ConciergeSearch variant="hero" page="home" />
+              </div>
+            ) : null}
+            <HeroSearch facets={saleFacets} total={facets.total} />
+          </>
+        }
       />
 
       <EditorialManifesto foundedYear={year} />

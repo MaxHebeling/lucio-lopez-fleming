@@ -84,6 +84,22 @@ Detalle y tests en `docs/ai/GOVERNANCE.md`. Resumen:
 - **Riesgo aceptado**: con la clave cargada, el texto de la pregunta (minimizado) y los fragmentos de la guía/resultados
   permitidos al rol se envían al proveedor externo (Anthropic) para responder.
 
+## IA Fase 2 · Ventas (2026-09)
+
+Detalle en `docs/ai/SALES.md` y `docs/ai/GOVERNANCE.md` §10.
+
+- **Endpoints públicos** `/api/site/concierge`, `/api/site/property-qa`, `/api/site/compare-summary`: solo mismo origen,
+  cuerpo acotado, zod, límite por IP con hash (`ai.public.requests_per_ip_per_hour`), presupuesto propio y flag. El texto
+  no se guarda. Respuestas con datos públicos únicamente (DTO de la ficha publicada; dirección oculta nunca).
+- **Alcance comercial** (`src/server/sales/scope.ts`): perfil, coincidencias, señales y siguiente acción exigen
+  `contacts.read` + `leads.read_own|read_all`; con alcance propio solo contactos asignados o con lead/oportunidad
+  asignados; siempre `organization_id` del actor; fuera de alcance = 404. Tests con otro agente y otra organización.
+- **Prompt injection**: textos de visitantes, consultas y descripciones como datos delimitados; cifras y claves validadas
+  en código contra texto/catálogo/hechos.
+- **Privacidad**: campos del perfil cerrados; sesión del sitio vinculada solo al enviar una consulta (y nunca con DNT/GPC);
+  política de privacidad actualizada.
+- **Sin contacto automático**: el match inverso solo avisa al agente; aceptar una recomendación crea una tarea interna.
+
 ## Núcleo operativo de visitas (2026-09)
 
 - **Alcance**: `visits.operate` ve y opera solo las visitas asignadas (crearla no alcanza); `visits.monitor` /

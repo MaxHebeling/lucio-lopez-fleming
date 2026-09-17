@@ -34,7 +34,7 @@ export type BriefInput = {
     hasDeedDocument: boolean;
     tourPublished: boolean;
   };
-  /** Qué busca: lead/oportunidad/notas. `buyerProfile` = punto de integración del perfil del comprador (otra rama). */
+  /** Qué busca: lead/oportunidad/notas. `buyerProfile` = preferencias CONFIRMADAS del perfil del comprador (Fase 2, client_preferences). */
   seeking: {
     operationInterest: string | null;
     opportunity: { title: string; stage: string | null; budgetMin: number | null; budgetMax: number | null; budgetCurrency: string | null } | null;

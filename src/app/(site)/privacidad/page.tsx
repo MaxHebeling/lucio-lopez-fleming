@@ -20,6 +20,12 @@ export default function PrivacidadPage() {
       <section>
         <h2>2. Para qué los usamos</h2>
         <p>Para responder tu consulta, coordinar visitas o tasaciones y hacer el seguimiento comercial de tu pedido. No vendemos ni cedemos tus datos a terceros con fines publicitarios.</p>
+        <p>
+          Mientras navegás, el sitio registra de forma anónima qué fichas mirás y qué herramientas usás (por ejemplo, el recorrido 360°, el comparador o las
+          preguntas sobre una propiedad), con una clave aleatoria de la pestaña y sin guardar lo que escribís. Si enviás una consulta desde esa pestaña, esa
+          actividad y los filtros de tu búsqueda se asocian a tu consulta para que el asesor entienda qué estás buscando y te recomiende opciones. Si tu
+          navegador envía «Do Not Track» o «Global Privacy Control», no se registra ni se asocia nada. Estos registros se conservan hasta 13 meses.
+        </p>
       </section>
       <section>
         <h2>3. Dónde se guardan y por cuánto tiempo</h2>

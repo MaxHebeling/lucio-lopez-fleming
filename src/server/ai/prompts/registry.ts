@@ -11,6 +11,7 @@ import { marketingDirectorPrompt } from "./marketing-director";
 import { photoTagsPrompt } from "./photo-tags";
 import { tourIntentPrompt } from "./tour-intent";
 import { visitBriefPrompt, visitReportPrompt, visitThanksPrompt } from "./visits";
+import { SALES_PROMPTS } from "./sales";
 
 export type PromptDefinition<S extends z.ZodType = z.ZodType> = {
   id: string;
@@ -33,6 +34,7 @@ export const DETERMINISTIC_REF = { id: "copilot.deterministic", version: "2026-0
 export const PROMPTS = {
   [copilotAssistantPrompt.id]: copilotAssistantPrompt,
   [copilotAnalystPrompt.id]: copilotAnalystPrompt,
+  ...SALES_PROMPTS,
   // Fase 3 (AI Property) y 4b (visitas)
   [photoTagsPrompt.id]: photoTagsPrompt,
   [marketingDirectorPrompt.id]: marketingDirectorPrompt,

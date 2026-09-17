@@ -20,6 +20,9 @@ import { FiltersButton, FiltersShell } from "./MobileFilters";
 import { SortSelect } from "./SortSelect";
 import { listingTitle, searchListing, type ListingPreset } from "./listing-page";
 import Image from "next/image";
+import { getSiteFlag } from "@/server/site/public-flags";
+import { ConciergeSearch } from "../sales/ConciergeSearch";
+import { CompareTray } from "../sales/CompareControls";
 
 export type { ListingPreset } from "./listing-page";
 
@@ -90,13 +93,15 @@ function ListRow({ p, preload = false }: { p: PublicPropertyCard; preload?: bool
 export async function ListingView({ filters: f, preset, view }: { filters: SearchFilters; preset: ListingPreset; view: "grilla" | "lista" }) {
   const op = f.operacion ? OPERATION_SLUGS[f.operacion] : undefined;
   // Facetas dentro de la operación y el tipo vigentes: el panel no ofrece combinaciones sin resultados.
-  const [result, facets, title, type, zoneName, areaName] = await Promise.all([
+  const [result, facets, title, type, zoneName, areaName, conciergeOn, compareOn] = await Promise.all([
     searchListing(f),
     getSiteFacets(op, f.tipo),
     listingTitle(f),
     f.tipo ? getSiteType(f.tipo) : null,
     f.zona ? getSiteZoneName(f.zona) : null,
     f.barrio ? getSiteZoneName(f.zona, f.barrio) : null,
+    getSiteFlag("ai_concierge"),
+    getSiteFlag("site_compare"),
   ]);
   const omit = preset.lock;
   const href = (patch: Partial<SearchFilters>, extra: Record<string, string> = {}) => {
@@ -178,6 +183,8 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
           </nav>
         ) : null}
       </header>
+
+      {conciergeOn ? <ConciergeSearch variant="listing" page="listing" currentHref={`${preset.basePath}${filtersToQuery({ ...f, pagina: 1, orden: undefined }, omit)}`} /> : null}
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[18.5rem_1fr] xl:grid-cols-[20rem_1fr]">
         {/* Un solo panel: columna lateral en desktop y diálogo a pantalla completa en mobile (sin JS, bloque visible). */}
@@ -280,7 +287,7 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
             <ul className="mt-8 grid gap-x-6 gap-y-12 sm:grid-cols-2 xl:grid-cols-3">
               {result.items.map((p, i) => (
                 <li key={p.code}>
-                  <PropertyCard p={p} headingLevel={2} eager={i < 2} preload={i === 0} sizes={GRID_SIZES} />
+                  <PropertyCard p={p} headingLevel={2} eager={i < 2} preload={i === 0} sizes={GRID_SIZES} compare={compareOn} />
                 </li>
               ))}
             </ul>
@@ -326,6 +333,8 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
           ) : null}
         </section>
       </div>
+
+      {compareOn ? <CompareTray /> : null}
 
       {!empty ? (
         <JsonLd

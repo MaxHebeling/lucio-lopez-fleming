@@ -160,7 +160,7 @@ cacheable), `output` (zod) y `notes`. Cambiar reglas, herramientas o formato →
 | Nivel | Implementación |
 | --- | --- |
 | Empresa | Base de conocimiento (compartida, filtrada por permisos) |
-| Cliente | Interfaz `CustomerMemory` en `core/memory.ts` (Fase 2; sin implementación) |
+| Cliente | Interfaz `CustomerMemory` en `core/memory.ts`, implementada en la Fase 2 por `BuyerProfileMemory` (`src/server/sales/profile/memory.ts`) sobre `client_preferences` |
 | Sesión | `ai_conversations` / `ai_messages` por usuario, retención `ai.copilot.session_retention_days` (30), pregunta minimizada |
 
 ## Copiloto
@@ -232,3 +232,18 @@ Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a
 4. Abrir el copiloto: el aviso «todavía no está configurado» desaparece; la primera respuesta real pasa la integración
    `anthropic` de «Esperando credenciales» a «Activa». Verificar en **Uso de IA** costo, latencia y respaldos.
 5. Si algo sale mal: apagar `ai_copilot` en Integraciones (sin redeploy) o quitar la variable; el CRM sigue igual.
+
+## Fase 2 · Ventas (sobre este núcleo)
+
+Detalle: [SALES.md](./SALES.md). Qué se sumó sin crear otro núcleo:
+
+- **Prompts** (registro con una línea, `prompts/sales.ts`): `sales.concierge`, `sales.property_qa`, `sales.compare`,
+  `sales.lead_extract` (todos `extract` → Haiku 4.5, `2026-09-17.1`, salida zod).
+- **Herramienta** `client_briefing` (dominio sales, `read`) con consulta rápida «Ponme al día con este cliente»;
+  `QuickQuery.requiresEntity` acepta una lista de tipos (`["contact", "lead"]`).
+- **IA pública** (`src/server/sales/public-ai.ts`): mismo proveedor y precios; `ai_interactions` sin usuario con
+  `feature = public.*` (presupuesto `ai.public.daily_budget_usd`) y `sales.lead_qualification` (jobs del sistema).
+  Nuevos `purpose`: `concierge`, `property_qa`, `compare_summary`, `lead_qualification`.
+- **Eventos**: `lead.qualified`, `match.candidates_computed`, `recommendation.created|accepted|dismissed`.
+- **Flags** `ai_concierge`, `ai_matching`, `ai_property_qa` encendidos (capa determinista completa) + `site_compare`.
+- **Guías**: `knowledge/sales-profile.md`, `sales-matching.md`, `sales-next-action.md`, `sales-site.md` (17 guías).

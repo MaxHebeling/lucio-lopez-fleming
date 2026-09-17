@@ -29,8 +29,8 @@ núcleo operativo de visitas (docs/operations/VISITS.md). Guía de uso para el e
 ## Brief previo (flag `ai_visit_brief`, encendido)
 
 - **Datos** (todo filtrado por la organización del agente asignado): cliente; qué busca (interés del lead, oportunidad
-  con etapa y presupuesto, notas de la cita y del contacto; `buyerProfile` = punto de integración del perfil del
-  comprador de la rama de ventas); qué preguntó (mensajes de leads del contacto y mensajes entrantes de conversaciones,
+  con etapa y presupuesto, notas de la cita y del contacto; perfil del comprador de la Fase 2: SOLO preferencias
+  confirmadas por una persona en `client_preferences`, formateadas con `formatFieldValue`); qué preguntó (mensajes de leads del contacto y mensajes entrantes de conversaciones,
   los 4 más recientes); propiedad (precio aunque esté oculto en el sitio —es interno—, expensas, ambientes, superficies,
   antigüedad, orientación, estado, crédito, características, tour).
 - **NO REGISTRADO**: precio, gastos/expensas, escritura (sin documento `deed`), orientación, antigüedad, estado de

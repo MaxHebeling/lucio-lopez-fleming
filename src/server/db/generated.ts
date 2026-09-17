@@ -334,6 +334,22 @@ export interface Campaigns {
   utm_campaign: string | null;
 }
 
+export interface ClientPreferences {
+  confidence: Numeric;
+  contact_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  field: string;
+  id: Generated<string>;
+  lead_id: string | null;
+  organization_id: string;
+  source: string;
+  status: string;
+  value: Json;
+}
+
 export interface ContactAddresses {
   city: string | null;
   contact_id: string;
@@ -971,6 +987,25 @@ export interface PropertyMarketingDrafts {
   updated_by: string | null;
 }
 
+export interface PropertyMatches {
+  algorithm_version: string;
+  computed_at: Generated<Timestamp>;
+  contact_id: string;
+  created_at: Generated<Timestamp>;
+  dismiss_reason: string | null;
+  dismissed_at: Timestamp | null;
+  dismissed_by: string | null;
+  id: Generated<string>;
+  notified_at: Timestamp | null;
+  notified_user_id: string | null;
+  organization_id: string;
+  property_id: string;
+  reasons: Generated<Json>;
+  score: number;
+  status: Generated<string>;
+  trigger: string;
+}
+
 export interface PropertyMedia {
   alt_text: string | null;
   copy_attempts: Generated<number>;
@@ -1261,6 +1296,28 @@ export interface Roles {
   name: string;
 }
 
+export interface SalesRecommendations {
+  contact_id: string;
+  created_at: Generated<Timestamp>;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  dismiss_note: string | null;
+  entity_id: string;
+  entity_type: string;
+  evidence: Generated<Json>;
+  fingerprint: string;
+  id: Generated<string>;
+  organization_id: string;
+  priority: string;
+  reason: string;
+  rule_key: string;
+  snoozed_until: Timestamp | null;
+  status: string;
+  task_id: string | null;
+  title: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Sessions {
   created_at: Generated<Timestamp>;
   expires_at: Timestamp;
@@ -1300,6 +1357,15 @@ export interface SiteEvents {
   scene_slug: string | null;
   session_key: string;
   tour_id: string | null;
+}
+
+export interface SiteSessionLinks {
+  contact_id: string;
+  id: Generated<Int8>;
+  lead_id: string | null;
+  linked_at: Generated<Timestamp>;
+  organization_id: string;
+  session_key: string;
 }
 
 export interface SocialAssets {
@@ -1510,6 +1576,7 @@ export interface DB {
   automation_runs: AutomationRuns;
   branches: Branches;
   campaigns: Campaigns;
+  client_preferences: ClientPreferences;
   contact_addresses: ContactAddresses;
   contact_duplicate_candidates: ContactDuplicateCandidates;
   contact_emails: ContactEmails;
@@ -1556,6 +1623,7 @@ export interface DB {
   property_documents: PropertyDocuments;
   property_features: PropertyFeatures;
   property_marketing_drafts: PropertyMarketingDrafts;
+  property_matches: PropertyMatches;
   property_media: PropertyMedia;
   property_media_analysis: PropertyMediaAnalysis;
   property_media_rooms: PropertyMediaRooms;
@@ -1577,10 +1645,12 @@ export interface DB {
   rental_contracts: RentalContracts;
   role_permissions: RolePermissions;
   roles: Roles;
+  sales_recommendations: SalesRecommendations;
   sessions: Sessions;
   settings: Settings;
   settlement_lines: SettlementLines;
   site_events: SiteEvents;
+  site_session_links: SiteSessionLinks;
   social_assets: SocialAssets;
   social_posts: SocialPosts;
   tags: Tags;

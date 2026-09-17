@@ -14,6 +14,7 @@ import { AppError } from "../errors";
 import { errorFields, log } from "../log";
 import { normalizePhone } from "../contacts/normalize";
 import { claimOwnerPhotos } from "./owner-capture";
+import { attachSiteContext, siteContextSchema } from "../sales/site-context";
 
 export const LEAD_FORM_KINDS = ["property", "visit", "contact", "appraisal", "owner"] as const;
 export const OWNER_CONDITIONS = ["a_estrenar", "muy_bueno", "bueno", "a_refaccionar"] as const;
@@ -55,6 +56,12 @@ export const publicLeadSchema = z
     website: z.string().max(500).optional(),
     idempotencyKey: z.preprocess((v) => (typeof v === "string" && /^[A-Za-z0-9-]{16,80}$/.test(v) ? v : undefined), z.string().optional()),
     utm: z.record(z.string(), z.string()).optional(),
+    // IA Fase 2 · Ventas: sesión de la pestaña, filtros del concierge y preguntas opcionales (ver sales/site-context.ts).
+    // Inválidos se descartan en silencio: nunca impiden enviar la consulta.
+    sessionKey: z.preprocess((v) => (siteContextSchema.shape.sessionKey.safeParse(v).success ? v : undefined), z.string().optional()),
+    conciergeIntent: z.preprocess((v) => (typeof v === "string" && v.length <= 6000 ? v : undefined), z.string().optional()),
+    moveTimeframe: z.preprocess((v) => (siteContextSchema.shape.moveTimeframe.safeParse(v).success ? v : undefined), siteContextSchema.shape.moveTimeframe),
+    financing: z.preprocess((v) => (siteContextSchema.shape.financing.safeParse(v).success ? v : undefined), siteContextSchema.shape.financing),
   })
   .superRefine((v, ctx) => {
     if (!v.email && !v.phone) ctx.addIssue({ code: "custom", path: ["phone"], message: "Dejanos un teléfono o un email para responderte" });
@@ -121,7 +128,7 @@ export function leadInterest(v: Pick<z.infer<typeof publicLeadSchema>, "kind" | 
  * Procesa un envío de formulario público. Nunca devuelve "sent" si el lead no quedó guardado.
  * `ip` puede ser null (sin cabeceras de proxy): se limita con una clave compartida más permisiva.
  */
-export async function submitPublicLead(db: Database, actor: Actor, ip: string | null, raw: unknown): Promise<PublicLeadResult> {
+export async function submitPublicLead(db: Database, actor: Actor, ip: string | null, raw: unknown, opts: { privacySignal?: boolean } = {}): Promise<PublicLeadResult> {
   const parsed = publicLeadSchema.safeParse(raw);
   if (!parsed.success) {
     const fieldErrors: Record<string, string[]> = {};
@@ -163,6 +170,26 @@ export async function submitPublicLead(db: Database, actor: Actor, ip: string | 
       priority: v.kind === "visit" ? "high" : "normal",
     });
     if (v.kind === "owner" && v.photoTokens?.length) await claimOwnerPhotos(db, res.leadId, v.photoTokens);
+    if (!res.duplicate) {
+      try {
+        const lead = await db.selectFrom("leads").select(["property_id"]).where("id", "=", res.leadId).executeTakeFirst();
+        await attachSiteContext(db, actor, {
+          leadId: res.leadId,
+          contactId: res.contactId,
+          kind: v.kind,
+          propertyId: lead?.property_id ?? null,
+          operation: v.kind === "property" || v.kind === "visit" ? (v.operation ?? null) : null,
+          privacySignal: opts.privacySignal ?? false,
+          sessionKey: v.sessionKey,
+          conciergeIntent: v.conciergeIntent,
+          moveTimeframe: v.moveTimeframe,
+          financing: v.financing,
+        });
+      } catch (e) {
+        // La consulta ya quedó guardada: el contexto del sitio es un complemento.
+        log.error("site.lead_context_failed", { requestId: actor.requestId, ...errorFields(e) });
+      }
+    }
     return { status: "sent", duplicate: res.duplicate };
   } catch (e) {
     if (e instanceof AppError && e.code === "validation") {

@@ -24,6 +24,8 @@ import { getPhotoDirector } from "@/server/ai/property/photo-director";
 import { QualityPanel } from "@/components/ai-property/quality-panel";
 import { getMarketingDirector } from "@/server/ai/property/marketing-director";
 import { MarketingPanel } from "@/components/ai-property/marketing-panel";
+import { propertyClientsPanel } from "@/server/sales/crm-panels";
+import { CompatibleClientsCard } from "@/components/crm/sales/sales-panels";
 
 export const metadata: Metadata = { title: "Propiedad" };
 
@@ -71,8 +73,9 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
-  const [tour, quality, director, marketingView] = await Promise.all([
+  const [tour, clients, quality, director, marketingView] = await Promise.all([
     getTourSummary(db, actor, d.property.id),
+    propertyClientsPanel(db, actor, d.property.id),
     d.property.is_demo ? Promise.resolve({ enabled: false, report: null }) : getPropertyQuality(db, actor, d.property.id),
     getPhotoDirector(db, actor, d.property.id),
     !d.property.is_demo && can(actor, "marketing.read") ? getMarketingDirector(db, actor, d.property.id) : Promise.resolve(null),
@@ -495,6 +498,12 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           </Card>
         </section>
         )}
+
+        {clients ? (
+          <section className="scroll-mt-28">
+            <CompatibleClientsCard items={clients.items} total={clients.total} scope={clients.scope} available={clients.available} minScore={clients.minScore} />
+          </section>
+        ) : null}
 
         {d.leads ? (
           <section id="leads" className="scroll-mt-28">

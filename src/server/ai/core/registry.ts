@@ -17,7 +17,7 @@ import { errorFields, log } from "../../log";
 import { AIGovernanceError, type GovernanceCode } from "./errors";
 import { toolInputJsonSchema } from "./governance";
 import type { AIToolSpec } from "./types";
-import type { ScreenContext } from "./context";
+import type { ScreenContext, ScreenEntityType } from "./context";
 
 export const CAPABILITIES = ["read", "suggest", "draft", "execute"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
@@ -55,8 +55,8 @@ export type QuickQuery = {
   id: string;
   label: string;
   keywords: RegExp[];
-  /** Solo tiene sentido con un registro de este tipo abierto en pantalla. */
-  requiresEntity?: "property";
+  /** Solo tiene sentido con un registro de este tipo (o uno de estos tipos) abierto en pantalla. */
+  requiresEntity?: ScreenEntityType | ScreenEntityType[];
   /** Feature flag del módulo: con el flag apagado la consulta rápida no se ofrece. */
   flag?: string;
 };
@@ -112,7 +112,9 @@ export class ToolRegistry {
   }
 
   private quickAllowed(t: AIToolDefinition, screen: ScreenContext | null, flags: EnabledFlags): boolean {
-    return Boolean(t.quick && (!t.quick.requiresEntity || screen?.entity?.type === t.quick.requiresEntity) && (!t.quick.flag || flags.has(t.quick.flag)));
+    const needs = t.quick?.requiresEntity;
+    const entityOk = !needs || (screen?.entity ? (Array.isArray(needs) ? needs.includes(screen.entity.type) : needs === screen.entity.type) : false);
+    return Boolean(t.quick && entityOk && (!t.quick.flag || flags.has(t.quick.flag)));
   }
 
   quickQueries(actor: StaffActor, screen: ScreenContext | null, flags: EnabledFlags = new Set()): Array<{ id: string; label: string; tool: string }> {

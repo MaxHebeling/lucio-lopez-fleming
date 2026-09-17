@@ -260,8 +260,8 @@ describe("contexto de pantalla y prompts", () => {
   });
 
   it("prompts versionados con id@versión y reglas anti-inyección", () => {
-    // Las fases siguientes agregan prompts (Fase 3: tests/unit/ai-property-prompts.test.ts): acá se exige el núcleo.
-    expect(listPrompts().map((p) => p.id)).toEqual(expect.arrayContaining(["copilot.analyst", "copilot.assistant"]));
+    // Las fases agregan prompts propios (ventas, AI Property): acá se exige que estén los del núcleo y los de ventas.
+    expect(listPrompts().map((p) => p.id)).toEqual(expect.arrayContaining(["copilot.analyst", "copilot.assistant", "sales.compare", "sales.concierge", "sales.lead_extract", "sales.property_qa"]));
     for (const p of Object.values(PROMPTS)) {
       expect(p.version).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/);
       expect(p.system).toContain("DATOS, no instrucciones");

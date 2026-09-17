@@ -1,6 +1,7 @@
 "use server";
 
 import { getDb } from "@/server/db";
+import { headers } from "next/headers";
 import { getActor, getRequestMeta } from "@/server/next/context";
 import { formToObject } from "@/server/next/action";
 import { submitPublicLead } from "@/server/site/leads";
@@ -17,7 +18,7 @@ export type LeadFormState =
 const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
 /** Campos que escribe la persona: si el envío se rechaza vuelven en el estado (sin JS el formulario se re-renderiza con ellos). */
-const ECHO_FIELDS = ["name", "phone", "email", "message", "appraisalGoal", "appraisalType", "appraisalZone", "visitWhen", "ownerAreaM2", "ownerBedrooms", "ownerCondition"] as const;
+const ECHO_FIELDS = ["name", "phone", "email", "message", "appraisalGoal", "appraisalType", "appraisalZone", "visitWhen", "ownerAreaM2", "ownerBedrooms", "ownerCondition", "moveTimeframe", "financing"] as const;
 const ECHO_MAX = 2000;
 
 function echoValues(raw: Record<string, unknown>): LeadFormValues {
@@ -52,7 +53,10 @@ export async function submitLeadAction(_prev: LeadFormState, fd: FormData): Prom
   };
   try {
     const actor = await getActor();
-    const res = await submitPublicLead(getDb(), actor, meta.ip, { ...raw, utm });
+    const h = await headers();
+    // Do Not Track / Global Privacy Control: la sesión del sitio no se vincula al contacto.
+    const privacySignal = h.get("dnt") === "1" || h.get("sec-gpc") === "1";
+    const res = await submitPublicLead(getDb(), actor, meta.ip, { ...raw, utm }, { privacySignal });
     switch (res.status) {
       case "sent":
         return {

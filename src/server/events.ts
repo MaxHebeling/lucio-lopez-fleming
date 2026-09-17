@@ -46,6 +46,12 @@ export const EVENT_TYPES = [
   // del sistema los escucha y la IA no reacciona a eventos: no hay loops. `ai.recommendation.*` queda para la Fase 5.
   "ai.answer.generated",
   "ai.feedback.recorded",
+  // IA Fase 2 · Ventas (src/server/sales). Metadatos sin PII. Ninguna automatización los escucha: no hay loops.
+  "lead.qualified",
+  "match.candidates_computed",
+  "recommendation.created",
+  "recommendation.accepted",
+  "recommendation.dismissed",
   // AI Property (Fase 3) e IA de visitas (Fase 4b): solo ids, contadores y versiones (sin datos personales). Ninguna
   // automatización los escucha: no hay loops (docs/ai/PROPERTY.md › Eventos).
   "property.quality_computed",
