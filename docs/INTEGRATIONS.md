@@ -53,7 +53,10 @@ Respuesta `{ id }` → `provider_message_id`.
 - Sin credenciales o flag apagado → `awaiting_credentials` con el motivo. Nunca `sent`.
 - Plantilla desconocida o payload inválido → `failed` + error permanente (no se reintenta).
 - 429/5xx → `failed` y reintento de la cola con backoff; otros 4xx → `failed` permanente.
-- Tras enviar se redactan del payload los datos de un solo uso (`resetUrl`, `inviteUrl`).
+- Los datos de un solo uso (`resetUrl`, `inviteUrl`, `token` y los `sensitiveKeys` de cada plantilla) se redactan cuando el
+  mensaje sale de la cola: enviado, fallido sin reintento (error permanente o job muerto) o cancelado. Un fallo reintentable
+  conserva el link para el próximo intento. La tarea horaria cancela y redacta los que vencieron (`expiresAt`) o siguen sin
+  credenciales pasados los 7 días de la ventana de reanudación.
 - Si el payload trae `expiresAt` y venció antes de enviarse → `cancelled` (no se manda un link vencido).
 
 **Plantillas** (`src/server/messaging/templates.ts`) — contrato de payload para quienes encolan:
@@ -65,8 +68,16 @@ Respuesta `{ id }` → `provider_message_id`.
 | `staff_invite` | `fullName`, `inviteUrl`, `invitedBy?`, `expiresHours?`, `expiresAt?` |
 | `owner_invite` | `fullName`, `inviteUrl`, `expiresHours?`, `expiresAt?` |
 | `owner_report_ready` | `fullName`, `periodLabel`, `reportUrl` |
-| `rent_due_reminder` | `recipientName`, `propertyLabel`, `dueDate` (YYYY-MM-DD), `amount`, `currency` (ARS/USD), `periodLabel?` |
+| `rent_due_reminder` | `recipientName`, `propertyLabel`, `dueDate` (YYYY-MM-DD), `amount` (saldo pendiente de la cuota), `currency` (ARS/USD), `periodLabel?` |
 | `lead_internal_notice` | `leadPath` (`/crm/leads/<uuid>`), `contactName?`, `sourceName?`, `propertyLabel?`, `message?` |
+
+**WhatsApp**: las plantillas con parámetros están en `WHATSAPP_TEMPLATES` (mismo payload de negocio + `whatsappTemplate`
+`{ name, bodyParameters }`). Antes de enviar, el worker recalcula los parámetros con `renderWhatsApp` y exige que coincidan con
+lo guardado; payload inválido → `failed` permanente, sin llamar a Meta. La plantilla aprobada en Meta debe respetar el orden:
+
+| Plantilla | Parámetros del cuerpo |
+| --- | --- |
+| `rent_due_reminder` | {{1}} nombre, {{2}} propiedad, {{3}} vencimiento ("10 de octubre de 2026"), {{4}} importe pendiente ("$ 350.000") |
 
 Todo contenido dinámico se escapa; los links solo pueden apuntar al origen de `APP_URL` (otro origen → error permanente).
 El aviso interno de leads no incluye teléfono ni email del contacto.

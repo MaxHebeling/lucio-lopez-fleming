@@ -12,7 +12,7 @@ import { applyRentAdjustment, proposeRentAdjustment, rejectRentAdjustment } from
 import { approveSettlement, cancelSettlement, generateSettlements, markSettlementPaid } from "@/server/rentals/settlements";
 import { fetchIndicesFromBcra, setManualIndexValue } from "@/server/rentals/indices";
 import { deleteContractDocument, setDocumentVisibility } from "@/server/rentals/documents";
-import { inviteOwner } from "@/server/owners/access";
+import { changeOwnerEmail, inviteOwner, setOwnerAccessActive } from "@/server/owners/access";
 import { searchContacts } from "@/server/rentals/queries";
 import { getActor } from "@/server/next/context";
 import { requirePermission } from "@/server/auth/actor";
@@ -195,8 +195,22 @@ export async function deleteDocumentAction(_prev: FormState, fd: FormData): Prom
   return toState(r, "Documento eliminado.");
 }
 
+const optionalText = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : undefined);
+
 export async function inviteOwnerAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const raw = { contactId: fd.get("contactId"), email: fd.get("email") ?? undefined };
-  const r = await runAction("owners.invite", z.object({ contactId: z.uuid(), email: z.string().optional() }), raw, (_d, actor) => inviteOwner(getDb(), actor, raw));
+  const raw = { contactId: fd.get("contactId"), email: optionalText(fd.get("email")), confirmEmail: optionalText(fd.get("confirmEmail")) };
+  const r = await runAction("owners.invite", z.object({ contactId: z.uuid(), email: z.string().optional(), confirmEmail: z.string().optional() }), raw, (_d, actor) => inviteOwner(getDb(), actor, raw));
   return toState(r, (d) => `Invitación encolada para ${d.email} (válida 72 h).`);
+}
+
+export async function setOwnerAccessAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const raw = { userId: fd.get("userId"), active: fd.get("active") === "true", reason: optionalText(fd.get("reason")) };
+  const r = await runAction("owners.set_active", z.object({ userId: z.uuid(), active: z.boolean(), reason: z.string().optional() }), raw, (_d, actor) => setOwnerAccessActive(getDb(), actor, raw));
+  return toState(r, (d) => (raw.active ? "Acceso al portal restituido." : `Acceso al portal desactivado${d.sessionsRevoked ? ` (${d.sessionsRevoked} sesión/es cerradas)` : ""}.`));
+}
+
+export async function changeOwnerEmailAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const raw = { userId: fd.get("userId"), email: optionalText(fd.get("email")), confirmEmail: optionalText(fd.get("confirmEmail")) };
+  const r = await runAction("owners.change_email", z.object({ userId: z.uuid(), email: z.string().optional(), confirmEmail: z.string().optional() }), raw, (_d, actor) => changeOwnerEmail(getDb(), actor, raw));
+  return toState(r, (d) => (d.changed ? `Email del portal cambiado a ${d.email}. Se cerraron las sesiones abiertas.` : "El email ya era ese."));
 }

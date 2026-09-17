@@ -50,7 +50,10 @@ async function ownerWorld(name: string) {
   const hiddenDoc = await db.insertInto("rental_contract_documents").values({ contract_id: c.id, file_id: orgFile.id, kind: "guarantee", title: "Garantía (interna)", visible_to_owner: false }).returning("id").executeTakeFirstOrThrow();
   const propDoc = await db.insertInto("property_documents").values({ property_id: property.id, file_id: orgFile.id, kind: "deed", title: "Escritura", visible_to_owner: true }).returning("id").executeTakeFirstOrThrow();
   const report = await generateOwnerReport(db, staff, { ownerContactId: owner.contactId, periodStart: monthStart(0), periodEnd: todayInSalta() });
-  await sendOwnerReport(db, staff, report.id);
+  const sent = await sendOwnerReport(db, staff, report.id);
+  // El propietario ve el informe cuando el email salió
+  await sql`update outbound_messages set status = 'sent', sent_at = now() where id = ${sent.messageId}`.execute(db);
+  await syncReportDeliveryStatus(db);
   return { db, staff, owner, property, contractId: c.id, settlementId: s!.settlementId!, visibleDoc: visibleDoc.id, hiddenDoc: hiddenDoc.id, propDoc: propDoc.id, reportId: report.id };
 }
 
@@ -126,13 +129,13 @@ describe("invitación y recuperación de acceso", () => {
     await createTestProperty(db, { ownerContactIds: [{ id: contact }] });
     await expect(inviteOwner(db, agent, { contactId: contact })).rejects.toMatchObject({ code: "forbidden" });
 
-    const first = await inviteOwner(db, staff, { contactId: contact });
+    const first = await inviteOwner(db, staff, { contactId: contact, email: "elena.nueva@test.local", confirmEmail: "elena.nueva@test.local" });
     expect(first).toMatchObject({ email: "elena.nueva@test.local", created: true });
     const user = await db.selectFrom("users").select(["kind", "contact_id", "password_hash"]).where("id", "=", first.userId).executeTakeFirstOrThrow();
     expect(user).toEqual({ kind: "owner", contact_id: contact, password_hash: null });
     const msg1 = await db.selectFrom("outbound_messages").select(["template_key", "payload", "to_address"]).where("entity_id", "=", first.userId).executeTakeFirstOrThrow();
     expect(msg1.template_key).toBe("owner_invite");
-    const token1 = new URL(String((msg1.payload as { link: string }).link)).searchParams.get("token")!;
+    const token1 = new URL(String((msg1.payload as { inviteUrl: string }).inviteUrl)).searchParams.get("token")!;
     const tok = await db.selectFrom("password_reset_tokens").select(["expires_at"]).where("token_hash", "=", hashToken(token1)).executeTakeFirstOrThrow();
     const hours = (tok.expires_at.getTime() - Date.now()) / 3_600_000;
     expect(hours).toBeGreaterThan(71.9);
@@ -142,7 +145,7 @@ describe("invitación y recuperación de acceso", () => {
     expect(second).toMatchObject({ userId: first.userId, created: false });
     expect(await isResetTokenValid(db, token1)).toBe(false);
     const msgs = await db.selectFrom("outbound_messages").select("payload").where("entity_id", "=", first.userId).orderBy("created_at", "desc").execute();
-    const token2 = new URL(String((msgs[0]!.payload as { link: string }).link)).searchParams.get("token")!;
+    const token2 = new URL(String((msgs[0]!.payload as { inviteUrl: string }).inviteUrl)).searchParams.get("token")!;
     expect(await isResetTokenValid(db, token2)).toBe(true);
     expect(await consumePasswordReset(db, token2, "Clave-propietaria-2026")).toBe(true);
     expect((await login(db, { email: "elena.nueva@test.local", password: "Clave-propietaria-2026", area: "owner" })).ok).toBe(true);
@@ -212,12 +215,12 @@ describe("informes a propietarios", () => {
     await expect(sendOwnerReport(db, staff, r3.id)).rejects.toThrow(/invitalo/);
 
     await sendOwnerReport(db, staff, r1.id);
-    await expect(sendOwnerReport(db, staff, r1.id)).rejects.toThrow(/ya fue enviado/);
+    await expect(sendOwnerReport(db, staff, r1.id)).rejects.toThrow(/se está enviando/);
     const queued = await db.selectFrom("owner_reports").select("status").where("id", "=", r1.id).executeTakeFirstOrThrow();
     expect(queued.status).toBe("queued");
     const msg = await db.selectFrom("outbound_messages").select(["id", "template_key", "payload"]).where("entity_id", "=", r1.id).executeTakeFirstOrThrow();
     expect(msg.template_key).toBe("owner_report_ready");
-    expect((msg.payload as { link: string }).link).toMatch(new RegExp(`/propietarios/informes/${r1.id}$`));
+    expect((msg.payload as { reportUrl: string }).reportUrl).toMatch(new RegExp(`/propietarios/informes/${r1.id}$`));
 
     await sql`update outbound_messages set status = 'failed', last_error = 'rebotado' where id = ${msg.id}`.execute(db);
     expect((await syncReportDeliveryStatus(db)).updated).toBeGreaterThanOrEqual(1);

@@ -9,7 +9,8 @@ import { audit } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
 import { conflict, invalid, notFound } from "../errors";
 import { queueMessage } from "../messaging/outbound";
-import { isIsoDate } from "../rentals/dates";
+import { redactSensitive } from "../messaging/templates";
+import { firstOfMonth, isIsoDate, lastOfMonth, monthLabel } from "../rentals/dates";
 
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -262,13 +263,40 @@ export async function generateOwnerReport(db: Database, actor: Actor, raw: unkno
   });
 }
 
-/** Encola el email `owner_report_ready` con link al portal. Requiere que el propietario tenga acceso al portal. */
+const SHORT_DATE = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+/** "septiembre 2026" si el período es un mes calendario completo; si no, "01/09/2026 al 15/09/2026". */
+export function reportPeriodLabel(start: string, end: string): string {
+  if (start === firstOfMonth(start) && end === lastOfMonth(start)) return monthLabel(start);
+  return start === end ? SHORT_DATE(start) : `${SHORT_DATE(start)} al ${SHORT_DATE(end)}`;
+}
+
+/** Estados del último mensaje que permiten reenviar el informe (el envío anterior no salió ni va a salir solo). */
+const RESENDABLE_MESSAGE = ["failed", "cancelled", "awaiting_credentials"];
+
+/**
+ * Encola el email `owner_report_ready` con link al portal. Requiere que el propietario tenga acceso al portal.
+ * Se puede reenviar si el último mensaje falló, se canceló o quedó esperando credenciales (se mira el mensaje real, no
+ * solo el estado sincronizado del informe). El mensaje anterior sin enviar se cancela: al cargar credenciales no se
+ * mandan dos avisos.
+ */
 export async function sendOwnerReport(db: Database, actor: Actor, reportId: string): Promise<{ messageId: string | null }> {
   requirePermission(actor, "reports.generate");
   return db.transaction().execute(async (trx) => {
     const r = await trx.selectFrom("owner_reports").select(["id", "status", "owner_contact_id", "period_start", "period_end"]).where("id", "=", reportId).forUpdate().executeTakeFirst();
     if (!r) throw notFound("Informe");
-    if (!["generated", "failed"].includes(r.status)) throw conflict("El informe ya fue enviado");
+    if (["sent", "delivered"].includes(r.status)) throw conflict("El informe ya fue enviado");
+    const previous = await trx
+      .selectFrom("outbound_messages")
+      .select(["id", "status", "template_key", "payload"])
+      .where("entity_type", "=", "owner_report")
+      .where("entity_id", "=", r.id)
+      .orderBy("created_at", "desc")
+      .forUpdate()
+      .execute();
+    const last = previous[0];
+    if (last && ["sent", "delivered"].includes(last.status)) throw conflict("El informe ya fue enviado");
+    if (last && !RESENDABLE_MESSAGE.includes(last.status)) throw conflict("El informe se está enviando: esperá el resultado antes de reenviarlo");
     const user = await trx
       .selectFrom("users")
       .select(["id", "email", "full_name"])
@@ -278,43 +306,55 @@ export async function sendOwnerReport(db: Database, actor: Actor, reportId: stri
       .where("deleted_at", "is", null)
       .executeTakeFirst();
     if (!user) throw conflict("El propietario no tiene acceso al portal: invitalo primero");
-    const attempts = await trx
-      .selectFrom("outbound_messages")
-      .select(sql<number>`count(*)::int`.as("n"))
-      .where("entity_type", "=", "owner_report")
-      .where("entity_id", "=", r.id)
-      .executeTakeFirst();
+    for (const m of previous.filter((x) => ["failed", "awaiting_credentials"].includes(x.status))) {
+      await trx
+        .updateTable("outbound_messages")
+        .set({ status: "cancelled", last_error: "Reemplazado por un reenvío del informe", payload: JSON.stringify(redactSensitive(m.template_key, (m.payload ?? {}) as Record<string, unknown>)) })
+        .where("id", "=", m.id)
+        .execute();
+    }
     const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
     const messageId = await queueMessage(trx, {
       channel: "email",
       to: user.email,
       templateKey: "owner_report_ready",
-      payload: { recipientName: user.full_name, periodStart: r.period_start, periodEnd: r.period_end, link: `${appUrl}/propietarios/informes/${r.id}` },
-      dedupeKey: `owner_report_ready:${r.id}:${attempts?.n ?? 0}`,
+      // Contrato de la plantilla owner_report_ready (src/server/messaging/templates.ts).
+      payload: { fullName: user.full_name, periodLabel: reportPeriodLabel(r.period_start, r.period_end), reportUrl: `${appUrl}/propietarios/informes/${r.id}` },
+      dedupeKey: `owner_report_ready:${r.id}:${previous.length}`,
       entityType: "owner_report",
       entityId: r.id,
     });
     await trx.updateTable("owner_reports").set({ status: "queued", last_error: null }).where("id", "=", r.id).execute();
-    await audit(trx, actor, { action: "OWNER_REPORT_QUEUED", entityType: "owner_report", entityId: r.id, before: { status: r.status }, after: { status: "queued", to: user.email } });
+    await audit(trx, actor, {
+      action: "OWNER_REPORT_QUEUED",
+      entityType: "owner_report",
+      entityId: r.id,
+      before: { status: r.status, lastMessageStatus: last?.status ?? null },
+      after: { status: "queued", to: user.email, resend: Boolean(last) },
+    });
     return { messageId };
   });
 }
 
-/** Job: refleja en el informe el estado real del email (enviado / entregado / fallido). */
+/** Job: refleja en el informe el estado real del último email (en cola / enviado / entregado / sin credenciales / fallido). */
 export async function syncReportDeliveryStatus(db: Database): Promise<{ updated: number }> {
   const r = await sql`
-    update owner_reports r set
-      status = case m.status when 'sent' then 'sent' when 'delivered' then 'delivered' else 'failed' end,
-      sent_at = case when m.status in ('sent', 'delivered') then coalesce(m.sent_at, now()) else r.sent_at end,
-      last_error = case when m.status in ('failed', 'cancelled') then coalesce(m.last_error, 'Envío fallido') else null end
-    from (
-      select distinct on (o.entity_id) o.entity_id, o.status, o.sent_at, o.last_error
+    with m as (
+      select distinct on (o.entity_id) o.entity_id, o.sent_at, o.last_error,
+        case o.status when 'sent' then 'sent' when 'delivered' then 'delivered' when 'awaiting_credentials' then 'awaiting_credentials'
+          when 'failed' then 'failed' when 'cancelled' then 'failed' else 'queued' end as report_status
         from outbound_messages o where o.entity_type = 'owner_report'
        order by o.entity_id, o.created_at desc
-    ) m
-    where m.entity_id = r.id and r.status in ('queued', 'failed', 'sent')
-      and m.status in ('sent', 'delivered', 'failed', 'cancelled')
-      and r.status is distinct from (case m.status when 'sent' then 'sent' when 'delivered' then 'delivered' else 'failed' end)`.execute(db);
+    )
+    update owner_reports r set
+      status = m.report_status,
+      sent_at = case when m.report_status in ('sent', 'delivered') then coalesce(m.sent_at, now()) else r.sent_at end,
+      last_error = case when m.report_status in ('failed', 'awaiting_credentials') then coalesce(m.last_error, 'Envío fallido') else null end
+    from m
+    where m.entity_id = r.id and r.status in ('queued', 'failed', 'sent', 'awaiting_credentials')
+      and not (r.status in ('sent', 'delivered') and m.report_status not in ('sent', 'delivered'))
+      and (r.status is distinct from m.report_status
+        or r.last_error is distinct from (case when m.report_status in ('failed', 'awaiting_credentials') then coalesce(m.last_error, 'Envío fallido') else null end))`.execute(db);
   return { updated: Number(r.numAffectedRows ?? 0) };
 }
 
@@ -340,7 +380,16 @@ export async function getReport(db: Database, actor: Actor, id: string) {
     .executeTakeFirst();
   if (!r) throw notFound("Informe");
   const portalUser = await db.selectFrom("users").select(["email", "is_active"]).where("contact_id", "=", r.owner_contact_id).where("kind", "=", "owner").where("deleted_at", "is", null).executeTakeFirst();
-  return { ...r, portalUser: portalUser ?? null };
+  // Estado real del último envío (el del informe se sincroniza cada hora).
+  const delivery = await db
+    .selectFrom("outbound_messages")
+    .select(["status", "last_error", "created_at"])
+    .where("entity_type", "=", "owner_report")
+    .where("entity_id", "=", r.id)
+    .orderBy("created_at", "desc")
+    .executeTakeFirst();
+  const canResend = !["sent", "delivered"].includes(r.status) && (!delivery || RESENDABLE_MESSAGE.includes(delivery.status));
+  return { ...r, portalUser: portalUser ?? null, delivery: delivery ?? null, canResend };
 }
 
 /** Propietarios (contactos con propiedades o contratos como owner) para el formulario de informes. */

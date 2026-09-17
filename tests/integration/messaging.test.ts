@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "@/server/db";
 import "@/server/jobs/handlers";
 import { queueMessage } from "@/server/messaging/outbound";
-import { resumeAwaitingMessages, sendQueuedMessage } from "@/server/messaging/send";
+import { redactUndeliverableMessages, resumeAwaitingMessages, sendQueuedMessage } from "@/server/messaging/send";
 import { registerWhatsAppTemplateSender } from "@/server/messaging/whatsapp-bridge";
 import { runJobs } from "@/server/jobs/runner";
-import { PermanentJobError } from "@/server/jobs/registry";
+import { getJobDeadHandler, PermanentJobError } from "@/server/jobs/registry";
 import { dispatchPendingEvents } from "@/server/automation/engine";
 import { emitEvent } from "@/server/events";
 import { json, loadIntegrationReferenceData, mockHttp, setFlag } from "../helpers/integrations";
@@ -25,6 +25,8 @@ async function message(dedupe: string, over: Partial<Parameters<typeof queueMess
   });
   return id!;
 }
+
+const waReminder = { recipientName: "Ana", propertyLabel: "Dpto. Balcarce 100", dueDate: "2026-10-10", amount: "700000", currency: "ARS" };
 
 describe("mensajería saliente (email)", () => {
   beforeAll(async () => {
@@ -137,6 +139,52 @@ describe("mensajería saliente (email)", () => {
     }
   });
 
+  it("el link de un solo uso no queda en el payload si el envío falla definitivamente o se abandona", async () => {
+    const db = testDb();
+    process.env.RESEND_API_KEY = "re_test_123";
+    process.env.EMAIL_FROM = "avisos@luciolopezfleming.com.ar";
+    let mode: "500" | "422" = "422";
+    const http = mockHttp([(c) => (c.url.includes("resend") ? json({ name: "error", message: "rechazado" }, Number(mode)) : undefined)]);
+    const payloadOf = async (id: string) => JSON.stringify((await db.selectFrom("outbound_messages").select("payload").where("id", "=", id).executeTakeFirstOrThrow()).payload);
+    try {
+      // 4xx del proveedor → failed permanente → redactado
+      const rejected = await message("t:redact-4xx");
+      await expect(sendQueuedMessage(db, rejected)).rejects.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(rejected)).not.toContain("un-solo-uso");
+
+      // Payload inválido (link fuera de APP_URL) → failed permanente → redactado
+      const invalid = await message("t:redact-invalid", { payload: { fullName: "Ana", resetUrl: "https://phishing.example.com/r?token=secreto-invalido" } });
+      await expect(sendQueuedMessage(db, invalid)).rejects.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(invalid)).not.toContain("secreto-invalido");
+
+      // 5xx → reintentable: el link se conserva para el reintento; si el job muere, se redacta
+      mode = "500";
+      const transient = await message("t:redact-5xx");
+      await expect(sendQueuedMessage(db, transient)).rejects.not.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(transient)).toContain("un-solo-uso");
+      await getJobDeadHandler("messaging.send")!({ messageId: transient }, { db, actor: await testSystemActor(db), jobId: "00000000-0000-4000-8000-000000000001", error: "agotó intentos" });
+      expect(await payloadOf(transient)).not.toContain("un-solo-uso");
+      expect((await db.selectFrom("outbound_messages").select("status").where("id", "=", transient).executeTakeFirstOrThrow()).status).toBe("failed");
+    } finally {
+      http.restore();
+    }
+
+    // Sin credenciales: queda esperando con el link; si vence o pasa la ventana de reanudación, se cancela y se redacta
+    delete process.env.RESEND_API_KEY;
+    const waiting = await message("t:redact-waiting-ok", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vigente", expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
+    const expired = await message("t:redact-waiting-expired", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vencida", expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
+    const old = await message("t:redact-waiting-old", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vieja" } });
+    for (const id of [waiting, expired, old]) expect((await sendQueuedMessage(db, id)).outcome).toBe("awaiting_credentials");
+    await sql`update outbound_messages set payload = jsonb_set(payload, '{expiresAt}', to_jsonb(${new Date(Date.now() - 1000).toISOString()}::text)) where id = ${expired}`.execute(db);
+    await sql`update outbound_messages set created_at = now() - interval '8 days' where id = ${old}`.execute(db);
+    expect(await redactUndeliverableMessages(db)).toMatchObject({ cancelled: 2 });
+    expect(await payloadOf(waiting)).toContain("espera-vigente");
+    expect(await payloadOf(expired)).not.toContain("espera-vencida");
+    expect(await payloadOf(old)).not.toContain("espera-vieja");
+    const statuses = await db.selectFrom("outbound_messages").select(["id", "status"]).where("id", "in", [waiting, expired, old]).execute();
+    expect(Object.fromEntries(statuses.map((r) => [r.id, r.status]))).toEqual({ [waiting]: "awaiting_credentials", [expired]: "cancelled", [old]: "cancelled" });
+  });
+
   it("links temporales vencidos se cancelan en vez de enviarse tarde", async () => {
     const db = testDb();
     const id = await message("t:expired", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=viejo", expiresAt: new Date(Date.now() - 1000).toISOString() } });
@@ -149,19 +197,27 @@ describe("mensajería saliente (email)", () => {
   it("WhatsApp sin sendWhatsAppTemplate registrado → awaiting_credentials (no se simula); con sender → sent", async () => {
     const db = testDb();
     await setFlag(db, "outbound_whatsapp", true);
-    const id = await message("t:wa", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: { x: 1 } });
+    const id = await message("t:wa", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: waReminder });
     expect((await sendQueuedMessage(db, id)).outcome).toBe("awaiting_credentials");
     expect((await db.selectFrom("outbound_messages").select("last_error").where("id", "=", id).executeTakeFirstOrThrow()).last_error).toMatch(/sendWhatsAppTemplate/);
 
     let calls = 0;
-    registerWhatsAppTemplateSender(async () => {
+    let sentPayload: Record<string, unknown> | undefined;
+    registerWhatsAppTemplateSender(async (_db, m) => {
       calls++;
+      sentPayload = m.payload;
       return { status: "sent", providerMessageId: "wamid.1" };
     });
     expect(await resumeAwaitingMessages(db)).toMatchObject({ requeued: expect.any(Number) });
     await runJobs(db, { budgetMs: 300_000 });
     expect(calls).toBe(1);
+    expect(sentPayload?.whatsappTemplate).toEqual({ name: "rent_due_reminder", bodyParameters: ["Ana", "Dpto. Balcarce 100", "10 de octubre de 2026", "$ 700.000"] });
     expect((await db.selectFrom("outbound_messages").select(["status", "provider_message_id"]).where("id", "=", id).executeTakeFirstOrThrow())).toEqual({ status: "sent", provider_message_id: "wamid.1" });
+    // Payload que no cumple el contrato de la plantilla → falla permanente, nunca llega al sender
+    const bad = await message("t:wa-bad", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: { x: 1 } });
+    await expect(sendQueuedMessage(db, bad)).rejects.toBeInstanceOf(PermanentJobError);
+    expect(calls).toBe(1);
+    expect((await db.selectFrom("outbound_messages").select(["status", "last_error"]).where("id", "=", bad).executeTakeFirstOrThrow())).toMatchObject({ status: "failed", last_error: expect.stringMatching(/Payload inválido/) });
     await setFlag(db, "outbound_whatsapp", false);
   });
 

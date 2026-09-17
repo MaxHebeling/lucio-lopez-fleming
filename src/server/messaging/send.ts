@@ -4,21 +4,24 @@
  *    awaiting_credentials visible; si no, pasa a `sending` e incrementa intentos. La transacción se cierra ANTES
  *    de llamar al proveedor (nunca HTTP dentro de una transacción).
  * 2. Envía con Idempotency-Key = dedupe_key (un reintento tras un corte no duplica el email).
- * 3. Registra el resultado: sent + provider_message_id, o failed con el error; redacta datos de un solo uso.
+ * 3. Registra el resultado: sent + provider_message_id, o failed con el error. Los datos de un solo uso se redactan
+ *    cuando el mensaje sale de la cola: enviado, fallido sin reintento (permanente o job muerto) o cancelado.
  */
 import { sql, type Database } from "../db";
 import { isEnabled } from "../flags";
 import { errorFields, log } from "../log";
 import { enqueue } from "../jobs/queue";
-import { PermanentJobError, registerJobHandler } from "../jobs/registry";
+import { PermanentJobError, registerJobDeadHandler, registerJobHandler } from "../jobs/registry";
 import { addScheduledTask } from "../jobs/scheduled";
 import { NotConfiguredError, PermanentIntegrationError } from "../integrations/http";
 import { reflectIntegrationConfig } from "../integrations/status";
 import { RESEND_INTEGRATION_KEY, resendConfig, sendEmailViaResend } from "../integrations/email/resend";
-import { TemplateError, redactSensitive, renderEmail, type RenderedEmail } from "./templates";
+import { TemplateError, redactSensitive, renderEmail, renderWhatsApp, type RenderedEmail } from "./templates";
 import { getWhatsAppTemplateSender } from "./whatsapp-bridge";
 
 const SENDING_LEASE_MS = 5 * 60_000;
+/** Ventana en la que `messaging.resume_awaiting` reencola mensajes que esperaban credenciales. */
+const RESUME_WINDOW_MS = 7 * 86_400_000;
 
 export type SendOutcome =
   | { outcome: "sent"; providerMessageId: string }
@@ -69,13 +72,13 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       return { kind: "done", result: { outcome: "awaiting_credentials", reason: ready.reason } };
     }
     let rendered: RenderedEmail | undefined;
-    if (m.channel === "email") {
-      try {
-        rendered = renderEmail(m.template_key, payload);
-      } catch (e) {
-        if (e instanceof TemplateError) return { kind: "invalid", error: e.message };
-        throw e;
-      }
+    let sendPayload = payload;
+    try {
+      if (m.channel === "email") rendered = renderEmail(m.template_key, payload);
+      else sendPayload = { ...payload, whatsappTemplate: renderWhatsApp(m.template_key, payload) };
+    } catch (e) {
+      if (e instanceof TemplateError) return { kind: "invalid", error: e.message };
+      throw e;
     }
     await trx
       .updateTable("outbound_messages")
@@ -84,12 +87,12 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       .execute();
     return m.channel === "email"
       ? { kind: "send_email", to: m.to_address, rendered: rendered!, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload, entityType: m.entity_type, entityId: m.entity_id }
-      : { kind: "send_whatsapp", to: m.to_address, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload };
+      : { kind: "send_whatsapp", to: m.to_address, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload: sendPayload };
   });
 
   if (decision.kind === "done") return decision.result;
   if (decision.kind === "invalid") {
-    await db.updateTable("outbound_messages").set({ status: "failed", last_error: decision.error }).where("id", "=", messageId).execute();
+    await markFailedAndRedact(db, messageId, decision.error);
     throw new PermanentJobError(decision.error);
   }
 
@@ -126,10 +129,77 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       await db.updateTable("outbound_messages").set({ status: "awaiting_credentials", last_error: message }).where("id", "=", messageId).execute();
       return { outcome: "awaiting_credentials", reason: message };
     }
+    if (e instanceof PermanentIntegrationError || e instanceof TemplateError) {
+      // No se va a reintentar: el link de un solo uso no tiene por qué quedar guardado.
+      await markFailedAndRedact(db, messageId, message);
+      throw new PermanentJobError(message);
+    }
+    // Reintentable: se conserva el payload completo para el próximo intento (si el job muere, lo redacta onDead).
     await db.updateTable("outbound_messages").set({ status: "failed", last_error: message }).where("id", "=", messageId).execute();
-    if (e instanceof PermanentIntegrationError || e instanceof TemplateError) throw new PermanentJobError(message);
     throw e;
   }
+}
+
+/** Marca `failed` (salvo que ya se haya enviado) y redacta los datos de un solo uso. */
+async function markFailedAndRedact(db: Database, messageId: string, error: string | null): Promise<void> {
+  await db.transaction().execute(async (trx) => {
+    const m = await trx.selectFrom("outbound_messages").select(["id", "status", "template_key", "payload", "last_error"]).where("id", "=", messageId).forUpdate().executeTakeFirst();
+    if (!m) return;
+    const delivered = ["sent", "delivered"].includes(m.status);
+    await trx
+      .updateTable("outbound_messages")
+      .set({
+        ...(delivered || m.status === "cancelled" ? {} : { status: "failed", last_error: (error ?? m.last_error ?? "Envío abandonado").slice(0, 1000) }),
+        payload: JSON.stringify(redactSensitive(m.template_key, (m.payload ?? {}) as Record<string, unknown>)),
+      })
+      .where("id", "=", m.id)
+      .execute();
+  });
+}
+
+/** El job de envío murió (intentos agotados o lease vencido): no va a haber otro intento → se redacta. */
+registerJobDeadHandler("messaging.send", async (payload, ctx) => {
+  const id = typeof payload.messageId === "string" ? payload.messageId : "";
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return;
+  await markFailedAndRedact(ctx.db, id, `Envío abandonado: ${ctx.error}`);
+});
+
+/**
+ * Mensajes que ya no se van a enviar (link vencido, o esperando credenciales fuera de la ventana de reanudación de 7 días):
+ * pasan a `cancelled` y se redactan los datos de un solo uso. Corre con la tarea horaria de reanudación.
+ */
+export async function redactUndeliverableMessages(db: Database, limit = 500): Promise<{ cancelled: number }> {
+  const staleBefore = new Date(Date.now() - RESUME_WINDOW_MS);
+  const candidates = await db
+    .selectFrom("outbound_messages")
+    .select(["id", "status", "created_at", sql<string | null>`payload->>'expiresAt'`.as("expires_at")])
+    .where("status", "in", ["queued", "failed", "awaiting_credentials"])
+    .where((eb) => eb.or([eb.and([eb("status", "=", "awaiting_credentials"), eb("created_at", "<=", staleBefore)]), sql<boolean>`jsonb_exists(payload, 'expiresAt')`]))
+    .orderBy("created_at")
+    .limit(limit)
+    .execute();
+  const rows = candidates.filter((r) => {
+    if (r.status === "awaiting_credentials" && r.created_at <= staleBefore) return true;
+    const expires = r.expires_at ? Date.parse(r.expires_at) : Number.NaN;
+    return Number.isFinite(expires) && expires < Date.now();
+  });
+  let cancelled = 0;
+  for (const r of rows) {
+    const done = await db.transaction().execute(async (trx) => {
+      const m = await trx.selectFrom("outbound_messages").select(["id", "status", "template_key", "payload"]).where("id", "=", r.id).forUpdate().executeTakeFirst();
+      if (!m || !["queued", "failed", "awaiting_credentials"].includes(m.status)) return false;
+      const reason = m.status === "awaiting_credentials" ? "No se pudo enviar: siguió sin credenciales más de 7 días" : "Venció antes de poder enviarse (contenía un link temporal)";
+      await trx
+        .updateTable("outbound_messages")
+        .set({ status: "cancelled", last_error: reason, payload: JSON.stringify(redactSensitive(m.template_key, (m.payload ?? {}) as Record<string, unknown>)) })
+        .where("id", "=", m.id)
+        .execute();
+      return true;
+    });
+    if (done) cancelled++;
+  }
+  if (cancelled) log.info("messaging.undeliverable_cancelled", { cancelled });
+  return { cancelled };
 }
 
 registerJobHandler("messaging.send", async (payload, ctx) => {
@@ -152,7 +222,7 @@ export async function resumeAwaitingMessages(db: Database, limit = 200): Promise
       .select("id")
       .where("status", "=", "awaiting_credentials")
       .where("channel", "=", channel)
-      .where("created_at", ">", new Date(Date.now() - 7 * 86_400_000))
+      .where("created_at", ">", new Date(Date.now() - RESUME_WINDOW_MS))
       .orderBy("created_at")
       .limit(limit)
       .execute();
@@ -169,7 +239,8 @@ export async function resumeAwaitingMessages(db: Database, limit = 200): Promise
 
 registerJobHandler("messaging.resume_awaiting", async (_p, ctx) => {
   try {
-    return await resumeAwaitingMessages(ctx.db);
+    const undeliverable = await redactUndeliverableMessages(ctx.db);
+    return { ...(await resumeAwaitingMessages(ctx.db)), ...undeliverable };
   } catch (e) {
     log.error("messaging.resume_failed", errorFields(e));
     throw e;

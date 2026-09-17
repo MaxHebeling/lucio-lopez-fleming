@@ -118,8 +118,9 @@ export async function getDashboard(db: Database, actor: Actor, raw: unknown) {
           .selectFrom("rental_contracts as c")
           .innerJoin("properties as p", "p.id", "c.property_id")
           .where("c.status", "=", "active")
-          .where("c.end_date", ">=", sql<string>`current_date`)
-          .where("c.end_date", "<=", sql<string>`current_date + ${noticeDays}::int`);
+          // Día de negocio en Salta (no current_date de la base, que está en UTC).
+          .where("c.end_date", ">=", todayInSalta(0))
+          .where("c.end_date", "<=", todayInSalta(noticeDays));
         if (branch) q = q.where("p.branch_id", "=", branch);
         const [count, items] = await Promise.all([
           q.select(sql<number>`count(*)::int`.as("n")).executeTakeFirst(),

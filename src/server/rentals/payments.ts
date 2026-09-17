@@ -3,7 +3,8 @@
  * - idempotency_key obligatorio (lo genera el formulario): un doble envío o reintento devuelve el mismo pago.
  * - la cuota se bloquea (FOR UPDATE) antes de sumar: dos cobros concurrentes no pisan paid_amount.
  * - los montos se suman en centavos (bigint), nunca en float.
- * - un pago nunca se borra (trigger): se anula con motivo y permiso propio.
+ * - un pago nunca se borra (trigger): se anula con motivo y permiso propio. Anular bloquea contrato → pago → cuota,
+ *   el mismo orden que la liquidación, para que nunca quede liquidado un pago anulado.
  */
 import type { Database } from "../db";
 import { audit } from "../audit";
@@ -93,6 +94,11 @@ export async function voidPayment(db: Database, actor: Actor, raw: unknown): Pro
   requirePermission(actor, "rentals.void_payment");
   const input = voidPaymentSchema.parse(raw);
   await db.transaction().execute(async (trx) => {
+    // Mismo orden de bloqueos que la generación de liquidaciones (contrato → cobros): una liquidación en curso termina
+    // antes (y la anulación ve sus líneas) o arranca después (y ve el pago anulado). contract_id de un pago no cambia.
+    const ref = await trx.selectFrom("rent_payments").select("contract_id").where("id", "=", input.paymentId).executeTakeFirst();
+    if (!ref) throw notFound("Pago");
+    await trx.selectFrom("rental_contracts").select("id").where("id", "=", ref.contract_id).forUpdate().execute();
     const p = await trx.selectFrom("rent_payments").selectAll().where("id", "=", input.paymentId).forUpdate().executeTakeFirst();
     if (!p) throw notFound("Pago");
     if (p.voided_at) throw conflict("El pago ya está anulado");

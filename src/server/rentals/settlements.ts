@@ -52,6 +52,8 @@ export async function generateSettlements(db: Database, actor: Actor, raw: unkno
         .where("p.paid_on", "<=", periodEnd)
         .orderBy("p.paid_on")
         .orderBy("p.id")
+        // Con el contrato bloqueado, FOR SHARE además impide que otra ruta anule estos cobros hasta confirmar la liquidación.
+        .forShare("p")
         .execute();
 
       const weights = owners.map((o) => parseRatio(owners.length === 1 ? "100" : o.share_pct!));
