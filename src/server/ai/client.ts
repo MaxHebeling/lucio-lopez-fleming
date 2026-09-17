@@ -45,6 +45,8 @@ function isRetryableAnthropicError(e: unknown): boolean {
 export type CallModelOptions = {
   timeoutMs?: number;
   attempts?: number;
+  /** integration_logs.entity_type (por defecto "conversation", el asistente de WhatsApp). */
+  entityType?: string;
   entityId?: string;
   sleep?: (ms: number) => Promise<void>;
   /** Hora límite (epoch ms) del turno: ningún intento se extiende más allá, y no se reintenta si no queda tiempo. */
@@ -77,7 +79,7 @@ export async function callModel(db: Database, client: MessagesClient, body: Anth
           shouldRetry: (e) => isRetryableAnthropicError(e) && !opts.signal?.aborted && left() > minAttempt * 2,
         },
       ),
-    { entityType: "conversation", entityId: opts.entityId },
+    { entityType: opts.entityType ?? "conversation", entityId: opts.entityId },
   );
   await markIntegrationActive(db, ANTHROPIC_INTEGRATION_KEY);
   return message;

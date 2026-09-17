@@ -18,3 +18,4 @@ import "../properties/media";
 import "../site/revalidate";
 import "../tours/service";
 import "../site/events";
+import "../ai/jobs";
