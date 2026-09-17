@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/server/db";
 import { apiRoute } from "@/server/next/api";
 import { getActor } from "@/server/next/context";
+import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
 import { AppError, invalid } from "@/server/errors";
 import { addPropertyImage, MAX_IMAGE_BYTES } from "@/server/properties/media";
 
@@ -38,5 +39,6 @@ export const POST = apiRoute("properties.media.upload", async (req: NextRequest,
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const result = await addPropertyImage(getDb(), actor, id, bytes, { kind, altText, originalName: file.name });
+  revalidatePublicSiteInRequest();
   return NextResponse.json({ ok: true, data: result }, { status: 201 });
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/server/db";
 import { apiRoute } from "@/server/next/api";
 import { getActor } from "@/server/next/context";
+import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
 import { AppError } from "@/server/errors";
 import { addPropertyImage, MAX_IMAGE_BYTES } from "@/server/properties/media";
 import { consumeDirectUpload, verifyUploadToken } from "@/server/storage/direct-upload";
@@ -24,5 +25,6 @@ export const POST = apiRoute("properties.media.complete", async (req: NextReques
   const result = await consumeDirectUpload(token.k, MAX_IMAGE_BYTES, (bytes) =>
     addPropertyImage(getDb(), actor, id, bytes, { kind: input.kind, altText: input.altText ?? null, originalName: input.name ?? null }),
   );
+  revalidatePublicSiteInRequest();
   return NextResponse.json({ ok: true, data: result }, { status: 201 });
 });
