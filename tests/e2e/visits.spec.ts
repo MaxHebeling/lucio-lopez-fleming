@@ -44,7 +44,9 @@ test("desktop 1440: centro operativo con alertas del cron, filtros y reasignaci�
   const overdue = await createVisit(pool, { agentId: late.id, property, clientFirstName: "Pedro", startsInMinutes: -30, durationMinutes: 90 });
   const toMove = await createVisit(pool, { agentId: a.id, property, clientFirstName: "Sofía", startsInMinutes: 120 });
 
-  // El cron real encola visits.alerts (cada 5 min) y lo ejecuta.
+  // visits.alerts corre cada 5 minutos con dedupe por período: si otro spec ya disparó el cron en este bloque, la pasada
+  // programada ya ocurrió. Se encola una ejecución puntual (misma cola, mismo handler) y la procesa el cron real.
+  await pool.query("insert into jobs(type, payload, dedupe_key, max_attempts, timeout_ms) values ('visits.alerts', '{}', $1, 3, 60000)", [`e2e:visits.alerts:${randomUUID()}`]);
   const r = await request.get("/api/cron/jobs", { headers: { authorization: `Bearer ${cron}` }, timeout: 200_000 });
   expect(r.ok()).toBe(true);
   await expect
