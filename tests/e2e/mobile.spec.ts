@@ -92,13 +92,13 @@ test("mobile 390: recorrido liviano de la portada (4–5 momentos, sin GSAP, sin
   });
   await page.goto("/");
   const journey = page.locator("[data-journey]");
-  await expect(journey).toBeAttached();
+  await expect(journey.locator(".jr-scene").first()).toBeAttached();
   const shown = await journey.locator(".jr-scene").evaluateAll((els) => els.filter((e) => getComputedStyle(e).display !== "none").length);
   // Portada + 3–4 escenas.
   expect(shown + 1).toBeGreaterThanOrEqual(4);
   expect(shown + 1).toBeLessThanOrEqual(5);
-  // Las fotos esperan a que su escena se acerque: al cargar no se descarga ninguna foto del recorrido.
-  expect(await journey.locator(".jr-img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).currentSrc).length)).toBe(0);
+  // Las fotos esperan a que su escena se acerque: al cargar, a lo sumo la de la primera escena.
+  expect(await journey.locator(".jr-img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).currentSrc).length)).toBeLessThanOrEqual(1);
   const last = journey.locator(".jr-scene").last();
   await last.scrollIntoViewIfNeeded();
   await expect(last.getByRole("link").first()).toBeVisible();

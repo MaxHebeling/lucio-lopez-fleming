@@ -22,7 +22,6 @@ import trabajoPlanos from "../../../public/brand/photos/trabajo-planos.jpg";
 import escritorio from "../../../public/brand/photos/oficina-escritorio.jpg";
 import equipo from "../../../public/brand/photos/equipo-planos.jpg";
 import "./home.css";
-import "./journey.css";
 
 /** ISR: el home se sirve desde caché y se regenera al invalidar (revalidatePublicSite) o cada 5 minutos como respaldo. */
 export const revalidate = 300;

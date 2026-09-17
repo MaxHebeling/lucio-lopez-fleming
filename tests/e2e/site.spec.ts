@@ -278,9 +278,9 @@ test("sin JavaScript el contenido y el buscador siguen ahí", async ({ browser }
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: /Buenos negocios/ })).toBeVisible();
   await expect(page.getByRole("search", { name: "Buscar propiedades" })).toBeVisible();
-  // Recorrido de la portada: sin JS, fila estable con texto real y link visible (ficha o propiedades).
-  await expect(page.locator("[data-journey] .jr-scene[data-static]").first()).toBeVisible();
-  await expect(page.locator("[data-journey]").getByRole("link", { name: /Ver la propiedad|Explorar propiedades/ }).first()).toBeVisible();
+  // Recorrido de la portada: sin JS queda la portada completa (las escenas son una isla cliente) y sin espacio reservado.
+  await expect(page.locator("[data-journey] .jr-scene")).toHaveCount(0);
+  expect(await page.locator("[data-journey] .jr-slot").evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
   // Servicios: sin JS se leen todos los paneles; la captación de propietarios sigue siendo un formulario usable.
   for (const name of ["Venta de inmuebles y lotes", "Alquileres", "Administración de alquileres", "Tasaciones"]) {
     await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
@@ -329,7 +329,7 @@ test("home: portada con la foto de la oficina (explícita y con prioridad alta),
   expect(Math.min(...opacities)).toBe(1);
   // Las fotos del recorrido nunca compiten con la portada.
   const journeyImgs = page.locator("[data-journey] .jr-img");
-  expect(await journeyImgs.count()).toBeGreaterThan(0);
+  await expect(journeyImgs.first()).toBeAttached();
   expect(await journeyImgs.evaluateAll((imgs) => imgs.every((i) => i.getAttribute("loading") === "lazy" && i.getAttribute("fetchpriority") !== "high"))).toBe(true);
 
   const featured = page.getByRole("region", { name: /Propiedades para mirar dos veces/ }).or(page.locator('section[aria-labelledby="destacadas-title"]'));

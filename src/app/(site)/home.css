@@ -7,6 +7,51 @@
  * portada (LCP) se ve desde el primer paint. Mobile tiene diseño propio (no es el desktop achicado).
  */
 @layer components {
+  /* ───────────────────────── Recorrido (lo que afecta al layout inicial; el resto: hero/journey.css, diferido) ───────────────────────── */
+  .jr {
+    position: relative;
+    isolation: isolate;
+    background: var(--surface-ink);
+    color: var(--paper);
+  }
+  .jr-stage {
+    position: relative;
+    background: var(--surface-ink);
+  }
+  .jr-end {
+    display: block;
+    height: 0;
+    outline: none;
+  }
+  /* La primera sección del home cubre el recorrido como una hoja. */
+  .jr + .scene {
+    margin-top: -1.75rem;
+    border-radius: 28px 28px 0 0;
+  }
+  /* Espacio reservado (solo con JS) mientras llegan las escenas; aproximado al alto de las láminas del modo flujo. */
+  html[data-motion="on"] .jr-slot:not(:has(.jr-scenes)) {
+    min-height: calc(var(--jr-scenes-mobile, 4) * (0.75 * (100vw - 2 * var(--gutter)) + 12rem) + 4rem);
+  }
+  html[data-motion="reduced"] .jr-slot:not(:has(.jr-scenes)) {
+    min-height: calc(var(--jr-scenes-mobile, 4) * (0.75 * (100vw - 2 * var(--gutter)) + 9rem) + 6rem);
+  }
+  @media (min-width: 768px) {
+    html[data-motion="on"] .jr-slot:not(:has(.jr-scenes)) {
+      min-height: calc(var(--jr-scenes, 6) * (0.625 * (100vw - 2 * var(--gutter)) + 12rem));
+    }
+    html[data-motion="reduced"] .jr-slot:not(:has(.jr-scenes)) {
+      min-height: calc(2 * (0.375 * (100vw - 2 * var(--gutter)) + 12rem) + 6rem);
+    }
+  }
+  @media (min-width: 1024px) {
+    html[data-motion="on"] .jr-slot:not(:has(.jr-scenes)) {
+      min-height: calc(var(--jr-scenes, 6) * (0.476 * min(100vw, var(--container)) + 14rem));
+    }
+    html[data-motion="reduced"] .jr-slot:not(:has(.jr-scenes)) {
+      min-height: calc(0.18 * min(100vw, var(--container)) + 18rem);
+    }
+  }
+
   /* ───────────────────────── Portada ───────────────────────── */
   .cover {
     --cover-ink: var(--surface-ink);

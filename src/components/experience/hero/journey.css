@@ -1,8 +1,9 @@
 /*
- * Home · recorrido arquitectónico de la portada (docs/WEB_EXPERIENCE.md §4.1). Markup: components/experience/hero.
+ * Home · escenas del recorrido arquitectónico de la portada (docs/WEB_EXPERIENCE.md §4.1). Se carga con el chunk
+ * diferido de HeroScenes (no bloquea el primer paint); lo que afecta al layout inicial vive en home.css (.jr, .jr-slot).
  *
- * Un mismo HTML, tres presentaciones:
- *  1. Estable (base: sin JS o con movimiento reducido): portada + fila editorial de las escenas `data-static`.
+ * Mismo marcado, tres presentaciones:
+ *  1. Estable (base: movimiento reducido): portada + fila editorial de las escenas `data-static`.
  *  2. Flujo (html[data-motion="on"] sin motor: mobile, tablet, touch, o desktop mientras GSAP no cargó): láminas que
  *     se apilan (sticky) y se abren con animaciones CSS ligadas al scroll (`animation-timeline: view()`; sin soporte
  *     quedan quietas y completas). Mobile (≤ 767 px) muestra solo las escenas `data-mobile`.
@@ -11,26 +12,11 @@
  * Nunca se oculta la portada (LCP) ni el buscador en el primer paint.
  */
 @layer components {
-  .jr {
-    position: relative;
-    isolation: isolate;
-    background: var(--surface-ink);
-    color: var(--paper);
-  }
-  .jr-stage {
-    position: relative;
-    background: var(--surface-ink);
-  }
   .jr-paper,
   .jr-progress,
   .jr-num,
   .jr-slab {
     display: none;
-  }
-  .jr-end {
-    display: block;
-    height: 0;
-    outline: none;
   }
   .jr-skip {
     position: absolute;
@@ -88,8 +74,8 @@
     height: 100%;
     object-fit: cover;
   }
-  /* Con JS, la foto de una escena espera a que la escena se acerque (script inline del recorrido o motor): no compite con el LCP. */
-  .jr[data-defer] .jr-scene:not([data-armed]) .jr-img {
+  /* La foto de una escena espera a que la escena se acerque (HeroScenes o el motor): no compite con el LCP. */
+  .jr-scenes[data-defer] .jr-scene:not([data-armed]) .jr-img {
     display: none;
   }
   .jr-frame-shade,
@@ -173,11 +159,6 @@
   }
   .jr-close-btn:hover {
     background: var(--white);
-  }
-  /* La primera sección del home cubre el recorrido como una hoja (estable y flujo). */
-  .jr + .scene {
-    margin-top: -1.75rem;
-    border-radius: 28px 28px 0 0;
   }
   @media (min-width: 768px) {
     .jr-scenes {

@@ -38,12 +38,11 @@ export function MotionProvider() {
         void initSmoothScroll().then(async (engine) => {
           if (cancelled || !engine) return;
           // El recorrido de la portada primero: cambia el alto del home y las escenas siguientes miden después.
-          const [{ initJourney }, { initScenes }] = await Promise.all([import("./motion/journey"), import("./motion/scenes")]);
+          const [{ initJourney, markScrollTriggers }, { initScenes }] = await Promise.all([import("./motion/journey"), import("./motion/scenes")]);
           if (cancelled) return;
           cleanupJourney = initJourney(engine);
           cleanupScenes = initScenes(engine);
-          // Diagnóstico (QA/e2e): disparadores vivos. Volver a una ruta no debe duplicarlos.
-          document.documentElement.setAttribute("data-scroll-triggers", String(engine.ScrollTrigger.getAll().length));
+          markScrollTriggers(engine);
         });
       }, 3000);
     return () => {

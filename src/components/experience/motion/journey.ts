@@ -111,8 +111,25 @@ export function initJourney(engine: Engine): () => void {
   const root = document.querySelector<HTMLElement>("[data-journey]");
   if (!root) return noop;
   const mm = engine.gsap.matchMedia();
-  mm.add(MQ, () => buildJourney(engine, root));
-  return () => mm.revert();
+  let started = false;
+  // Las escenas son una isla cliente diferida: si todavía no llegaron, se arma cuando avisan (HeroScenes).
+  const start = () => {
+    if (started || !root.querySelector("[data-jr-scene]")) return;
+    started = true;
+    mm.add(MQ, () => buildJourney(engine, root));
+    markScrollTriggers(engine);
+  };
+  start();
+  if (!started) window.addEventListener("journey:scenes", start);
+  return () => {
+    window.removeEventListener("journey:scenes", start);
+    mm.revert();
+  };
+}
+
+/** Diagnóstico (QA/e2e): disparadores vivos en el documento. Volver a una ruta no debe duplicarlos. */
+export function markScrollTriggers({ ScrollTrigger }: Engine): void {
+  document.documentElement.setAttribute("data-scroll-triggers", String(ScrollTrigger.getAll().length));
 }
 
 function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement): () => void {

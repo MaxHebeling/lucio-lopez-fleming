@@ -1,33 +1,24 @@
 import Image, { type StaticImageData } from "next/image";
-import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import { ArrowRight } from "lucide-react";
-import type { Journey, ResolvedJourney } from "./hero-journey";
+import type { ResolvedJourney } from "./hero-journey";
 import { HeroHeadline, type HeroCta } from "./HeroHeadline";
-import { HeroProgress } from "./HeroProgress";
-import { HeroScene } from "./HeroScene";
+import { JourneyScenes } from "./JourneyScenes";
 
 export const JOURNEY_END_ID = "tras-el-recorrido";
 
 /**
- * Inline (≈ 450 B), primer hijo del recorrido: corre al parsear, antes de que existan las fotos y sin esperar a React.
- * Marca `data-defer` (las fotos esperan) y habilita cada escena cuando se acerca al viewport. En el modo fijado decide
- * el motor. Sin JS no corre y las fotos quedan con `loading="lazy"` nativo; en una navegación del cliente React no
- * ejecuta scripts inline y pasa lo mismo.
- */
-const JOURNEY_DEFER_SCRIPT = `(function(){var s=document.currentScript,r=s&&s.parentElement;if(!r||!("IntersectionObserver"in window))return;r.setAttribute("data-defer","");function go(){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&!r.hasAttribute("data-pinned")){e.target.setAttribute("data-armed","");io.unobserve(e.target)}})},{rootMargin:"0px 0px 60% 0px"});r.querySelectorAll("[data-jr-scene]").forEach(function(el){io.observe(el)})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",go):go()})();`;
-
-/**
- * Portada + recorrido arquitectónico (docs/WEB_EXPERIENCE.md §4.1). Server component: 0 JS propio. Un mismo HTML,
- * cuatro presentaciones decididas por CSS y por el motor:
+ * Portada + recorrido arquitectónico (docs/WEB_EXPERIENCE.md §4.1).
  *
- *  - estable (sin JS o con movimiento reducido): portada completa + fila editorial de las escenas `static`;
- *  - flujo (JS + movimiento, sin motor: mobile, tablet, touch, o desktop antes de que cargue GSAP): láminas que se
- *    apilan con transiciones CSS ligadas al scroll (mobile: solo las escenas `mobile`);
+ * La portada (titular, CTA, buscador y la foto LCP) es HTML del servidor, igual que antes: `eager` +
+ * `fetchPriority="high"`, visible desde el primer paint. Las escenas se montan en el cliente (`JourneyScenes`, chunk
+ * diferido con su CSS): no suman bytes al documento ni CSS bloqueante, así el LCP no empeora. Presentaciones:
+ *
+ *  - sin JS: la portada completa (la fila de escenas es opcional);
+ *  - movimiento reducido: portada + fila editorial estable de las escenas `static`;
+ *  - flujo (movimiento, sin motor: mobile, tablet, touch, o desktop antes de que cargue GSAP): láminas que se apilan
+ *    con transiciones CSS ligadas al scroll (mobile: solo las escenas `mobile`);
  *  - fijado (desktop con puntero fino y el motor cargado en idle, `data-pinned`): escenario sticky con la línea de
  *    tiempo de `motion/journey.ts`.
- *
- * La foto de la portada es el LCP en todas: `eager` + `fetchPriority="high"`, visible desde el primer paint.
  */
 export function HeroJourney({
   resolved,
@@ -51,13 +42,10 @@ export function HeroJourney({
   search: ReactNode;
 }) {
   const { journey, property } = resolved;
-  const total = journey.scenes.length + 1;
-  const labels = ["Portada", ...journey.scenes.map((s) => s.label)];
+  const mobileScenes = journey.scenes.filter((s) => s.mobile).length;
   return (
     <section className="jr on-dark" data-hero data-journey={journey.kind} aria-labelledby="hero-title">
-      <script dangerouslySetInnerHTML={{ __html: JOURNEY_DEFER_SCRIPT }} />
       <div className="jr-stage" data-jr-stage>
-        <span className="jr-paper" data-jr-paper aria-hidden />
         <div className="cover" data-jr-cover>
           <div className="cover-plate" data-cover-plate data-aperture={JSON.stringify(journey.cover.aperture)} data-width={coverPhoto.width} data-height={coverPhoto.height}>
             <div className="cover-depth" data-depth="-1">
@@ -96,53 +84,15 @@ export function HeroJourney({
           </div>
         </div>
 
-        <a href={`#${JOURNEY_END_ID}`} className="jr-skip">
-          Saltar recorrido <span aria-hidden>↓</span>
-        </a>
-        <HeroProgress labels={labels} />
-
-        <ol className="jr-scenes" aria-label={journey.name}>
-          {journey.scenes.map((scene, i) => (
-            <HeroScene key={scene.id} scene={scene} number={i + 2} total={total}>
-              {i === journey.scenes.length - 1 ? <Closing journey={journey} property={property} /> : null}
-            </HeroScene>
-          ))}
-        </ol>
+        <JourneyScenes
+          kind={journey.kind}
+          property={property ? { code: property.code, href: property.href, specs: property.specs } : null}
+          scenes={journey.scenes.length}
+          mobileScenes={mobileScenes}
+          endId={JOURNEY_END_ID}
+        />
       </div>
       <span id={JOURNEY_END_ID} tabIndex={-1} className="jr-end" />
     </section>
-  );
-}
-
-/** Cierre: la propiedad real (ficha + datos registrados) o, en el respaldo, la invitación de marca. */
-function Closing({ journey, property }: { journey: Journey; property: ResolvedJourney["property"] }) {
-  if (journey.kind === "property" && property) {
-    return (
-      <div className="jr-close">
-        <p className="jr-close-meta">{["Salta", `Cód. ${property.code}`, ...property.specs].join(" · ")}</p>
-        <div className="jr-close-cta">
-          <Link href={property.href} className="btn jr-close-btn btn-arrow">
-            Ver la propiedad <span className="sr-only">: casa en Club de Campo El Tipal</span>
-            <ArrowRight aria-hidden className="btn-icon size-4" />
-          </Link>
-          <Link href="/propiedades" className="link-arrow jr-close-link">
-            Explorar propiedades <ArrowRight aria-hidden className="size-4" />
-          </Link>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="jr-close">
-      <p className="jr-close-meta">Seriedad, calidad humana, compromiso y experiencia en el rubro.</p>
-      <div className="jr-close-cta">
-        <Link href="/propiedades" className="btn jr-close-btn btn-arrow">
-          Explorar propiedades <ArrowRight aria-hidden className="btn-icon size-4" />
-        </Link>
-        <Link href="#vender" className="link-arrow jr-close-link">
-          Quiero vender mi propiedad <ArrowRight aria-hidden className="size-4" />
-        </Link>
-      </div>
-    </div>
   );
 }
