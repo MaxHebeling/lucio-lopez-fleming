@@ -69,8 +69,9 @@ export async function listedProperty(db: Database, admin: StaffActor, o: ListedO
     operations: [{ operation: o.operation ?? "sale", currency: o.currency ?? "USD", amount: o.amount === undefined ? 175000 : o.amount, priceHidden: o.priceHidden ?? false }],
   } as never);
   await db.insertInto("property_media").values({ property_id: p.id, kind: "image", source_url: `https://static1.adinco.net/test/sales-${seq}.jpg`, status: "verified", is_cover: true, sort_order: 0 }).execute();
-  await changeStatus(db, admin, p.id, o.status ?? "available");
+  await changeStatus(db, admin, p.id, "available");
   if (o.publish !== false) await publishProperty(db, admin, p.id);
+  if (o.status === "reserved") await changeStatus(db, admin, p.id, "reserved");
   resetSalesCatalogCache();
   return p;
 }
