@@ -21,7 +21,7 @@ import { errorFields, log } from "../../log";
 import { rateLimit } from "../../rate-limit";
 import { parseInput } from "../../validate";
 import { budgetStatus } from "../budget";
-import { addCustomerText, addGroundedRoutes, addGroundedText, emptyFacts, findViolations, type GroundingFacts } from "../guards";
+import { addCustomerText, addGroundedRoutes, addGroundedText, emptyFacts, findUngroundedCounts, findViolations, type GroundingFacts } from "../guards";
 import { getAnthropicProvider } from "../core/anthropic";
 import { hrefForRoute, resolveScreenContext, type ScreenContext } from "../core/context";
 import { AIOutputError, classifyAIError, type AIFailureReason } from "../core/errors";
@@ -457,7 +457,9 @@ async function analystTurn(ctx: TurnCtx, input: { question?: string; quickQueryI
   if (!parsed.success) return mergeTools(await fallback("invalid_output", { ...common(), error: "la salida no cumple el esquema" }), toolLogs);
 
   const out = parsed.data;
-  const violations = [out.answer, ...out.interpretation].flatMap((t) => findViolations(t, facts));
+  // Con herramientas de dirección, también las cifras sueltas (conteos, horas, días) tienen que estar en los hechos.
+  const executive = toolLogs.some((t) => t.ok && t.name.startsWith("executive_"));
+  const violations = [out.answer, ...out.interpretation].flatMap((t) => [...findViolations(t, facts), ...(executive ? findUngroundedCounts(t, facts) : [])]);
   if (violations.length) {
     log.warn("ai.copilot_guard_blocked", { requestId: actor.requestId, mode: "analyst", violations: violations.map((v) => v.kind) });
     // Los hechos ya consultados son verificables: se muestran sin el texto del modelo.
