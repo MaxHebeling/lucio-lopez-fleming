@@ -5,8 +5,9 @@ import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { listProperties, parsePropertyFilters, propertyFormOptions, PROPERTY_SORTS, type PropertyListItem } from "@/server/properties/queries";
+import { listAddressLeaks } from "@/server/properties/address-leak";
 import { OPERATION_LABEL, PROPERTY_STATUSES, STATUS_LABEL, type Operation, type PropertyStatus } from "@/server/properties/schema";
-import { Badge, ButtonLink, EmptyState, Field, formatDate, formatMoney, Input, PageHeader, Select, Table, buttonClass } from "@/components/ui";
+import { Alert, Badge, ButtonLink, EmptyState, Field, formatDate, formatMoney, Input, PageHeader, Select, Table, buttonClass } from "@/components/ui";
 import { PaginationBar } from "@/components/crm/pagination";
 import { PROPERTY_STATUS_TONE } from "@/components/crm/labels";
 
@@ -49,7 +50,11 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
   const sp = await searchParams;
   const filters = parsePropertyFilters(sp);
   const db = getDb();
-  const [result, options] = await Promise.all([listProperties(db, actor, filters), propertyFormOptions(db, actor)]);
+  const [result, options, addressLeaks] = await Promise.all([
+    listProperties(db, actor, filters),
+    propertyFormOptions(db, actor),
+    can(actor, "properties.update") ? listAddressLeaks(db, actor) : Promise.resolve([]),
+  ]);
   const params = Object.fromEntries(FILTER_KEYS.map((k) => [k, filters[k] === undefined ? undefined : String(filters[k])]));
   const advancedActive = ["published", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId"].some((k) => params[k] !== undefined);
   const anyFilter = FILTER_KEYS.some((k) => k !== "sort" && params[k] !== undefined);
@@ -61,6 +66,28 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
         description="Buscá por código, título o dirección. Las archivadas se ven filtrando por estado."
         actions={can(actor, "properties.create") ? <ButtonLink href="/crm/propiedades/nueva">Nueva propiedad</ButtonLink> : null}
       />
+
+      {addressLeaks.length ? (
+        <div className="mb-5">
+          <Alert tone="warning">
+            <p className="font-semibold">
+              {addressLeaks.length === 1 ? "1 propiedad publicada" : `${addressLeaks.length} propiedades publicadas`} con dirección oculta la mencionan con altura en el título o
+              la descripción
+            </p>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {addressLeaks.slice(0, 10).map((l) => (
+                <li key={l.id}>
+                  <Link href={`/crm/propiedades/${l.id}`} className="underline underline-offset-4">
+                    #{l.code}
+                  </Link>{" "}
+                  «{l.snippet}»
+                </li>
+              ))}
+            </ul>
+            {addressLeaks.length > 10 ? <p className="mt-1">y {addressLeaks.length - 10} más.</p> : null}
+          </Alert>
+        </div>
+      ) : null}
 
       <form method="get" action="/crm/propiedades" className="mb-5 flex flex-col gap-3 rounded-[var(--radius-lg)] border border-line bg-white p-4" role="search" aria-label="Filtrar propiedades">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">

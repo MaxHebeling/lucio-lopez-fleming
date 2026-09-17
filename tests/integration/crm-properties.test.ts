@@ -9,6 +9,7 @@ import { authorizeFileAccess } from "@/server/files/access";
 import { setStorageForTests } from "@/server/storage";
 import { AppError } from "@/server/errors";
 import { createOwner, createStaff, testDb } from "../helpers/db";
+import { listAddressLeaks } from "@/server/properties/address-leak";
 import { MemoryStorage } from "../helpers/storage";
 
 const store = new MemoryStorage();
@@ -206,6 +207,28 @@ describe("agentes y dirección exacta (autorización)", () => {
     // Sin publicar, el agente puede elegir
     const draft = await createProperty(db, agent, input(hood.id));
     await updateProperty(db, agent, draft.id, { hideExactAddress: false });
+  });
+});
+
+describe("revisión de direcciones ocultas mencionadas en el texto", () => {
+  it("lista solo publicadas con dirección oculta cuyo título/descripción menciona calle y altura; sin tocar los datos", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const leak = await createProperty(db, admin, input(hood.id, { title: "calle Las Heras 1241", addressStreet: "Las Heras", addressNumber: "1241" }));
+    const leakInDescription = await createProperty(db, admin, input(hood.id, { description: "Casa sobre Los Ceibos N° 120, ideal familia" }));
+    const clean = await createProperty(db, admin, input(hood.id));
+    const visible = await createProperty(db, admin, input(hood.id, { title: "Los Ceibos 120", hideExactAddress: false }));
+    const draft = await createProperty(db, admin, input(hood.id, { title: "Los Ceibos 120" }));
+    await db.updateTable("properties").set({ is_published: true, status: "available", published_at: new Date() }).where("id", "in", [leak.id, leakInDescription.id, clean.id, visible.id]).execute();
+
+    const list = await listAddressLeaks(db, admin);
+    const ids = list.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining([leak.id, leakInDescription.id]));
+    for (const id of [clean.id, visible.id, draft.id]) expect(ids).not.toContain(id);
+    expect(list.find((l) => l.id === leak.id)).toMatchObject({ code: leak.code, snippet: "las heras 1241" });
+    const row = await db.selectFrom("properties").select("title").where("id", "=", leak.id).executeTakeFirstOrThrow();
+    expect(row.title).toBe("calle Las Heras 1241");
+    await expect(listAddressLeaks(db, { kind: "anonymous", organizationId: admin.organizationId })).rejects.toThrow(/Iniciá sesión/);
   });
 });
 
