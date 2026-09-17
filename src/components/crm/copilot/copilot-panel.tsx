@@ -25,6 +25,26 @@ const GENERATED_BY: Record<CopilotAnswer["generatedBy"], string> = {
   data: "Datos directos del CRM · sin IA",
 };
 
+/** Formato mínimo y seguro de la guía: **negrita** y `código` (sin HTML: todo se renderiza como texto). */
+function RichText({ text, className }: { text: string; className?: string }) {
+  const parts = text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g);
+  return (
+    <p className={cx("whitespace-pre-line", className)}>
+      {parts.map((p, i) =>
+        p.startsWith("**") && p.endsWith("**") && p.length > 4 ? (
+          <strong key={i}>{p.slice(2, -2)}</strong>
+        ) : p.startsWith("`") && p.endsWith("`") && p.length > 2 ? (
+          <code key={i} className="rounded bg-paper-2 px-1 text-[0.92em]">
+            {p.slice(1, -1)}
+          </code>
+        ) : (
+          p
+        ),
+      )}
+    </p>
+  );
+}
+
 async function call<T>(fn: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
   try {
     return await fn();
@@ -228,6 +248,7 @@ export default function CopilotPanel({ open, onClose }: { open: boolean; onClose
                     ) : ex.answer ? (
                       <AnswerView
                         answer={ex.answer}
+                        statusNotice={status?.notice ?? null}
                         onNavigate={onClose}
                         onSuggestion={(s) => {
                           setMode(s.mode);
@@ -274,12 +295,12 @@ export default function CopilotPanel({ open, onClose }: { open: boolean; onClose
   );
 }
 
-function AnswerView({ answer, onNavigate, onSuggestion }: { answer: CopilotAnswer; onNavigate: () => void; onSuggestion: (s: NonNullable<CopilotAnswer["suggestion"]>) => void }) {
+function AnswerView({ answer, statusNotice, onNavigate, onSuggestion }: { answer: CopilotAnswer; statusNotice: string | null; onNavigate: () => void; onSuggestion: (s: NonNullable<CopilotAnswer["suggestion"]>) => void }) {
   return (
     <article className="rounded-[var(--radius-lg)] border border-line bg-white p-3 text-sm" aria-label="Respuesta del asistente">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-stone">{GENERATED_BY[answer.generatedBy]}</p>
-      {answer.notice ? <p className="mb-2 rounded-[var(--radius-md)] bg-[#fbf4e6] px-2.5 py-1.5 text-xs text-warning">{answer.notice}</p> : null}
-      <p className="whitespace-pre-line text-ink">{answer.text}</p>
+      {answer.notice && answer.notice !== statusNotice ? <p className="mb-2 rounded-[var(--radius-md)] bg-[#fbf4e6] px-2.5 py-1.5 text-xs text-warning">{answer.notice}</p> : null}
+      <RichText text={answer.text} className="text-ink" />
 
       {answer.guide.length ? (
         <ul className="mt-3 flex flex-col gap-2" aria-label="Fuentes de la guía">
@@ -287,7 +308,7 @@ function AnswerView({ answer, onNavigate, onSuggestion }: { answer: CopilotAnswe
             <li key={`${g.document}-${g.heading}`} className="rounded-[var(--radius-md)] border border-line bg-paper px-3 py-2">
               <p className="font-semibold">{g.heading}</p>
               <p className="text-[11px] uppercase tracking-wide text-stone">Guía · {g.document}</p>
-              {answer.generatedBy !== "ai" ? <p className="mt-1.5 whitespace-pre-line text-ink-2">{g.excerpt}</p> : null}
+              {answer.generatedBy !== "ai" ? <RichText text={g.excerpt} className="mt-1.5 text-ink-2" /> : null}
               {g.href ? (
                 <Link href={g.href} onClick={onNavigate} className="mt-1.5 inline-block text-xs font-semibold underline underline-offset-4 hover:text-brick">
                   Ir a la pantalla ({g.href})

@@ -133,8 +133,12 @@ export function toolResultForModel(r: ToolResult): string {
   return parts.join("\n");
 }
 
+/**
+ * Hechos verificables = campos estructurados de los resultados. El texto libre (`untrusted`: descripciones, mensajes)
+ * NO cuenta como evidencia: un precio escrito en una descripción (o inyectado) no habilita al modelo a afirmarlo.
+ */
 function groundToolResult(facts: GroundingFacts, r: ToolResult): void {
-  const texts = [r.title, r.summary, String(r.total), ...r.items.flatMap((i) => [i.label, i.detail ?? "", i.badge ?? ""]), ...(r.untrusted ?? []).map((u) => u.text)];
+  const texts = [r.title, r.summary, String(r.total), ...r.items.flatMap((i) => [i.label, i.detail ?? "", i.badge ?? ""])];
   for (const t of texts) {
     addGroundedText(facts, t);
     addGroundedRoutes(facts, t);
@@ -149,7 +153,8 @@ function factGroup(r: ToolResult): CopilotFactGroup {
 }
 
 function guideExcerpts(hits: KnowledgeHit[], screen: ScreenContext | null, max = 3): GuideExcerpt[] {
-  return hits.slice(0, max).map((h) => ({ heading: h.heading, document: h.documentTitle, excerpt: excerpt(h.body), href: hrefForRoute(h.route, screen) }));
+  // La sección más relevante va completa (es la respuesta); las demás, como extracto.
+  return hits.slice(0, max).map((h, i) => ({ heading: h.heading, document: h.documentTitle, excerpt: excerpt(h.body, i === 0 ? 2500 : 500), href: hrefForRoute(h.route, screen) }));
 }
 
 // ───────────────────────────── Turno ─────────────────────────────

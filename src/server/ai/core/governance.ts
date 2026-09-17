@@ -32,9 +32,13 @@ const COORDS_RE = /-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,}/g;
  * documentos de identidad, CBU y coordenadas. Los importes con separador de miles ("150.000") no se tocan.
  */
 export function redactForModel(text: string): string {
-  const base = redact(text) as string;
-  return base.replace(CBU_RE, "[cbu]").replace(DOCUMENT_RE, "[documento]").replace(COORDS_RE, "[coordenadas]");
+  const base = (redact(text) as string).replace(COORDS_RE, "[coordenadas]").replace(CBU_RE, "[cbu]").replace(DOCUMENT_RE, "[documento]");
+  // Teléfonos con guiones/paréntesis/puntos que el redactor del logger no cubre (≥ 8 dígitos y que no sea un importe).
+  return base.replace(PHONE_LIKE_RE, (m) => (m.replace(/\D/g, "").length >= 8 && !THOUSANDS_RE.test(m.trim()) ? "[teléfono]" : m));
 }
+
+const PHONE_LIKE_RE = /(?<![\w.,])\+?\(?\d[\d\s().-]{6,}\d(?![\w])/g;
+const THOUSANDS_RE = /^\d{1,3}(\.\d{3})+(,\d+)?$/;
 
 /** Claves de JSON Schema que la salida estructurada del proveedor no necesita (zod las valida igual después). */
 const STRIP_KEYS = new Set(["$schema", "minLength", "maxLength", "pattern", "format", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems", "default"]);
