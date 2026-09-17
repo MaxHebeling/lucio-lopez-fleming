@@ -52,3 +52,6 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+
+# secretos locales de producción (nunca al repo; Next no los carga)
+/.secrets

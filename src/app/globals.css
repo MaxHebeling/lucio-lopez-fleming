@@ -20,6 +20,9 @@
   --warning: #825b0e; /* ≥ 4,5:1 sobre los fondos de aviso (#f6ecd6: 5,18) */
   --danger: #a3261f;
 
+  /* Ítem activo del menú del CRM (azul petróleo; blanco encima con contraste ≥ 4,5:1) */
+  --nav-active: #2e7c98;
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 14px;
