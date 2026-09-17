@@ -27,7 +27,7 @@ import { hrefForRoute, resolveScreenContext, type ScreenContext } from "../core/
 import { AIOutputError, classifyAIError, type AIFailureReason } from "../core/errors";
 import { redactForModel, responseJsonSchema, untrustedData } from "../core/governance";
 import { appendMessage, openConversation, recentTurns } from "../core/memory";
-import type { ToolRegistry, ToolResult } from "../core/registry";
+import type { EnabledFlags, ToolRegistry, ToolResult } from "../core/registry";
 import { modelFor } from "../core/routing";
 import { addUsage, emptyUsage, textOf, type AIContentBlock, type AIMessage, type AIProvider, type AIToolUseBlock } from "../core/types";
 import { recordUsage, type AIStatus, type ToolUseLog } from "../core/usage";
@@ -80,6 +80,12 @@ async function resolveProvider(db: Database, deps: CopilotDeps): Promise<Provide
   return { provider, reason: null };
 }
 
+async function enabledFlags(db: Database, registry: ToolRegistry): Promise<EnabledFlags> {
+  const keys = registry.quickFlags();
+  const on = await Promise.all(keys.map(async (k) => [k, await isEnabled(db, k)] as const));
+  return new Set(on.filter(([, v]) => v).map(([k]) => k));
+}
+
 function envConfigured(deps: CopilotDeps): boolean {
   if (deps.provider !== undefined) return deps.provider !== null;
   return Boolean((deps.env ?? process.env).ANTHROPIC_API_KEY?.trim());
@@ -99,7 +105,7 @@ export async function getCopilotStatus(db: Database, rawActor: Actor, raw: unkno
     budgetExhausted: budget.exhausted,
     notice: noticeFor(reason),
     screen: screen ? { moduleLabel: screen.moduleLabel, entityLabel: screen.entity?.label ?? null, entityIgnored: screen.entityIgnored } : null,
-    quickQueries: registry.quickQueries(actor, screen).map(({ id, label }) => ({ id, label })),
+    quickQueries: registry.quickQueries(actor, screen, await enabledFlags(db, registry)).map(({ id, label }) => ({ id, label })),
     knowledgeReady: stats.chunks > 0,
     shortcut: COPILOT_SHORTCUT,
   };
@@ -232,11 +238,11 @@ function statusFor(reason: AIFailureReason | null): AIStatus {
   }
 }
 
-type TurnCtx = { db: Database; actor: StaffActor; screen: ScreenContext | null; registry: ToolRegistry; deps: CopilotDeps; now: Date; conversationId: string; t0: number };
+type TurnCtx = { db: Database; actor: StaffActor; screen: ScreenContext | null; registry: ToolRegistry; flags: EnabledFlags; deps: CopilotDeps; now: Date; conversationId: string; t0: number };
 
 async function assistantTurn(ctx: TurnCtx, question: string): Promise<Outcome> {
   const { db, actor, screen, registry, deps } = ctx;
-  const quick = registry.matchQuick(actor, question, screen);
+  const quick = registry.matchQuick(actor, question, screen, ctx.flags);
   const suggestion = quick ? { mode: "analyst" as const, label: `Esto parece una consulta de datos: probá «${quick.quick!.label}» en el modo Analista.`, quickQueryId: quick.quick!.id } : null;
 
   let hits: KnowledgeHit[] = [];
@@ -352,12 +358,12 @@ async function analystTurn(ctx: TurnCtx, input: { question?: string; quickQueryI
   // Consulta rápida (chip): determinista, nunca usa el modelo.
   if (input.quickQueryId) {
     const def = registry.byQuickId(input.quickQueryId);
-    if (!def || !registry.quickQueries(actor, screen).some((q) => q.id === input.quickQueryId)) throw forbidden("Esa consulta no está disponible para tu rol en esta pantalla");
+    if (!def || !registry.quickQueries(actor, screen, ctx.flags).some((q) => q.id === input.quickQueryId)) throw forbidden("Esa consulta no está disponible para tu rol en esta pantalla");
     return quickOutcome(await runQuick(ctx, def.name));
   }
 
   const question = input.question!;
-  const quick = registry.matchQuick(actor, question, screen);
+  const quick = registry.matchQuick(actor, question, screen, ctx.flags);
   const fallback = async (reason: AIFailureReason | null, extra: Partial<Outcome> = {}): Promise<Outcome> => {
     if (quick) return quickOutcome(await runQuick(ctx, quick.name), { status: statusFor(reason), ...extra, fallbackReason: reason });
     return baseOutcome({
@@ -502,7 +508,7 @@ export async function askCopilot(db: Database, rawActor: Actor, raw: unknown, de
   const questionText = input.question ?? `[Consulta rápida] ${registry.byQuickId(input.quickQueryId ?? "")?.quick?.label ?? input.quickQueryId}`;
   await appendMessage(db, { conversationId, role: "user", content: questionText, payload: { mode: input.mode, quickQueryId: input.quickQueryId ?? null } });
 
-  const ctx: TurnCtx = { db, actor, screen, registry, deps, now, conversationId, t0 };
+  const ctx: TurnCtx = { db, actor, screen, registry, flags: await enabledFlags(db, registry), deps, now, conversationId, t0 };
   const outcome = input.mode === "assistant" ? await assistantTurn(ctx, input.question ?? "") : await analystTurn(ctx, { question: input.question, quickQueryId: input.quickQueryId });
   const notice = noticeFor(outcome.fallbackReason);
   const latencyMs = Date.now() - t0;

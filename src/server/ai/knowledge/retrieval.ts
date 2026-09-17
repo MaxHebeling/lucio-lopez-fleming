@@ -41,6 +41,7 @@ const MODULE_DOMAIN: Record<string, KnowledgeDomain> = {
   opportunities: "leads",
   conversations: "leads",
   agenda: "agenda",
+  visits: "visits",
   tasks: "agenda",
   rentals: "rentals",
   reports: "rentals",

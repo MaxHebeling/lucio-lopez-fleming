@@ -8,9 +8,10 @@ import type { Database } from "../../db";
 import type { StaffActor } from "../../auth/actor";
 import { AppError } from "../../errors";
 import { loadAppointment, loadContact, loadLead, loadOpportunity } from "../../crm/entities";
+import { loadVisit } from "../../visits/access";
 import { can } from "../../auth/actor";
 
-export type ScreenEntityType = "property" | "contact" | "lead" | "opportunity" | "appointment";
+export type ScreenEntityType = "property" | "contact" | "lead" | "opportunity" | "appointment" | "visit";
 
 export type ScreenContext = {
   /** Ruta normalizada con [id] (sin ids reales): /crm/propiedades/[id] */
@@ -29,6 +30,8 @@ const MODULES: Record<string, { key: string; label: string; entity?: ScreenEntit
   leads: { key: "leads", label: "Leads", entity: "lead" },
   pipeline: { key: "opportunities", label: "Pipeline", entity: "opportunity" },
   agenda: { key: "agenda", label: "Agenda", entity: "appointment" },
+  "mis-visitas": { key: "visits", label: "Mis visitas", entity: "visit" },
+  "centro-operativo": { key: "visits", label: "Centro operativo" },
   tareas: { key: "tasks", label: "Tareas" },
   conversaciones: { key: "conversations", label: "Conversaciones" },
   alquileres: { key: "rentals", label: "Alquileres" },
@@ -96,6 +99,11 @@ async function loadEntity(db: Database, actor: StaffActor, type: ScreenEntityTyp
         const a = await loadAppointment(db, actor, id);
         const u = await db.selectFrom("users").select("organization_id").where("id", "=", a.assigned_user_id).executeTakeFirst();
         return u?.organization_id === actor.organizationId ? { label: `Cita · ${a.title}` } : null;
+      }
+      case "visit": {
+        // Mismo alcance que «Mis visitas» (visits.operate: solo asignadas; visits.monitor: la organización).
+        const v = await loadVisit(db, actor, id);
+        return { label: `Visita · ${v.title}` };
       }
     }
   } catch (e) {

@@ -21,7 +21,7 @@ Texto de la sección en español rioplatense (vos)...
 ```
 
 - **Frontmatter**: `dominio` (uno de: crm, properties, leads, agenda, agents, virtual-tours, marketing, rentals,
-  operations, permissions, integrations, faq), `titulo`, `resumen`, `permisos` (por defecto de las secciones; vacío =
+  operations, permissions, integrations, faq, visits), `titulo`, `resumen`, `permisos` (por defecto de las secciones; vacío =
   cualquier usuario del equipo).
 - **Cada sección `##`** es un fragmento independiente: tiene que entenderse sola (no "como vimos arriba").
 - **Comentario de metadatos** en la línea siguiente al título (opcional): `ruta` = pantalla del CRM donde se hace

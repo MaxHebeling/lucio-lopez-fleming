@@ -57,7 +57,12 @@ export type QuickQuery = {
   keywords: RegExp[];
   /** Solo tiene sentido con un registro de este tipo abierto en pantalla. */
   requiresEntity?: "property";
+  /** Feature flag del módulo: con el flag apagado la consulta rápida no se ofrece. */
+  flag?: string;
 };
+
+/** Flags encendidos (para filtrar consultas rápidas de módulos apagados). */
+export type EnabledFlags = ReadonlySet<string>;
 
 export type AIToolDefinition<S extends z.ZodType = z.ZodType> = {
   name: string;
@@ -101,9 +106,18 @@ export class ToolRegistry {
     return this.all().filter((t) => capabilities.includes(t.capability) && PHASE_ALLOWED_CAPABILITIES.has(t.capability) && canUseTool(actor, t));
   }
 
-  quickQueries(actor: StaffActor, screen: ScreenContext | null): Array<{ id: string; label: string; tool: string }> {
+  /** Flags que declaran las consultas rápidas (el servicio los resuelve contra la base). */
+  quickFlags(): string[] {
+    return [...new Set(this.all().flatMap((t) => (t.quick?.flag ? [t.quick.flag] : [])))];
+  }
+
+  private quickAllowed(t: AIToolDefinition, screen: ScreenContext | null, flags: EnabledFlags): boolean {
+    return Boolean(t.quick && (!t.quick.requiresEntity || screen?.entity?.type === t.quick.requiresEntity) && (!t.quick.flag || flags.has(t.quick.flag)));
+  }
+
+  quickQueries(actor: StaffActor, screen: ScreenContext | null, flags: EnabledFlags = new Set()): Array<{ id: string; label: string; tool: string }> {
     return this.available(actor, ["read"])
-      .filter((t) => t.quick && (!t.quick.requiresEntity || screen?.entity?.type === t.quick.requiresEntity))
+      .filter((t) => this.quickAllowed(t, screen, flags))
       .map((t) => ({ id: t.quick!.id, label: t.quick!.label, tool: t.name }));
   }
 
@@ -112,9 +126,9 @@ export class ToolRegistry {
   }
 
   /** Intención determinista (sin modelo): primera consulta rápida cuyas palabras clave coinciden. */
-  matchQuick(actor: StaffActor, question: string, screen: ScreenContext | null): AIToolDefinition | undefined {
+  matchQuick(actor: StaffActor, question: string, screen: ScreenContext | null, flags: EnabledFlags = new Set()): AIToolDefinition | undefined {
     const q = normalizeForMatch(question);
-    return this.available(actor, ["read"]).find((t) => t.quick && (!t.quick.requiresEntity || screen?.entity?.type === t.quick.requiresEntity) && t.quick.keywords.some((k) => k.test(q)));
+    return this.available(actor, ["read"]).find((t) => this.quickAllowed(t, screen, flags) && t.quick!.keywords.some((k) => k.test(q)));
   }
 
   specs(defs: AIToolDefinition[]): AIToolSpec[] {

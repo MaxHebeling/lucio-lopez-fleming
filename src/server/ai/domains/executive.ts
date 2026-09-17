@@ -43,7 +43,7 @@ export function registerExecutiveTools(registry: ToolRegistry): void {
         const r = await db
           .selectFrom("appointments as a")
           .innerJoin("users as u", "u.id", "a.assigned_user_id")
-          .select([sql<number>`count(*) filter (where a.status in ('scheduled', 'confirmed', 'completed', 'no_show'))::int`.as("scheduled"), sql<number>`count(*) filter (where a.status = 'completed')::int`.as("completed")])
+          .select([sql<number>`count(*) filter (where a.status <> 'cancelled')::int`.as("scheduled"), sql<number>`count(*) filter (where a.status = 'completed')::int`.as("completed")])
           .where("u.organization_id", "=", actor.organizationId)
           .where("a.kind", "=", "visit")
           .where("a.starts_at", ">=", since)

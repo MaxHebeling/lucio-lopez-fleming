@@ -135,6 +135,52 @@ describe("sin clave del proveedor: estado honesto y valor sin modelo", () => {
   });
 });
 
+describe("visitas: reutiliza el núcleo operativo (estados, alcance visits.* e incidencias)", () => {
+  it("«visitas de hoy» usa el alcance de Mis visitas, las etapas nuevas y links al portal", async () => {
+    const db = testDb();
+    const mine = await db.selectFrom("appointments").select("id").where("title", "=", "Visita del agente").executeTakeFirstOrThrow();
+    await db.updateTable("appointments").set({ status: "en_route", en_route_at: new Date() }).where("id", "=", mine.id).execute();
+    try {
+      const r = await askCopilot(db, agente, { mode: "analyst", quickQueryId: "visitas_hoy" }, NO_KEY);
+      expect(r.facts[0]!.source).toEqual({ label: "Mis visitas", href: "/crm/mis-visitas" });
+      expect(r.facts[0]!.items).toEqual([expect.objectContaining({ badge: "En camino", href: `/crm/mis-visitas/${mine.id}` })]);
+      // Rol con agenda pero sin visits.* (alquileres): cae a la Agenda con su alcance, sin inventar otra lógica
+      const alquileres = await createStaff(db, ["alquileres"]);
+      const ag = await askCopilot(db, alquileres, { mode: "analyst", quickQueryId: "visitas_hoy" }, NO_KEY);
+      expect(ag.facts[0]!.source.label).toBe("Agenda");
+      // Flag del núcleo apagado: Agenda también para el agente
+      await db.updateTable("feature_flags").set({ enabled: false }).where("key", "=", "visits_operations").execute();
+      resetFlagCache();
+      try {
+        const off = await askCopilot(db, agente, { mode: "analyst", quickQueryId: "visitas_hoy" }, NO_KEY);
+        expect(off.facts[0]!.items[0]).toMatchObject({ badge: "En camino", href: `/crm/agenda/${mine.id}` });
+        const st = await getCopilotStatus(db, admin, {}, NO_KEY);
+        expect(st.quickQueries.map((q) => q.id)).not.toContain("incidencias_visitas");
+      } finally {
+        await db.updateTable("feature_flags").set({ enabled: true }).where("key", "=", "visits_operations").execute();
+        resetFlagCache();
+      }
+    } finally {
+      await db.updateTable("appointments").set({ status: "scheduled", en_route_at: null }).where("id", "=", mine.id).execute();
+    }
+  });
+
+  it("incidencias de visitas: solo con visits.monitor, de la propia organización y con link a la visita", async () => {
+    const db = testDb();
+    const other = await db.selectFrom("appointments").select("id").where("title", "=", "Visita de otro agente").executeTakeFirstOrThrow();
+    await db.insertInto("visit_alerts").values({ appointment_id: other.id, kind: "no_checkin", severity: "critical" }).execute();
+    const r = await askCopilot(db, admin, { mode: "analyst", quickQueryId: "incidencias_visitas" }, NO_KEY);
+    expect(r.facts[0]!.items).toEqual([expect.objectContaining({ label: `Sin check-in después del inicio · Propiedad #${property.code}`, badge: "Crítica", href: `/crm/mis-visitas/${other.id}` })]);
+    expect(r.facts[0]!.summary).toContain("1 incidencia abierta");
+    await expect(askCopilot(db, agente, { mode: "analyst", quickQueryId: "incidencias_visitas" }, NO_KEY)).rejects.toMatchObject({ code: "forbidden" });
+    // Contexto de pantalla del portal: una visita ajena no se usa para el agente
+    const ctxOther = await getCopilotStatus(db, agente, { path: `/crm/mis-visitas/${other.id}` }, NO_KEY);
+    expect(ctxOther.screen).toMatchObject({ moduleLabel: "Mis visitas", entityLabel: null, entityIgnored: true });
+    const ctxAdmin = await getCopilotStatus(db, admin, { path: `/crm/mis-visitas/${other.id}` }, NO_KEY);
+    expect(ctxAdmin.screen?.entityLabel).toBe("Visita · Visita de otro agente");
+  });
+});
+
 describe("RBAC y aislamiento", () => {
   it("un agente solo ve sus leads; nunca los de otro agente ni los de otra organización", async () => {
     const r = await askCopilot(testDb(), agente, { mode: "analyst", quickQueryId: "leads_sin_contacto" }, NO_KEY);

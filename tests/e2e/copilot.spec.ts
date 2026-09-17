@@ -110,7 +110,7 @@ test("modo Analista sin IA: «Visitas de hoy» con datos reales; Esc cierra; con
   const answer = dialog.getByRole("article", { name: "Respuesta del asistente" }).last();
   await expect(answer.getByText("Datos directos del CRM · sin IA")).toBeVisible();
   await expect(answer.getByRole("region", { name: "Hechos: Visitas de hoy" })).toBeVisible();
-  await expect(answer.getByRole("link", { name: /Visita E2E del copiloto/ })).toHaveAttribute("href", `/crm/agenda/${appointmentId}`);
+  await expect(answer.getByRole("link", { name: /Visita E2E del copiloto/ })).toHaveAttribute("href", `/crm/mis-visitas/${appointmentId}`);
   expect(await seriousViolations(page)).toEqual([]);
 
   await page.keyboard.press("Escape");

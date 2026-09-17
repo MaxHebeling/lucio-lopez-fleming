@@ -73,7 +73,8 @@ y en la página de uso. El asistente de WhatsApp sigue usando `AI_MODEL` (sin ca
 | sales | `stale_opportunities` | `opportunities.read_own`, `opportunities.read_all` | «Oportunidades estancadas» | propio/todos + organización |
 | property | `incomplete_properties` | `properties.read` | «Fichas incompletas» | organización, sin demo |
 | property | `property_completeness` | `properties.read` | «¿Qué le falta a esta ficha?» (solo en una ficha) | registro re-validado |
-| operations | `visits_today` | `agenda.manage`, `agenda.read_all` | «Visitas de hoy» | propio/equipo + organización del agente |
+| operations | `visits_today` | `visits.operate`, `visits.monitor`, `agenda.manage`, `agenda.read_all` | «Visitas de hoy» | con `visits_operations` y `visits.*`: consulta y alcance de «Mis visitas» (`listMyVisits`: etapas en camino/check-in/en curso, resultado del check-in, link al portal); si no, Agenda propio/equipo |
+| operations | `visit_incidents` | `visits.monitor` | «Incidencias de visitas» (solo con `visits_operations`) | alertas abiertas del centro operativo (`getOpsBoard`), organización |
 | operations | `overdue_tasks` | `tasks.manage`, `tasks.read_all` | «Tareas vencidas» | propio/equipo + organización |
 | executive | `week_summary` | `dashboard.read` | «Números de la semana» | cada conteo con su permiso y alcance |
 
@@ -97,6 +98,15 @@ cumplido) · agente responsable activo 10 · calle 5. No evalúa calidad del tex
 4. Tests: permiso (rol sin permiso no la ve ni la ejecuta), alcance propio/todos, otra organización, y el caso vacío.
 5. Si la herramienta sugiere o prepara algo, la persistencia la hace un servicio normal tras confirmación humana.
 
+### Núcleo operativo de visitas (PR #9)
+
+El copiloto no reinventa visitas: usa `src/server/visits` (alcance `visitScope`, `listMyVisits`, `getOpsBoard`, etiquetas
+`VISIT_PHASE_LABEL` y `ALERT_LABEL`) y su flag. El contexto de pantalla reconoce `/crm/mis-visitas/[id]` con `loadVisit`.
+Los puntos de extensión `src/server/visits/ai-extension.ts` (brief previo, informe estructurado, borrador de
+agradecimiento) **siguen con la implementación nula** en esta fase; se conectan en la Fase 4 con
+`registerVisitAi(...)` sobre `AIProvider.extract` (tarea `extract`) y flags `ai_visit_brief` / `ai_followup`, siempre como
+propuesta que el agente revisa y confirma.
+
 ## Prompts
 
 Registro en `src/server/ai/prompts/registry.ts`: `id`, `version` (`AAAA-MM-DD.n`), `task`, `system` (bloque estático
@@ -106,7 +116,7 @@ cacheable), `output` (zod) y `notes`. Cambiar reglas, herramientas o formato →
 
 ## Retrieval (RAG sin embeddings)
 
-- **Fuente**: `knowledge/*.md` (12 guías, 213 secciones) escritas desde las rutas, formularios, acciones y permisos
+- **Fuente**: `knowledge/*.md` (13 guías, incluida `visits.md` del núcleo operativo de visitas) escritas desde las rutas, formularios, acciones y permisos
   reales. Formato en `knowledge/README.md` (frontmatter + una sección `##` por fragmento con `ruta` y `permisos`).
 - **Ingesta**: `pnpm ai:knowledge:ingest` (en cada deploy que cambie `knowledge/`) y job diario `ai.knowledge_ingest`.
   Una transacción con lock; hash por documento y por sección; solo inserta/actualiza/borra lo cambiado; falla sin

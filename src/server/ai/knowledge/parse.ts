@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 
-export const KNOWLEDGE_DOMAINS = ["crm", "properties", "leads", "agenda", "agents", "virtual-tours", "marketing", "rentals", "operations", "permissions", "integrations", "faq"] as const;
+export const KNOWLEDGE_DOMAINS = ["crm", "properties", "leads", "agenda", "agents", "virtual-tours", "marketing", "rentals", "operations", "permissions", "integrations", "faq", "visits"] as const;
 export type KnowledgeDomain = (typeof KNOWLEDGE_DOMAINS)[number];
 
 export const MAX_CHUNK_CHARS = 6_000;
