@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { sql, dbHealth, getDb } from "@/server/db";
+import { dbHealth, getDb } from "@/server/db";
 import { safeEqual } from "@/server/auth/tokens";
+import { cronStaleMinutes, cronStatus, queueDetail } from "@/server/jobs/heartbeat";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Readiness: base accesible y migrada; cola de jobs sin muertos recientes. Devuelve 503 si no está lista.
- * El detalle (integraciones, jobs) solo con Authorization: Bearer $HEALTH_TOKEN.
+ * Readiness: base accesible y migrada y, en producción (APP_ENV=production), cron vivo: si la última corrida de
+ * /api/cron/jobs supera CRON_STALE_MINUTES (10 por defecto) devuelve 503 (la cola, alertas y tareas estarían frenadas).
+ * El detalle (integraciones, jobs muertos 24 h, backlog de la cola, eventos pendientes) solo con
+ * Authorization: Bearer $HEALTH_TOKEN.
  */
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -14,24 +17,32 @@ export async function GET(req: NextRequest) {
   const token = process.env.HEALTH_TOKEN;
   const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const detailed = Boolean(token && auth && safeEqual(auth, token));
+  const production = process.env.APP_ENV === "production";
+
+  const cron = health.ok ? await cronStatus(db, cronStaleMinutes()) : null;
+  const cronBlocking = production && Boolean(cron?.stale);
+  const ready = health.ok && !cronBlocking;
 
   const body: Record<string, unknown> = {
-    status: health.ok ? "ready" : "not_ready",
+    status: ready ? "ready" : "not_ready",
     database: { ok: health.ok, latencyMs: health.latencyMs },
+    cron: { ok: cron ? !cron.stale : false },
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
   };
   if (detailed && health.ok) {
-    const [jobs, integrations, events] = await Promise.all([
-      sql<{ status: string; n: number }>`select status, count(*)::int as n from jobs where updated_at > now() - interval '24 hours' group by status`.execute(db),
+    const [queue, integrations] = await Promise.all([
+      queueDetail(db),
       db.selectFrom("integrations").select(["key", "status", "consecutive_failures", "last_ok_at", "last_error_at"]).execute(),
-      sql<{ n: number; oldest: Date | null }>`select count(*)::int as n, min(occurred_at) as oldest from domain_events where dispatched_at is null`.execute(db),
     ]);
     body.migrations = health.migrations;
-    body.jobs24h = Object.fromEntries(jobs.rows.map((r) => [r.status, r.n]));
-    body.pendingEvents = events.rows[0];
+    body.cron = { ...cron, ok: !cron?.stale, blocking: cronBlocking };
+    body.jobs24h = queue.jobs24h;
+    body.deadJobs24h = queue.deadJobs24h;
+    body.queueBacklog = queue.backlog;
+    body.pendingEvents = queue.pendingEvents;
     body.integrations = integrations;
   } else if (!health.ok && detailed) {
     body.database = { ...health };
   }
-  return NextResponse.json(body, { status: health.ok ? 200 : 503, headers: { "cache-control": "no-store" } });
+  return NextResponse.json(body, { status: ready ? 200 : 503, headers: { "cache-control": "no-store" } });
 }

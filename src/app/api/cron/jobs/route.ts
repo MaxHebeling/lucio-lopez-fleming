@@ -3,6 +3,7 @@ import { getDb } from "@/server/db";
 import { safeEqual } from "@/server/auth/tokens";
 import { dispatchPendingEvents } from "@/server/automation/engine";
 import { enqueueScheduled } from "@/server/jobs/scheduled";
+import { recordCronHeartbeat } from "@/server/jobs/heartbeat";
 import { runJobs } from "@/server/jobs/runner";
 import { errorFields, log } from "@/server/log";
 import "@/server/jobs/handlers";
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
   }
   const db = getDb();
   try {
+    // Latido: /api/ready devuelve 503 en producción si el cron deja de correr (CRON_STALE_MINUTES).
+    await recordCronHeartbeat(db);
     const scheduled = await enqueueScheduled(db);
     const dispatched = await dispatchPendingEvents(db);
     const stats = await runJobs(db, { budgetMs: 270_000 });
