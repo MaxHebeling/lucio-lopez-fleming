@@ -8,6 +8,7 @@ import { registerExecutiveTools } from "./executive";
 import { registerKnowledgeTools } from "./knowledge";
 import { registerOperationsTools } from "./operations";
 import { registerPropertyTools } from "./property";
+import { registerPropertyQualityTools } from "./property-quality";
 import { registerSalesTools } from "./sales";
 import { registerSalesBriefingTools } from "./sales-briefing";
 
@@ -17,6 +18,7 @@ export function createDefaultRegistry(): ToolRegistry {
   registerSalesTools(registry);
   registerSalesBriefingTools(registry);
   registerPropertyTools(registry);
+  registerPropertyQualityTools(registry);
   registerOperationsTools(registry);
   registerExecutiveTools(registry);
   return registry;

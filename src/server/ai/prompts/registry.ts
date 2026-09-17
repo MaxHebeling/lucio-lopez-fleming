@@ -7,6 +7,10 @@ import type { z } from "zod";
 import type { AITask } from "../core/types";
 import { copilotAnalystPrompt } from "./copilot-analyst";
 import { copilotAssistantPrompt } from "./copilot-assistant";
+import { marketingDirectorPrompt } from "./marketing-director";
+import { photoTagsPrompt } from "./photo-tags";
+import { tourIntentPrompt } from "./tour-intent";
+import { visitBriefPrompt, visitReportPrompt, visitThanksPrompt } from "./visits";
 import { SALES_PROMPTS } from "./sales";
 
 export type PromptDefinition<S extends z.ZodType = z.ZodType> = {
@@ -31,6 +35,13 @@ export const PROMPTS = {
   [copilotAssistantPrompt.id]: copilotAssistantPrompt,
   [copilotAnalystPrompt.id]: copilotAnalystPrompt,
   ...SALES_PROMPTS,
+  // Fase 3 (AI Property) y 4b (visitas)
+  [photoTagsPrompt.id]: photoTagsPrompt,
+  [marketingDirectorPrompt.id]: marketingDirectorPrompt,
+  [tourIntentPrompt.id]: tourIntentPrompt,
+  [visitBriefPrompt.id]: visitBriefPrompt,
+  [visitReportPrompt.id]: visitReportPrompt,
+  [visitThanksPrompt.id]: visitThanksPrompt,
 } as const satisfies Record<string, PromptDefinition>;
 
 export function listPrompts(): Array<Pick<PromptDefinition, "id" | "version" | "task" | "notes">> {

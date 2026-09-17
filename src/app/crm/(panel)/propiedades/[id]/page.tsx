@@ -19,6 +19,11 @@ import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
 import { getTourSummary } from "@/server/tours/queries";
+import { getPropertyQuality } from "@/server/ai/property/quality";
+import { getPhotoDirector } from "@/server/ai/property/photo-director";
+import { QualityPanel } from "@/components/ai-property/quality-panel";
+import { getMarketingDirector } from "@/server/ai/property/marketing-director";
+import { MarketingPanel } from "@/components/ai-property/marketing-panel";
 import { propertyClientsPanel } from "@/server/sales/crm-panels";
 import { CompatibleClientsCard } from "@/components/crm/sales/sales-panels";
 
@@ -68,7 +73,13 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
-  const [tour, clients] = await Promise.all([getTourSummary(db, actor, d.property.id), propertyClientsPanel(db, actor, d.property.id)]);
+  const [tour, clients, quality, director, marketingView] = await Promise.all([
+    getTourSummary(db, actor, d.property.id),
+    propertyClientsPanel(db, actor, d.property.id),
+    d.property.is_demo ? Promise.resolve({ enabled: false, report: null }) : getPropertyQuality(db, actor, d.property.id),
+    getPhotoDirector(db, actor, d.property.id),
+    !d.property.is_demo && can(actor, "marketing.read") ? getMarketingDirector(db, actor, d.property.id) : Promise.resolve(null),
+  ]);
   const p = d.property;
   const canUpdate = can(actor, "properties.update");
   const canPrice = can(actor, "properties.change_price");
@@ -85,11 +96,13 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
   const addressLeakWhere = addressLeak && addressLeakInText({ street: p.address_street, title: p.title, description: null }) ? "título" : "texto de la descripción";
 
   const sections = [
+    ...(quality.enabled ? [["calidad", "Calidad"]] : []),
     ["datos", "Datos"],
     ["precios", "Precios"],
     ["estado", "Estado"],
     ["multimedia", `Multimedia (${d.media.length})`],
     ["tour", "Tour 360°"],
+    ...(marketingView?.enabled ? [["marketing", "Marketing"]] : []),
     ...(canPrivate ? [["propietarios", "Propietarios"]] : []),
     ["agentes", "Agentes"],
     ...(p.is_demo ? [] : [["publicaciones", "Publicaciones"]]),
@@ -183,6 +196,11 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
       </nav>
 
       <div className="flex flex-col gap-5">
+        {quality.enabled ? (
+          <section id="calidad" className="scroll-mt-28">
+            <QualityPanel propertyId={p.id} report={quality.report} canRecompute />
+          </section>
+        ) : null}
         <section id="datos" className="scroll-mt-28">
           <Card title="Datos">
             <div className="flex flex-col gap-5">
@@ -339,7 +357,23 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="multimedia" className="scroll-mt-28">
           <Card title="Multimedia">
-            <MediaManager propertyId={p.id} media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))} canManage={canMedia} />
+            <MediaManager
+              propertyId={p.id}
+              media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))}
+              canManage={canMedia}
+              director={
+                director.enabled && !p.is_demo
+                  ? {
+                      items: Object.fromEntries(director.items.map(({ id, ...rest }) => [id, rest])),
+                      suggestion: director.suggestion,
+                      pendingSuggestions: director.pendingSuggestions,
+                      visionCandidates: director.visionCandidates,
+                      aiAvailable: director.aiAvailable,
+                      visionJobQueued: director.visionJobQueued,
+                    }
+                  : null
+              }
+            />
           </Card>
         </section>
 
@@ -368,6 +402,14 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
             </div>
           </Card>
         </section>
+
+        {marketingView?.enabled ? (
+          <section id="marketing" className="scroll-mt-28">
+            <Card title="Marketing">
+              <MarketingPanel propertyId={p.id} view={marketingView} />
+            </Card>
+          </section>
+        ) : null}
 
         {canPrivate && d.owners ? (
           <section id="propietarios" className="scroll-mt-28">

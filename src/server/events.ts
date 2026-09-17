@@ -52,6 +52,13 @@ export const EVENT_TYPES = [
   "recommendation.created",
   "recommendation.accepted",
   "recommendation.dismissed",
+  // AI Property (Fase 3) e IA de visitas (Fase 4b): solo ids, contadores y versiones (sin datos personales). Ninguna
+  // automatización los escucha: no hay loops (docs/ai/PROPERTY.md › Eventos).
+  "property.quality_computed",
+  "media.tags_suggested",
+  "marketing.draft_created",
+  "visit.brief_prepared",
+  "visit.report_structured",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

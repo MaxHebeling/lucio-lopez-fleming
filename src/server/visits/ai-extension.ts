@@ -1,13 +1,17 @@
 /**
- * Puntos de extensión para la fase de IA (no implementada acá). Hoy todas devuelven null: la UI solo muestra una
- * propuesta «Revisá y confirmá» cuando exista una salida real. Nada de esto envía datos a terceros.
+ * Puntos de extensión de IA del núcleo de visitas. La implementación real vive en `src/server/ai/visits` (Fase 4b) y se
+ * registra al importar `@/server/ai/visits/register`; sin registrar, todas devuelven null (nunca una respuesta simulada).
  *
- * Contrato para la fase siguiente (AI Core):
- * - `structureVisitReport(text)`: a partir del comentario escrito/dictado por el agente, propone los campos
- *   estructurados del informe. El agente SIEMPRE revisa y confirma (`saveVisitReport` con `confirm`).
- * - `buildVisitBrief(input)`: brief previo a la visita (propiedad, cliente, historial) para el detalle de «Mis visitas».
- * - `draftThankYouMessage(input)`: borrador de agradecimiento; reemplaza a la plantilla solo como sugerencia editable.
+ * Contrato (docs/ai/VISITS_AI.md):
+ * - `buildVisitBrief`: brief previo (hechos registrados + «NO REGISTRADO»; con clave, resumen de la IA aparte).
+ * - `structureVisitReport`: propuesta guardada para el texto actual del informe (se genera a pedido, con clave).
+ *   El agente SIEMPRE revisa y confirma (`saveVisitReport` con `confirm`).
+ * - `draftThankYouMessage`: variante guardada del agradecimiento (se genera a pedido, con clave); sin ella, la plantilla.
+ * - `suggestFollowUp`: seguimiento sugerido con motivo desde el informe confirmado; la tarea se crea solo al confirmar.
+ * Todas reciben el actor: la autorización (`loadVisit`) se aplica ANTES de leer datos o llamar a la IA.
  */
+import type { Database } from "../db";
+import type { Actor } from "../auth/actor";
 import type { Interest } from "./rules";
 
 export type VisitReportProposal = {
@@ -20,36 +24,56 @@ export type VisitReportProposal = {
   followUpAt: string | null;
 };
 
-export type VisitBrief = { headline: string; points: string[] };
+export type VisitBriefFact = { id: string; section: "cliente" | "busca" | "pregunto" | "propiedad"; text: string };
 
-export type VisitAiExtensions = {
-  structureVisitReport(text: string): Promise<VisitReportProposal | null>;
-  buildVisitBrief(input: { appointmentId: string }): Promise<VisitBrief | null>;
-  draftThankYouMessage(input: { appointmentId: string; template: string }): Promise<string | null>;
+export type VisitBrief = {
+  headline: string;
+  facts: VisitBriefFact[];
+  notRegistered: string[];
+  generatedBy: "rules" | "ai";
+  /** Resumen de la IA (cita hechos) e interpretación rotulada. null sin IA. */
+  ai: { points: Array<{ text: string; factIds: string[] }>; interpretation: string[] } | null;
+  generatedAt: Date | null;
 };
 
-/** Implementación nula: sin IA configurada no hay propuesta (nunca una respuesta simulada). */
+export type VisitFollowUpSuggestion = { dueAt: Date; title: string; reason: string };
+
+export type VisitAiContext = { db: Database; actor: Actor };
+
+export type VisitAiExtensions = {
+  structureVisitReport(ctx: VisitAiContext, input: { appointmentId: string; text: string }): Promise<VisitReportProposal | null>;
+  buildVisitBrief(ctx: VisitAiContext, input: { appointmentId: string }): Promise<VisitBrief | null>;
+  draftThankYouMessage(ctx: VisitAiContext, input: { appointmentId: string; template: string }): Promise<string | null>;
+  suggestFollowUp(ctx: VisitAiContext, input: { appointmentId: string }): Promise<VisitFollowUpSuggestion | null>;
+};
+
+/** Implementación nula: sin IA registrada no hay propuesta (nunca una respuesta simulada). */
 export const nullVisitAi: VisitAiExtensions = {
   structureVisitReport: async () => null,
   buildVisitBrief: async () => null,
   draftThankYouMessage: async () => null,
+  suggestFollowUp: async () => null,
 };
 
 let current: VisitAiExtensions = nullVisitAi;
 
-/** La fase de IA registra su implementación al iniciar (p. ej. desde src/server/ai). */
+/** La fase de IA registra su implementación al iniciar (src/server/ai/visits/register.ts). */
 export function registerVisitAi(impl: VisitAiExtensions): void {
   current = impl;
 }
 
-export function structureVisitReport(text: string): Promise<VisitReportProposal | null> {
-  return current.structureVisitReport(text);
+export function structureVisitReport(ctx: VisitAiContext, input: { appointmentId: string; text: string }): Promise<VisitReportProposal | null> {
+  return current.structureVisitReport(ctx, input);
 }
 
-export function buildVisitBrief(input: { appointmentId: string }): Promise<VisitBrief | null> {
-  return current.buildVisitBrief(input);
+export function buildVisitBrief(ctx: VisitAiContext, input: { appointmentId: string }): Promise<VisitBrief | null> {
+  return current.buildVisitBrief(ctx, input);
 }
 
-export function draftThankYouMessage(input: { appointmentId: string; template: string }): Promise<string | null> {
-  return current.draftThankYouMessage(input);
+export function draftThankYouMessage(ctx: VisitAiContext, input: { appointmentId: string; template: string }): Promise<string | null> {
+  return current.draftThankYouMessage(ctx, input);
+}
+
+export function suggestFollowUp(ctx: VisitAiContext, input: { appointmentId: string }): Promise<VisitFollowUpSuggestion | null> {
+  return current.suggestFollowUp(ctx, input);
 }

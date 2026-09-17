@@ -14,7 +14,9 @@ import { publishBlockers } from "./service";
 
 const emptyToUndef = (v: unknown) => (v === "" || v === null ? undefined : v);
 
-export const PROPERTY_SORTS = ["updated_desc", "created_desc", "code_desc", "code_asc", "title_asc", "price_asc", "price_desc"] as const;
+export const PROPERTY_SORTS = ["updated_desc", "created_desc", "code_desc", "code_asc", "title_asc", "price_asc", "price_desc", "quality_asc", "quality_desc"] as const;
+/** Rangos del score de «Calidad de la publicación» (AI Property, docs/ai/PROPERTY.md). `none` = sin informe todavía. */
+export const QUALITY_FILTERS = ["low", "medium", "high", "none"] as const;
 export type PropertySort = (typeof PROPERTY_SORTS)[number];
 
 export const propertyListFiltersSchema = z.object({
@@ -29,6 +31,7 @@ export const propertyListFiltersSchema = z.object({
   branchId: z.preprocess(emptyToUndef, z.uuid().optional()),
   agentId: z.preprocess(emptyToUndef, z.uuid().optional()),
   sort: z.preprocess(emptyToUndef, z.enum(PROPERTY_SORTS).optional()),
+  quality: z.preprocess(emptyToUndef, z.enum(QUALITY_FILTERS).optional()),
   page: z.preprocess(emptyToUndef, z.coerce.number().int().min(1).max(100_000).optional()),
   pageSize: z.preprocess(emptyToUndef, z.coerce.number().int().min(1).max(100).optional()),
 });
@@ -62,6 +65,7 @@ export type PropertyListItem = {
   cover: { file_id: string | null; source_url: string | null; file_storage_driver: string | null; file_storage_key: string | null; file_visibility: string | null } | null;
   lead_agent_name: string | null;
   operations: Array<{ operation: string; currency: string; amount: string | number | null; price_hidden: boolean }>;
+  quality_score: number | null;
 };
 
 export async function listProperties(db: Database, actor: Actor, raw: PropertyListFilters): Promise<Page<PropertyListItem>> {
@@ -107,6 +111,15 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
     });
   }
 
+  if (f.quality) {
+    const band = f.quality;
+    q = q.where((eb) => {
+      const report = eb.selectFrom("property_quality_reports as qr").select("qr.property_id").whereRef("qr.property_id", "=", "p.id");
+      if (band === "none") return eb.not(eb.exists(report));
+      return eb.exists(band === "low" ? report.where("qr.score", "<", 55) : band === "medium" ? report.where("qr.score", ">=", 55).where("qr.score", "<", 80) : report.where("qr.score", ">=", 80));
+    });
+  }
+
   const totalRow = await q.select(sql<number>`count(*)::int`.as("n")).executeTakeFirst();
   const total = totalRow?.n ?? 0;
 
@@ -129,6 +142,7 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
       from property_media pm left join files f on f.id = pm.file_id and f.deleted_at is null
       where pm.property_id = p.id and pm.deleted_at is null and pm.kind = 'image' order by pm.is_cover desc, pm.sort_order, pm.created_at limit 1)`.as("cover"),
     sql<string | null>`(select u.full_name from property_agents pa join users u on u.id = pa.user_id where pa.property_id = p.id and pa.role = 'lead' limit 1)`.as("lead_agent_name"),
+    sql<number | null>`(select qr.score from property_quality_reports qr where qr.property_id = p.id)`.as("quality_score"),
     (eb) =>
       jsonArrayFrom(
         eb
@@ -157,6 +171,12 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
       break;
     case "price_desc":
       ordered = ordered.orderBy(sql`${priceExpr} desc nulls last`);
+      break;
+    case "quality_asc":
+      ordered = ordered.orderBy(sql`(select qr.score from property_quality_reports qr where qr.property_id = p.id) asc nulls last`);
+      break;
+    case "quality_desc":
+      ordered = ordered.orderBy(sql`(select qr.score from property_quality_reports qr where qr.property_id = p.id) desc nulls last`);
       break;
     default:
       ordered = ordered.orderBy("p.updated_at", "desc");

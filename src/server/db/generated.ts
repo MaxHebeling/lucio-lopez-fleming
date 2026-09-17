@@ -612,6 +612,14 @@ export interface Jobs {
   updated_at: Generated<Timestamp>;
 }
 
+export interface LeadAttachments {
+  created_at: Generated<Timestamp>;
+  file_id: string;
+  id: Generated<string>;
+  kind: string;
+  lead_id: string;
+}
+
 export interface Leads {
   assigned_at: Timestamp | null;
   assigned_user_id: string | null;
@@ -801,6 +809,16 @@ export interface OutboundMessages {
   updated_at: Generated<Timestamp>;
 }
 
+export interface OwnerCaptureUploads {
+  claimed_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  file_id: string;
+  id: Generated<string>;
+  lead_id: string | null;
+  token_hash: string;
+}
+
 export interface OwnerReports {
   data: Json;
   file_id: string | null;
@@ -948,6 +966,27 @@ export interface PropertyFeatures {
   property_id: string;
 }
 
+export interface PropertyMarketingDrafts {
+  applied_at: Timestamp | null;
+  applied_by: string | null;
+  channel: string;
+  content: Json;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  discarded_at: Timestamp | null;
+  discarded_by: string | null;
+  generated_by: string;
+  id: Generated<string>;
+  organization_id: string;
+  prompt_version: string | null;
+  property_id: string;
+  rules_version: string;
+  source_hash: string;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+}
+
 export interface PropertyMatches {
   algorithm_version: string;
   computed_at: Generated<Timestamp>;
@@ -986,6 +1025,41 @@ export interface PropertyMedia {
   status: Generated<string>;
   updated_at: Generated<Timestamp>;
   width: number | null;
+}
+
+export interface PropertyMediaAnalysis {
+  algorithm_version: string;
+  analyzed_at: Generated<Timestamp>;
+  checksum_sha256: string | null;
+  dark_pixel_ratio: Numeric;
+  dhash: string;
+  file_id: string;
+  height: number | null;
+  laplacian_variance: Numeric;
+  luminance_mean: Numeric;
+  luminance_p95: Numeric;
+  luminance_variance: Numeric;
+  media_id: string;
+  property_id: string;
+  width: number | null;
+}
+
+export interface PropertyMediaRooms {
+  created_at: Generated<Timestamp>;
+  media_id: string;
+  property_id: string;
+  room: string | null;
+  room_confidence: Numeric | null;
+  room_source: string | null;
+  suggested_at: Timestamp | null;
+  suggested_confidence: Numeric | null;
+  suggested_room: string | null;
+  suggestion_checksum: string | null;
+  suggestion_prompt: string | null;
+  suggestion_status: string | null;
+  tagged_at: Timestamp | null;
+  tagged_by: string | null;
+  updated_at: Generated<Timestamp>;
 }
 
 export interface PropertyOperations {
@@ -1043,6 +1117,23 @@ export interface PropertyPublications {
   sync_locked_until: Timestamp | null;
   sync_status: Generated<string>;
   updated_at: Generated<Timestamp>;
+}
+
+export interface PropertyQualityReports {
+  completeness_score: number;
+  computed_at: Generated<Timestamp>;
+  created_at: Generated<Timestamp>;
+  criteria: Generated<Json>;
+  findings: Generated<Json>;
+  input_hash: string;
+  media_summary: Generated<Json>;
+  missing_count: Generated<number>;
+  organization_id: string;
+  property_id: string;
+  rules_version: string;
+  score: number;
+  updated_at: Generated<Timestamp>;
+  warning_count: Generated<number>;
 }
 
 export interface PropertyRedirects {
@@ -1427,6 +1518,19 @@ export interface VirtualTourScenes {
   width: number;
 }
 
+export interface VisitAiOutputs {
+  appointment_id: string;
+  content: Json;
+  created_at: Generated<Timestamp>;
+  generated_at: Generated<Timestamp>;
+  generated_by: string;
+  input_hash: string;
+  kind: string;
+  prompt_version: string | null;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface VisitAlerts {
   appointment_id: string;
   detail: Generated<Json>;
@@ -1493,6 +1597,7 @@ export interface DB {
   integration_logs: IntegrationLogs;
   integrations: Integrations;
   jobs: Jobs;
+  lead_attachments: LeadAttachments;
   lead_sources: LeadSources;
   leads: Leads;
   locations: Locations;
@@ -1506,6 +1611,7 @@ export interface DB {
   opportunity_stage_history: OpportunityStageHistory;
   organizations: Organizations;
   outbound_messages: OutboundMessages;
+  owner_capture_uploads: OwnerCaptureUploads;
   owner_reports: OwnerReports;
   owner_settlements: OwnerSettlements;
   password_reset_tokens: PasswordResetTokens;
@@ -1516,12 +1622,16 @@ export interface DB {
   property_agents: PropertyAgents;
   property_documents: PropertyDocuments;
   property_features: PropertyFeatures;
+  property_marketing_drafts: PropertyMarketingDrafts;
   property_matches: PropertyMatches;
   property_media: PropertyMedia;
+  property_media_analysis: PropertyMediaAnalysis;
+  property_media_rooms: PropertyMediaRooms;
   property_operations: PropertyOperations;
   property_owners: PropertyOwners;
   property_price_history: PropertyPriceHistory;
   property_publications: PropertyPublications;
+  property_quality_reports: PropertyQualityReports;
   property_redirects: PropertyRedirects;
   property_status_history: PropertyStatusHistory;
   property_types: PropertyTypes;
@@ -1551,6 +1661,7 @@ export interface DB {
   virtual_tour_hotspots: VirtualTourHotspots;
   virtual_tour_scenes: VirtualTourScenes;
   virtual_tours: VirtualTours;
+  visit_ai_outputs: VisitAiOutputs;
   visit_alerts: VisitAlerts;
   webhook_events: WebhookEvents;
 }

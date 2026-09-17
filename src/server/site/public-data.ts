@@ -29,6 +29,8 @@ import { getZoneShowcase, listListingCombinations, resolveLegacyTarget } from ".
 import type { PublicOperation } from "../properties/public-helpers";
 import { SITE_CACHE_TAGS, SITE_REVALIDATE_SECONDS } from "./revalidate";
 import { loadSiteDemoShowcase, loadSitePropertyMediaExtras } from "../tours/queries";
+import { isEnabled } from "../flags";
+import { ownerPhotosAvailable } from "./owner-capture";
 
 const PROPERTIES = { tags: [SITE_CACHE_TAGS.properties], revalidate: SITE_REVALIDATE_SECONDS };
 
@@ -103,10 +105,21 @@ export const getSiteSimilar = (p: PublicPropertyDetail, limit: number) =>
 // ───────── Tours virtuales, planos y videos de la ficha ─────────
 // El flag `virtual_tours` se evalúa dentro de la caché: cambiarlo desde Integraciones invalida el sitio (ver la acción).
 
-const mediaExtrasCached = unstable_cache(async (code: number) => loadSitePropertyMediaExtras(getDb(), code), ["site", "property-media-extras", "v1"], PROPERTIES);
+const mediaExtrasCached = unstable_cache(async (code: number) => loadSitePropertyMediaExtras(getDb(), code), ["site", "property-media-extras", "v2"], PROPERTIES);
 export const getSitePropertyMediaExtras = cache((code: number) => readPublic(() => mediaExtrasCached(code)));
 
-const demoCached = unstable_cache(async () => loadSiteDemoShowcase(getDb()), ["site", "demo-tour", "v1"], PROPERTIES);
+/** Captación de propietarios: paso a paso (flag) y paso de fotos (flag + storage S3 configurado). */
+const ownerCaptureCached = unstable_cache(
+  async () => {
+    const db = getDb();
+    return { steps: await isEnabled(db, "owner_capture_steps"), photos: await ownerPhotosAvailable(db) };
+  },
+  ["site", "owner-capture", "v1"],
+  PROPERTIES,
+);
+export const getSiteOwnerCapture = cache(() => readPublic(ownerCaptureCached));
+
+const demoCached = unstable_cache(async () => loadSiteDemoShowcase(getDb()), ["site", "demo-tour", "v2"], PROPERTIES);
 /** Demo pública del tour. null con el flag apagado o sin demo sembrada (la ruta responde 404). */
 export const getSiteDemoShowcase = cache(() => readPublic(demoCached));
 

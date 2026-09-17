@@ -4,7 +4,8 @@ import Link from "next/link";
 import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
-import { listProperties, parsePropertyFilters, propertyFormOptions, PROPERTY_SORTS, type PropertyListItem } from "@/server/properties/queries";
+import { listProperties, parsePropertyFilters, propertyFormOptions, PROPERTY_SORTS, QUALITY_FILTERS, type PropertyListItem } from "@/server/properties/queries";
+import { isEnabled } from "@/server/flags";
 import { listAddressLeaks } from "@/server/properties/address-leak";
 import { OPERATION_LABEL, PROPERTY_STATUSES, STATUS_LABEL, type Operation, type PropertyStatus } from "@/server/properties/schema";
 import { Alert, Badge, ButtonLink, EmptyState, Field, formatDate, formatMoney, Input, PageHeader, Select, Table, buttonClass } from "@/components/ui";
@@ -22,9 +23,22 @@ const SORT_LABEL: Record<(typeof PROPERTY_SORTS)[number], string> = {
   title_asc: "Título (A-Z)",
   price_asc: "Precio (menor primero)",
   price_desc: "Precio (mayor primero)",
+  quality_asc: "Calidad (peor primero)",
+  quality_desc: "Calidad (mejor primero)",
 };
 
-const FILTER_KEYS = ["q", "status", "published", "typeKey", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "sort"] as const;
+const QUALITY_LABEL: Record<(typeof QUALITY_FILTERS)[number], string> = { low: "Baja (menos de 55)", medium: "Mejorable (55 a 79)", high: "Buena (80 o más)", none: "Sin informe todavía" };
+
+function QualityBadge({ score }: { score: number | null }) {
+  if (score === null) return null;
+  return (
+    <Badge tone={score >= 80 ? "success" : score >= 55 ? "warning" : "danger"}>
+      <span className="sr-only">Calidad de la publicación: </span>Calidad {score}
+    </Badge>
+  );
+}
+
+const FILTER_KEYS = ["q", "status", "published", "typeKey", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "quality", "sort"] as const;
 
 function price(p: PropertyListItem) {
   if (!p.operations.length) return <span className="text-stone">Sin operación</span>;
@@ -55,13 +69,15 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
   const sp = await searchParams;
   const filters = parsePropertyFilters(sp);
   const db = getDb();
-  const [result, options, addressLeaks] = await Promise.all([
+  const [result, options, addressLeaks, qualityEnabled] = await Promise.all([
     listProperties(db, actor, filters),
     propertyFormOptions(db, actor),
     can(actor, "properties.update") ? listAddressLeaks(db, actor) : Promise.resolve([]),
+    isEnabled(db, "ai_property_quality"),
   ]);
   const params = Object.fromEntries(FILTER_KEYS.map((k) => [k, filters[k] === undefined ? undefined : String(filters[k])]));
-  const advancedActive = ["published", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId"].some((k) => params[k] !== undefined);
+  const advancedActive = ["published", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "quality"].some((k) => params[k] !== undefined);
+  const sorts = PROPERTY_SORTS.filter((s) => qualityEnabled || !s.startsWith("quality"));
   const anyFilter = FILTER_KEYS.some((k) => k !== "sort" && params[k] !== undefined);
 
   return (
@@ -69,7 +85,14 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
       <PageHeader
         title="Propiedades"
         description="Buscá por código, título o dirección. Las archivadas se ven filtrando por estado."
-        actions={can(actor, "properties.create") ? <ButtonLink href="/crm/propiedades/nueva">Nueva propiedad</ButtonLink> : null}
+        actions={
+          <>
+            <ButtonLink href="/crm/propiedades/inventario" variant="secondary">
+              Análisis de inventario
+            </ButtonLink>
+            {can(actor, "properties.create") ? <ButtonLink href="/crm/propiedades/nueva">Nueva propiedad</ButtonLink> : null}
+          </>
+        }
       />
 
       {addressLeaks.length ? (
@@ -121,7 +144,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
           </Field>
           <Field label="Orden" htmlFor="f-sort">
             <Select id="f-sort" name="sort" defaultValue={params.sort ?? "updated_desc"}>
-              {PROPERTY_SORTS.map((s) => (
+              {sorts.map((s) => (
                 <option key={s} value={s}>
                   {SORT_LABEL[s]}
                 </option>
@@ -182,6 +205,18 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
             <Field label="Precio hasta" htmlFor="f-max">
               <Input id="f-max" name="priceMax" type="number" min={0} step="any" inputMode="decimal" defaultValue={params.priceMax} />
             </Field>
+            {qualityEnabled ? (
+              <Field label="Calidad de la publicación" htmlFor="f-quality">
+                <Select id="f-quality" name="quality" defaultValue={params.quality ?? ""}>
+                  <option value="">Todas</option>
+                  {QUALITY_FILTERS.map((k) => (
+                    <option key={k} value={k}>
+                      {QUALITY_LABEL[k]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
           </div>
         </details>
         <div className="flex flex-wrap gap-2">
@@ -222,6 +257,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
                       <Badge tone={PROPERTY_STATUS_TONE[p.status]}>{STATUS_LABEL[p.status as PropertyStatus] ?? p.status}</Badge>
                       {p.is_published ? <Badge tone="success">Publicada</Badge> : null}
                       {p.is_demo ? <Badge tone="warning">DEMO</Badge> : null}
+                      {qualityEnabled ? <QualityBadge score={p.quality_score} /> : null}
                     </span>
                     {price(p)}
                   </div>
@@ -265,6 +301,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
                       <Badge tone={PROPERTY_STATUS_TONE[p.status]}>{STATUS_LABEL[p.status as PropertyStatus] ?? p.status}</Badge>
                       {p.is_published ? <Badge tone="success">Publicada</Badge> : null}
                       {p.is_demo ? <Badge tone="warning">DEMO</Badge> : null}
+                      {qualityEnabled ? <QualityBadge score={p.quality_score} /> : null}
                     </span>
                   </td>
                   <td>{price(p)}</td>

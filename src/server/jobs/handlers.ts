@@ -21,3 +21,7 @@ import "../site/events";
 import "../visits/jobs";
 import "../ai/jobs";
 import "../sales/jobs";
+import "../ai/property/quality";
+import "../ai/property/photo-director";
+import "../site/owner-capture";
+import "../ai/visits/service";

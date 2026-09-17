@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { MEDIA_TAB_LABEL, type MediaTabKey, type PublicTour } from "@/server/tours/model";
 import { TourLauncher } from "@/components/site/tour/TourLauncher";
+import type { TourGuideConfig } from "@/components/site/tour/TourExperience";
 import { FloorPlan } from "@/components/site/tour/FloorPlan";
 
 type Props = {
@@ -20,13 +21,15 @@ type Props = {
   shareUrl: string;
   whatsappUrl: string | null;
   isDemo: boolean;
+  /** Guía «Preguntá por esta casa» dentro del tour (flag `ai_tour_guide`). */
+  guide?: TourGuideConfig | null;
 };
 
 /**
  * Selector de medios de la ficha: [FOTOS] [TOUR 360°] [PLANO] [VIDEO], solo las disponibles (ver mediaTabs()).
  * Pestañas accesibles (flechas, Inicio/Fin). La galería se mantiene montada: el contenido indexable no cambia.
  */
-export function PropertyMediaTabs({ tabs, photos, tour, floorPlans, videos, headline, fallbackCoverUrl, propertyCode, operation, shareUrl, whatsappUrl, isDemo }: Props) {
+export function PropertyMediaTabs({ tabs, photos, tour, floorPlans, videos, headline, fallbackCoverUrl, propertyCode, operation, shareUrl, whatsappUrl, isDemo, guide }: Props) {
   const id = useId();
   const [active, setActive] = useState<MediaTabKey>(tabs[0]!);
   const refs = useRef<Partial<Record<MediaTabKey, HTMLButtonElement | null>>>({});
@@ -93,6 +96,7 @@ export function PropertyMediaTabs({ tabs, photos, tour, floorPlans, videos, head
           shareUrl={shareUrl}
           whatsappUrl={whatsappUrl}
           isDemo={isDemo}
+          guide={guide ?? null}
           onShowPhotos={tabs.includes("fotos") ? showPhotos : undefined}
         />
       </div>

@@ -101,6 +101,21 @@ tabla. La respuesta mostrada vive solo en la sesión (`ai_messages`, retención 
   persistido de la integración `anthropic`.
 - Ruteo por tarea solo a modelos con precio conocido.
 
+## 8b. Fases 3 y 4b (AI Property e IA de visitas)
+
+| Regla | Dónde vive | Test |
+| --- | --- | --- |
+| Nada se modifica sin una persona (orden sugerido, sugerencias de ambiente, SEO, tarea de seguimiento) | `property/photo-director.ts`, `property/marketing-director.ts`, `visits/service.ts` (servicios con `requirePermission` + auditoría) | `ai-property-quality.test.ts`, `ai-property-marketing.test.ts`, `ai-visits.test.ts` |
+| El informe de calidad nunca toca la ficha | `property/quality.ts` | › nunca modifica la propiedad ni sus fotos |
+| Sin descargas del CDN del sitio anterior | `property/quality.ts`, `photo-director.ts` (solo `stored`) | › las del sitio anterior no se descargan |
+| Precio fuera de rango solo con muestra y sin afirmar valor | `property/quality-rules.ts` | › precio con/sin muestra |
+| Marketing sin datos inventados (cifras, links, atributos, superlativos) | `property/marketing-guards.ts` (plantillas y IA) | `ai-property-marketing.test.ts` |
+| Hechos vs. interpretación en el brief; ids de hechos verificados | `visits/service.ts` (`verify`), `components/visits/brief-card.tsx` | `ai-visits.test.ts` |
+| Propuestas, no hechos (informe estructurado) | `visits/service.ts` (`visit_ai_outputs`, nunca `appointment_reports`) | › la extracción queda como PROPUESTA |
+| El tour no redacta: solo intención validada | `tours/guide-ai.ts`, `tours/guide.ts` | `ai-property-site.test.ts`, `tours-guide.test.ts` |
+| Sin tasación automática | `components/experience/OwnerCaptureSteps.tsx`, `site/leads.ts` | `ai-property-site.test.ts` |
+| Degradación honesta sin clave o con proveedor caído | `run-task.ts` + capas deterministas | › proveedor caído → determinista |
+
 ## 9. Qué NO hace la IA en la Fase 1
 
 No envía mensajes, no cambia estados, no asigna, no agenda, no publica, no borra, no ve auditoría ni usuarios, no lee

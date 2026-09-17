@@ -5,6 +5,7 @@ import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { getLeadDetail } from "@/server/leads/queries";
+import { leadOwnerPhotos } from "@/server/site/owner-capture";
 import { listPipelines, listStaffUsers } from "@/server/crm/lookups";
 import { Alert, Badge, ButtonLink, Card, PageHeader, formatDateTime } from "@/components/ui";
 import { ContactButtons } from "@/components/crm/contact-actions";
@@ -29,7 +30,7 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
   const d = await orNotFound(getLeadDetail(db, actor, id));
   const { lead } = d;
   const canUpdate = can(actor, "leads.update");
-  const [users, pipelines, sales] = await Promise.all([can(actor, "leads.assign") ? listStaffUsers(db, actor) : Promise.resolve([]), listPipelines(db, actor), leadSalesPanels(db, actor, id)]);
+  const [users, pipelines, sales, ownerPhotos] = await Promise.all([can(actor, "leads.assign") ? listStaffUsers(db, actor) : Promise.resolve([]), listPipelines(db, actor), leadSalesPanels(db, actor, id), leadOwnerPhotos(db, lead.id)]);
   const utmEntries = Object.entries((lead.utm ?? {}) as Record<string, string>);
   return (
     <>
@@ -160,6 +161,21 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
               </div>
             </dl>
           </Card>
+
+          {ownerPhotos.length ? (
+            <Card title="Fotos enviadas por el propietario">
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {ownerPhotos.map((ph, i) => (
+                  <li key={ph.fileId}>
+                    <a href={`/api/files/${ph.fileId}`} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-[var(--radius-md)] border border-line">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- archivo privado servido con autorización (el optimizador no manda la sesión) */}
+                      <img src={`/api/files/${ph.fileId}`} alt={`Foto ${i + 1} enviada por el propietario`} width={ph.width ?? undefined} height={ph.height ?? undefined} loading="lazy" className="aspect-[4/3] w-full object-cover" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
 
           <NotesSection notes={d.notes} entityType="lead" entityId={lead.id} canWrite={canUpdate} idempotencyKey={randomUUID()} />
 

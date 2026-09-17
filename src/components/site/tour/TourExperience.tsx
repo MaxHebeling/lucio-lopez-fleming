@@ -12,8 +12,9 @@ import "./tour.css";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, Compass, ExternalLink, Info, LayoutGrid, Map as MapIcon, Maximize, Minimize, Route, Smartphone, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Compass, ExternalLink, Info, LayoutGrid, Map as MapIcon, Maximize, MessageCircleQuestionMark, Minimize, Route, Smartphone, X } from "lucide-react";
 import { guidedSequence, guidedStartIndex, guidedStep, PROVIDER_LABEL, type PublicTour, type TourHotspot, type TourScene } from "@/server/tours/model";
+import { answerTourQuestion, withArticle, type GuideAnswer, type TourFact, type TourIntent } from "@/server/tours/guide";
 import { pauseSmoothScroll, resumeSmoothScroll } from "@/components/experience/motion/smooth-scroll";
 import { LeadForm } from "@/components/site/LeadForm";
 import { ShareButton } from "@/components/site/property/ShareButton";
@@ -33,10 +34,14 @@ export type TourContext = {
   /** false en la vista previa del CRM: no se registran eventos. */
   analytics: boolean;
   entry: "cover" | "tab" | "direct";
+  /** «Preguntá por esta casa» (flag `ai_tour_guide`): datos públicos de la ficha y si hay IA para interpretar preguntas. */
+  guide?: TourGuideConfig | null;
 };
 
+export type TourGuideConfig = { ai: boolean; facts: TourFact[] };
+
 type Props = TourContext & { onClose: () => void; onShowPhotos?: () => void };
-type Panel = null | "plan" | "rooms" | "cta" | "info";
+type Panel = null | "plan" | "rooms" | "cta" | "info" | "guide";
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -159,7 +164,7 @@ export default function TourExperience(props: Props) {
 
 // ───────────────────────── Tour propio ─────────────────────────
 
-function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, whatsappUrl, isDemo, analytics, entry, onClose, onShowPhotos }: Props & { tour: Extract<PublicTour, { kind: "internal" }> }) {
+function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, whatsappUrl, isDemo, analytics, entry, guide, onClose, onShowPhotos }: Props & { tour: Extract<PublicTour, { kind: "internal" }> }) {
   const reduced = useReducedMotion();
   const byId = useMemo(() => new Map(tour.scenes.map((s) => [s.id, s])), [tour.scenes]);
   const sceneNames = useMemo(() => Object.fromEntries(tour.scenes.map((s) => [s.id, s.name])), [tour.scenes]);
@@ -278,10 +283,36 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
     [emit, go, scene.slug],
   );
 
-  const onShown = useCallback(() => {
-    setShown(true);
-    setError(null);
-  }, []);
+  // Guía: recorrido paso a paso por la transición existente (una escena por vez, esperando que se muestre cada una).
+  const walk = useRef<string[]>([]);
+  const walkedFrom = useRef<string | null>(null);
+  const goRef = useRef(go);
+  useEffect(() => {
+    goRef.current = go;
+  });
+  const startWalk = useCallback(
+    (path: string[]) => {
+      if (path.length < 2) return;
+      walk.current = path.slice(2);
+      walkedFrom.current = null;
+      setPanel(null);
+      go(path[1]!, "list");
+    },
+    [go],
+  );
+
+  const onShown = useCallback(
+    (shownScene: TourScene) => {
+      setShown(true);
+      setError(null);
+      // El visor avisa dos veces por escena (vista previa y completa): se avanza una sola vez por escena.
+      if (!walk.current.length || walkedFrom.current === shownScene.id) return;
+      walkedFrom.current = shownScene.id;
+      const next = walk.current.shift()!;
+      window.setTimeout(() => goRef.current(next, "list"), reduced ? 0 : 450);
+    },
+    [reduced],
+  );
 
   useEffect(() => {
     if (!shown || gyro !== "unsupported") return;
@@ -419,6 +450,7 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
       <nav className="tour-tools" aria-label="Herramientas del tour">
         {tour.floorPlan ? <ToolButton label="Plano" icon={<MapIcon aria-hidden className="size-4" />} onClick={() => openPanel("plan")} pressed={panel === "plan"} /> : null}
         <ToolButton label="Ambientes" icon={<LayoutGrid aria-hidden className="size-4" />} onClick={() => openPanel("rooms")} pressed={panel === "rooms"} />
+        {guide ? <ToolButton label="Preguntá" icon={<MessageCircleQuestionMark aria-hidden className="size-4" />} onClick={() => openPanel("guide")} pressed={panel === "guide"} /> : null}
         {sequence.length > 1 ? (
           mode === "guided" ? (
             <ToolButton label="Explorar libremente" icon={<Compass aria-hidden className="size-4" />} onClick={() => setMode("free")} />
@@ -547,6 +579,19 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
           </ol>
         </Sheet>
       ) : null}
+      {panel === "guide" && guide ? (
+        <Sheet title="Preguntá por esta casa" onClose={() => setPanel(null)}>
+          <TourGuidePanel
+            tourId={tour.id}
+            scenes={tour.scenes}
+            currentSceneId={scene.id}
+            guide={guide}
+            onWalk={startWalk}
+            onGo={(id) => go(id, "list")}
+            onContact={() => openVisit("bar")}
+          />
+        </Sheet>
+      ) : null}
       {panel === "info" && info ? (
         <Sheet title={info.label} onClose={() => setPanel(null)}>
           <p className="tour-info-text">
@@ -582,6 +627,103 @@ function InternalTour({ tour, propertyTitle, propertyCode, operation, shareUrl, 
       ) : null}
     </div>,
     document.body,
+  );
+}
+
+// ───────────────────────── Guía «Preguntá por esta casa» ─────────────────────────
+
+/**
+ * Pregunta libre → respuesta determinista (caminos entre escenas, puntos de información y datos públicos). Con IA
+ * configurada y una pregunta no entendida, el servidor solo devuelve una intención que se valida contra el tour.
+ */
+function TourGuidePanel({ tourId, scenes, currentSceneId, guide, onWalk, onGo, onContact }: { tourId: string; scenes: TourScene[]; currentSceneId: string; guide: TourGuideConfig; onWalk: (path: string[]) => void; onGo: (id: string) => void; onContact: () => void }) {
+  const inputId = useId();
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<GuideAnswer | null>(null);
+  const [asking, setAsking] = useState(false);
+  const suggestions = scenes.filter((s) => s.id !== currentSceneId).slice(-2).map((s) => `¿Dónde está ${withArticle(s.name)}?`);
+
+  const ask = async (q: string) => {
+    const text = q.trim().slice(0, 200);
+    if (!text) return;
+    let a = answerTourQuestion({ question: text, scenes, currentSceneId, facts: guide.facts });
+    if (a.kind === "unknown" && guide.ai) {
+      setAsking(true);
+      try {
+        const res = await fetch("/api/site/tour-guide", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tourId, question: text }), credentials: "omit" });
+        const body = (await res.json().catch(() => null)) as { intent?: TourIntent | null } | null;
+        if (res.ok && body?.intent) a = answerTourQuestion({ question: text, scenes, currentSceneId, facts: guide.facts, intent: body.intent });
+      } catch {
+        // Sin conexión o IA no disponible: queda la respuesta determinista.
+      } finally {
+        setAsking(false);
+      }
+    }
+    setAnswer(a);
+  };
+
+  return (
+    <div className="tour-guide">
+      <form
+        className="tour-guide-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void ask(question);
+        }}
+      >
+        <label htmlFor={inputId} className="tour-guide-label">
+          Preguntá por un ambiente o un dato
+        </label>
+        <div className="tour-guide-row">
+          <input id={inputId} className="tour-guide-input" value={question} maxLength={200} autoComplete="off" placeholder="¿Dónde está el jardín?" onChange={(e) => setQuestion(e.target.value)} />
+          <button type="submit" className="btn btn-primary tour-btn" disabled={asking || !question.trim()}>
+            {asking ? "Pensando…" : "Preguntar"}
+          </button>
+        </div>
+      </form>
+      {!answer ? (
+        <ul className="tour-guide-suggestions" aria-label="Ejemplos de preguntas">
+          {suggestions.map((s) => (
+            <li key={s}>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuestion(s);
+                  void ask(s);
+                }}
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div role="status" aria-live="polite" className="tour-guide-answer">
+        {answer ? (
+          <>
+            <p>{answer.text}</p>
+            <div className="tour-guide-actions">
+              {answer.kind === "route" ? (
+                <button type="button" className="btn btn-primary tour-btn" onClick={() => onWalk(answer.path)}>
+                  Ir {withArticle(answer.targetName, "a")}
+                </button>
+              ) : null}
+              {answer.kind === "fact" && answer.sceneId && answer.sceneId !== currentSceneId && answer.sceneName ? (
+                <button type="button" className="btn tour-btn tour-btn-ghost" onClick={() => onGo(answer.sceneId!)}>
+                  Ver {withArticle(answer.sceneName)}
+                </button>
+              ) : null}
+              {answer.kind === "not_registered" || answer.kind === "fact" ? (
+                <button type="button" className="btn tour-btn tour-btn-ghost" onClick={onContact}>
+                  Consultar al asesor
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
+      <p className="tour-guide-note">Las respuestas salen de los ambientes del tour y de los datos publicados en la ficha.</p>
+    </div>
   );
 }
 

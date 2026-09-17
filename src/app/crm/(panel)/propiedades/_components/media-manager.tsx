@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import { Alert, Badge, Button, cx, Input, Select } from "@/components/ui";
 import { useAction } from "@/components/crm/use-action";
+import { RoomTagger, SuggestedOrderPanel, type DirectorData } from "@/components/ai-property/photo-director";
 import { altTextAction, deleteMediaAction, reorderMediaAction, setCoverAction } from "../actions";
 
 export type MediaItem = {
@@ -80,7 +81,7 @@ async function uploadOne(propertyId: string, file: File, kind: string, onProgres
   return { ok: false, error: r.status === 0 ? "Error de red al subir. Probá de nuevo." : errorMessage(r.text, "No se pudo subir la foto.") };
 }
 
-export function MediaManager({ propertyId, media, canManage }: { propertyId: string; media: MediaItem[]; canManage: boolean }) {
+export function MediaManager({ propertyId, media, canManage, director }: { propertyId: string; media: MediaItem[]; canManage: boolean; director?: DirectorData | null }) {
   const router = useRouter();
   const uid = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -221,6 +222,15 @@ export function MediaManager({ propertyId, media, canManage }: { propertyId: str
 
       {reorder.error ? <Alert tone="danger">{reorder.error}</Alert> : null}
 
+      {director && items.some((m) => m.kind === "image") ? (
+        <SuggestedOrderPanel
+          propertyId={propertyId}
+          data={director}
+          canManage={canManage}
+          previews={items.map((m, i) => ({ id: m.id, kind: m.kind, alt: m.alt_text || `${KIND_LABEL[m.kind] ?? "Archivo"} ${i + 1}`, src: m.preview?.src ?? (m.file_id ? `/api/files/${m.file_id}` : m.source_url), optimize: m.preview?.optimize ?? false }))}
+        />
+      ) : null}
+
       {items.length === 0 ? (
         <p className="text-sm text-stone">Todavía no hay fotos. Para publicar se necesita al menos una.</p>
       ) : (
@@ -261,6 +271,7 @@ export function MediaManager({ propertyId, media, canManage }: { propertyId: str
                 </div>
                 {m.last_error ? <p className="text-xs text-danger">{m.last_error}</p> : null}
                 {canManage ? <AltTextEditor propertyId={propertyId} item={m} /> : m.alt_text ? <p className="text-xs text-ink-2">{m.alt_text}</p> : null}
+                {director && m.kind === "image" ? <RoomTagger propertyId={propertyId} mediaId={m.id} item={director.items[m.id]} canManage={canManage} position={i + 1} /> : null}
                 {canManage ? (
                   <MediaButtons
                     uid={uid}

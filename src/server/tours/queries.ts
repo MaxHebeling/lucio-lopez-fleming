@@ -180,14 +180,16 @@ export async function getPublicPropertyMediaExtras(db: Executor, code: number): 
 }
 
 /** Lo que lee la ficha pública: con el flag `virtual_tours` apagado no hay tour (la ficha queda como siempre). */
-export async function loadSitePropertyMediaExtras(db: Executor, code: number): Promise<PublicPropertyMediaExtras & { flagEnabled: boolean }> {
-  if (!(await isEnabled(db, "virtual_tours"))) return { tour: null, floorPlans: [], videos: [], flagEnabled: false };
-  return { ...(await getPublicPropertyMediaExtras(db, code)), flagEnabled: true };
+export async function loadSitePropertyMediaExtras(db: Executor, code: number): Promise<PublicPropertyMediaExtras & { flagEnabled: boolean; guideEnabled: boolean }> {
+  if (!(await isEnabled(db, "virtual_tours"))) return { tour: null, floorPlans: [], videos: [], flagEnabled: false, guideEnabled: false };
+  return { ...(await getPublicPropertyMediaExtras(db, code)), flagEnabled: true, guideEnabled: await isEnabled(db, "ai_tour_guide") };
 }
 
 /** Lo que lee /demo/tour-360: null con el flag apagado o sin demo sembrada (404). */
-export async function loadSiteDemoShowcase(db: Executor): Promise<DemoShowcase | null> {
-  return (await isEnabled(db, "virtual_tours")) ? getDemoShowcase(db) : null;
+export async function loadSiteDemoShowcase(db: Executor): Promise<(DemoShowcase & { guideEnabled: boolean }) | null> {
+  if (!(await isEnabled(db, "virtual_tours"))) return null;
+  const demo = await getDemoShowcase(db);
+  return demo ? { ...demo, guideEnabled: await isEnabled(db, "ai_tour_guide") } : null;
 }
 
 // ───────────────────────── Demo ─────────────────────────

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { plural, telHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
-import { getSiteFacets, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
+import { getSiteFacets, getSiteOwnerCapture, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
 import { CoverHero } from "@/components/experience/CoverHero";
 import { EditorialManifesto } from "@/components/experience/EditorialManifesto";
 import { FeaturedEditorial } from "@/components/experience/FeaturedEditorial";
@@ -59,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const { info, facets, saleFacets, featured, zones, recent, rentals, conciergeOn } = await loadHome();
+  const [{ info, facets, saleFacets, featured, zones, recent, rentals, conciergeOn }, capture] = await Promise.all([loadHome(), getSiteOwnerCapture()]);
   const [rentalA, rentalB] = rentals;
   const year = info.foundedYear;
   const phoneHref = telHref(info.mainPhone);
@@ -156,7 +156,7 @@ export default async function HomePage() {
         ]}
       />
 
-      <OwnersCapture types={facets.types.map((t) => t.name)} phone={phone} />
+      <OwnersCapture types={facets.types.map((t) => t.name)} phone={phone} steps={capture.steps} photos={capture.photos} />
 
       <TrustLedger
         foundedYear={year}

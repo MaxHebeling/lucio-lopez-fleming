@@ -81,6 +81,34 @@ y en la página de uso. El asistente de WhatsApp sigue usando `AI_MODEL` (sin ca
 Cada resultado (`ToolResult`) trae título, resumen determinista, ítems con link, total, truncado, **origen** (pantalla del
 CRM) y alcance aplicado; el texto libre va aparte (`untrusted`) para enviarse delimitado.
 
+### Herramientas de la Fase 3 (AI Property)
+
+| Dominio | Herramienta | Permisos | Consulta rápida | Alcance |
+| --- | --- | --- | --- | --- |
+| property | `property_quality` | `properties.read` | «Calidad de esta publicación» (en una ficha, flag `ai_property_quality`) | informe determinista de la organización, sin demo |
+| property | `low_quality_properties` | `properties.read` | «Publicaciones con peor calidad» (flag `ai_property_quality`) | organización, activas |
+
+Registradas en `domains/property-quality.ts` (una línea en `domains/index.ts`). `property_completeness` sigue igual.
+
+### Tareas de IA fuera del copiloto (`src/server/ai/run-task.ts`, Fases 3 y 4b)
+
+Orquestador mínimo para funciones puntuales sobre el mismo núcleo: resuelve proveedor (Anthropic o, solo en tests,
+`setTaskProviderForTests`), presupuesto, modelo por tarea, `provider.extract` con el prompt versionado, `verify` de
+negocio (una violación descarta la salida con `fallback_reason = guard_blocked`) y registro en `ai_interactions` con
+`purpose` `photo_tags` | `marketing_draft` | `tour_intent` | `visit_brief` | `visit_report` | `visit_thanks` (sin clave no
+se registra cada intento; presupuesto agotado sí). Nunca lanza por la IA.
+
+| Prompt | Tarea | Uso |
+| --- | --- | --- |
+| `photo.room_tags@2026-09-17.1` | `vision` | ambiente por foto (sugerencia a aceptar) |
+| `marketing.director@2026-09-17.1` | `answer` | borradores por canal con guardas de grounding y atributos |
+| `tour.intent@2026-09-17.1` | `classify` | intención de la pregunta del tour (escena/dato) |
+| `visit.brief@2026-09-17.1` | `answer` | resumen del brief citando hechos + interpretación |
+| `visit.report@2026-09-17.1` | `extract` | propuesta de campos del informe |
+| `visit.thanks@2026-09-17.1` | `extract` | variante del agradecimiento |
+
+Detalle: docs/ai/PROPERTY.md y docs/ai/VISITS_AI.md.
+
 ### Score de completitud (base para la Fase 3)
 
 `domains/property-completeness.ts`, 0–100: portada 15 · 5+ fotos 10 · descripción de 200+ caracteres 15 · precio en una
@@ -167,6 +195,7 @@ Server Actions en `src/app/crm/(panel)/_copilot/actions.ts` (todas por `runActio
 | --- | --- | --- |
 | `ai.answer.generated` | cada respuesta del copiloto | ids de interacción/mensaje, modo, origen (ai/guide/data), estado, motivo de respaldo |
 | `ai.feedback.recorded` | cada 👍/👎 | id del mensaje, rating, si hay comentario |
+| `property.quality_computed`, `media.tags_suggested`, `marketing.draft_created`, `visit.brief_prepared`, `visit.report_structured` | Fases 3 y 4b (docs/ai/PROPERTY.md) | ids, contadores y versiones; dedupe por hash |
 | `ai.recommendation.*` | **reservado para la Fase 5** (recomendaciones dentro de automatizaciones): `ai.recommendation.proposed`, `.accepted`, `.dismissed` | — |
 
 Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a eventos: no hay loops.
@@ -190,7 +219,9 @@ Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a
 | `ai.copilot.session_retention_days` | 30 | retención de sesiones |
 | `ai.analyst.stale_opportunity_days` | 14 | umbral de oportunidades estancadas |
 | flag `ai_copilot` | encendido | muestra el copiloto |
-| flags `ai_concierge`, `ai_matching`, `ai_property_qa`, `ai_visit_brief`, `ai_followup`, `ai_executive`, `ai_automations` | apagados | fases 2–5 |
+| flags `ai_concierge`, `ai_matching`, `ai_property_qa`, `ai_executive`, `ai_automations` | apagados | fases 2 y 5 |
+| flags `ai_property_quality`, `ai_visit_brief`, `ai_followup`, `ai_photo_director`, `ai_marketing_director`, `ai_tour_guide`, `owner_capture_steps` | encendidos (capa determinista completa) | fases 3 y 4b, ver docs/ai/PROPERTY.md |
+| flag `owner_capture_photos` | apagado | requiere storage S3 |
 
 ## Activar con la clave del proveedor
 

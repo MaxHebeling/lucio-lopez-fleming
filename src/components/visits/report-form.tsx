@@ -12,6 +12,7 @@ import { utcToLocalInput } from "@/server/crm/time";
 import { FOLLOW_UP_DELAY_HOURS, INTEREST_LABEL, suggestFollowUpAt, type Interest } from "@/server/visits/rules";
 import type { VisitReportProposal } from "@/server/visits/ai-extension";
 import { saveReportAction } from "@/app/crm/(panel)/mis-visitas/actions";
+import { proposeReportAction } from "@/app/crm/(panel)/mis-visitas/ai-actions";
 import { DictationButton } from "./dictation-button";
 
 export type ReportValues = {
@@ -29,8 +30,10 @@ const delayLabel = (i: Interest | null) => {
   return h % 24 === 0 && h >= 48 ? `${h / 24} días` : `${h} h`;
 };
 
-export function ReportForm({ appointmentId, initial, finishedAt, proposal }: { appointmentId: string; initial: ReportValues; finishedAt: string; proposal: VisitReportProposal | null }) {
+export function ReportForm({ appointmentId, initial, finishedAt, proposal: storedProposal, aiAssist = false }: { appointmentId: string; initial: ReportValues; finishedAt: string; proposal: VisitReportProposal | null; aiAssist?: boolean }) {
   const action = useAction(saveReportAction);
+  const propose = useAction(proposeReportAction);
+  const [proposal, setProposal] = useState<VisitReportProposal | null>(storedProposal);
   const [v, setV] = useState(initial);
   const [dictated, setDictated] = useState(false);
   const [followTouched, setFollowTouched] = useState(Boolean(initial.followUpAt));
@@ -74,7 +77,17 @@ export function ReportForm({ appointmentId, initial, finishedAt, proposal }: { a
         submit(true);
       }}
     >
-      {proposal ? <ProposalReview proposal={proposal} onApply={(p) => setV((prev) => ({ ...prev, interest: p.interest ?? prev.interest, positives: p.positives ?? prev.positives, objections: p.objections ?? prev.objections, nextStep: p.nextStep ?? prev.nextStep, followUpAt: p.followUpAt ?? prev.followUpAt }))} /> : null}
+      {proposal ? (
+        <ProposalReview
+          proposal={proposal}
+          onApply={(p) => {
+            setV((prev) => ({ ...prev, interest: p.interest ?? prev.interest, positives: p.positives ?? prev.positives, objections: p.objections ?? prev.objections, nextStep: p.nextStep ?? prev.nextStep, followUpAt: p.followUpAt ?? prev.followUpAt }));
+            if (p.followUpAt) setFollowTouched(true);
+            setProposal(null);
+          }}
+          onDismiss={() => setProposal(null)}
+        />
+      ) : null}
       {action.error ? <Alert tone="danger">{action.error}</Alert> : null}
       {action.ok ? <Alert tone="success">Borrador guardado.</Alert> : null}
       <Field label="¿Cómo fue la visita?" htmlFor="report-body" error={fe.body}>
@@ -88,6 +101,30 @@ export function ReportForm({ appointmentId, initial, finishedAt, proposal }: { a
           aria-invalid={fe.body ? true : undefined}
         />
       </Field>
+      {aiAssist ? (
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="secondary"
+            className="h-11 self-start"
+            disabled={propose.pending || v.body.trim().length < 10}
+            aria-busy={propose.pending}
+            onClick={() =>
+              void propose.run({ appointmentId, text: v.body }).then((r) => {
+                if (r.ok) setProposal(r.data);
+              })
+            }
+          >
+            {propose.pending ? "Leyendo el comentario…" : "Proponer campos con IA"}
+          </Button>
+          {propose.error ? (
+            <p role="alert" className="text-xs text-danger">
+              {propose.error}
+            </p>
+          ) : (
+            <p className="text-xs text-stone">La IA lee tu comentario y propone interés, positivos, objeciones y siguiente paso. Vos revisás y confirmás.</p>
+          )}
+        </div>
+      ) : null}
       <DictationButton
         controls="report-body"
         onText={(t) => {
@@ -149,14 +186,35 @@ function Item({ label, value }: { label: string; value: string }) {
 }
 
 /** Propuesta estructurada (fase de IA). Solo aparece si existe una salida real; el agente decide qué aplicar. */
-function ProposalReview({ proposal, onApply }: { proposal: VisitReportProposal; onApply: (p: VisitReportProposal) => void }) {
+function ProposalReview({ proposal, onApply, onDismiss }: { proposal: VisitReportProposal; onApply: (p: VisitReportProposal) => void; onDismiss: () => void }) {
+  const rows: Array<[string, string | null]> = [
+    ["Interés", proposal.interest ? INTEREST_LABEL[proposal.interest] : null],
+    ["Aspectos positivos", proposal.positives],
+    ["Objeciones", proposal.objections],
+    ["Siguiente paso", proposal.nextStep],
+    ["Seguimiento", proposal.followUpAt ? proposal.followUpAt.replace("T", " ") : null],
+  ];
   return (
-    <section aria-label="Propuesta para revisar" className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-line bg-paper p-3 text-sm">
-      <p className="font-semibold">Revisá y confirmá</p>
-      <p className="whitespace-pre-wrap">{proposal.summary}</p>
-      <Button variant="secondary" className="h-11 self-start" onClick={() => onApply(proposal)}>
-        Usar estos campos
-      </Button>
+    <section aria-label="Propuesta de la IA para revisar" className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-line bg-paper p-3 text-sm" data-testid="report-proposal">
+      <p className="font-semibold">Revisá y confirmá · propuesta de la IA</p>
+      <p className="whitespace-pre-wrap text-ink-2">{proposal.summary}</p>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {rows.map(([k, val]) => (
+          <div key={k}>
+            <dt className="text-xs text-stone">{k}</dt>
+            <dd className="whitespace-pre-wrap break-words">{val ?? "—"}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-stone">Nada se guarda hasta que confirmes el informe.</p>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" className="h-11" onClick={() => onApply(proposal)}>
+          Usar estos campos
+        </Button>
+        <Button variant="ghost" className="h-11" onClick={onDismiss}>
+          Descartar
+        </Button>
+      </div>
     </section>
   );
 }

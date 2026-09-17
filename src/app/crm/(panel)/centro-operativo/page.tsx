@@ -5,6 +5,7 @@ import { requireStaffPage } from "@/server/next/context";
 import { getDb } from "@/server/db";
 import { isEnabled } from "@/server/flags";
 import { getOpsBoard } from "@/server/visits/queries";
+import { opsBriefSummaries } from "@/server/ai/visits/service";
 import { listStaffUsers } from "@/server/crm/lookups";
 import { addDays, isLocalDate, localDate, utcToLocalInput } from "@/server/crm/time";
 import { ALERT_LABEL, type AlertKind } from "@/server/visits/rules";
@@ -38,6 +39,7 @@ export default async function OpsCenterPage({ searchParams }: PageProps<"/crm/ce
   const date = sp.fecha && isLocalDate(sp.fecha) ? sp.fecha : today;
   const agentId = sp.agente && UUID_RE.test(sp.agente) ? sp.agente : null;
   const [{ rows, openAlerts }, users] = await Promise.all([getOpsBoard(db, actor, { date, agentId }), listStaffUsers(db, actor)]);
+  const briefs = await opsBriefSummaries(db, actor, rows.map((r) => r.id));
   const reassignable = new Set(["scheduled", "confirmed", "en_route"]);
   const count = (k: VisitPhase | "issues") =>
     k === "issues" ? rows.filter((r) => r.alerts.length > 0 || r.status === "cancelled" || r.status === "no_show").length : rows.filter((r) => visitPhase(r.status) === k).length;
@@ -132,7 +134,7 @@ export default async function OpsCenterPage({ searchParams }: PageProps<"/crm/ce
                 <th scope="col">Cliente</th>
                 <th scope="col">Estado</th>
                 <th scope="col">Llegada</th>
-                <th scope="col">Cierre</th>
+                <th scope="col">Brief / cierre</th>
                 <th scope="col">
                   <span className="sr-only">Acciones</span>
                 </th>
@@ -176,6 +178,10 @@ export default async function OpsCenterPage({ searchParams }: PageProps<"/crm/ce
                         <span>{r.report_status === "confirmed" ? "Informe confirmado" : r.report_status === "draft" ? "Informe en borrador" : "Sin informe"}</span>
                         <span className="text-stone">{r.follow_up_task_id ? "Con seguimiento" : "Sin seguimiento"}</span>
                       </span>
+                    ) : briefs.get(r.id) ? (
+                      <Link href={`/crm/mis-visitas/${r.id}`} className="text-stone underline-offset-4 hover:underline">
+                        Brief listo{briefs.get(r.id)!.notRegistered ? ` · ${briefs.get(r.id)!.notRegistered} datos no registrados` : ""}
+                      </Link>
                     ) : (
                       <span className="text-stone">—</span>
                     )}

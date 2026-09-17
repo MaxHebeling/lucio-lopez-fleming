@@ -147,8 +147,11 @@ describe("plantillas y seguimiento", () => {
   });
 
   it("extensión de IA: implementación nula, sin propuestas inventadas", async () => {
-    expect(await structureVisitReport("Le gustó la casa")).toBeNull();
-    expect(await nullVisitAi.buildVisitBrief({ appointmentId: "x" })).toBeNull();
+    // Sin registrar la implementación (src/server/ai/visits/register.ts) no hay propuesta. El contexto no se usa.
+    const ctx = {} as Parameters<typeof structureVisitReport>[0];
+    expect(await structureVisitReport(ctx, { appointmentId: "x", text: "Le gustó la casa" })).toBeNull();
+    expect(await nullVisitAi.buildVisitBrief(ctx, { appointmentId: "x" })).toBeNull();
+    expect(await nullVisitAi.suggestFollowUp(ctx, { appointmentId: "x" })).toBeNull();
   });
 });
 

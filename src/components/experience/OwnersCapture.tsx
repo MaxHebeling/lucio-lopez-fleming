@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ArrowRight, Phone } from "lucide-react";
-import { LeadForm } from "@/components/site/LeadForm";
 import { TextReveal } from "./Reveal";
+import { OwnerCaptureSteps } from "./OwnerCaptureSteps";
 
 /**
  * Captación de propietarios («Quiero vender mi propiedad»). Formulario grande y claro que crea un lead real en el CRM
  * (kind "owner": `sell_my_property` al vender, captación también al alquilar; ver server/site/leads.ts) con las mismas
  * defensas que el resto: validación en servidor, honeypot, rate limit, idempotencia y flag `public_lead_capture`.
  */
-export function OwnersCapture({ types, phone }: { types: string[]; phone: { label: string; href: string } | null }) {
+export function OwnersCapture({ types, phone, steps = false, photos = false }: { types: string[]; phone: { label: string; href: string } | null; steps?: boolean; photos?: boolean }) {
   return (
     <section id="vender" className="scene owners on-dark" aria-labelledby="vender-title" data-float-avoid>
       <div className="container-site owners-grid">
@@ -32,7 +32,7 @@ export function OwnersCapture({ types, phone }: { types: string[]; phone: { labe
           </ul>
         </div>
         <div className="owners-card">
-          <LeadForm kind="owner" size="lg" submitLabel="Quiero vender mi propiedad" appraisalTypes={types} />
+          <OwnerCaptureSteps types={types} photosEnabled={photos} stepByStep={steps} />
         </div>
       </div>
     </section>

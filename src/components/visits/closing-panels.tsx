@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Alert, Button, Field, Input, Textarea, formatDateTime } from "@/components/ui";
 import { useAction } from "@/components/crm/use-action";
 import { createFollowUpAction, markThanksSentAction, saveThanksAction } from "@/app/crm/(panel)/mis-visitas/actions";
+import { draftThanksAiAction } from "@/app/crm/(panel)/mis-visitas/ai-actions";
 import { CopyButton } from "./copy-button";
 
 export function FollowUpPanel({
@@ -15,6 +16,7 @@ export function FollowUpPanel({
   suggestionHint,
   task,
   canCreate,
+  suggestion = null,
 }: {
   appointmentId: string;
   reportConfirmed: boolean;
@@ -22,9 +24,12 @@ export function FollowUpPanel({
   suggestionHint: string;
   task: { id: string; title: string; dueAt: string | null; status: string } | null;
   canCreate: boolean;
+  /** Seguimiento sugerido (flag `ai_followup`): título y motivo por reglas. Se crea solo al confirmar. */
+  suggestion?: { title: string; reason: string } | null;
 }) {
   const action = useAction(createFollowUpAction);
   const [dueAt, setDueAt] = useState(suggestedLocal);
+  const [title, setTitle] = useState(suggestion?.title ?? "");
   if (task) {
     return (
       <div className="flex flex-col gap-2 text-sm">
@@ -49,10 +54,21 @@ export function FollowUpPanel({
       aria-label="Crear tarea de seguimiento"
       onSubmit={(e) => {
         e.preventDefault();
-        void action.run({ appointmentId, dueAt });
+        void action.run({ appointmentId, dueAt, title: title.trim() || null });
       }}
     >
       {action.error ? <Alert tone="danger">{action.error}</Alert> : null}
+      {suggestion ? (
+        <>
+          <p className="rounded-[var(--radius-md)] bg-paper px-3 py-2 text-sm" data-testid="followup-suggestion">
+            <span className="font-semibold">Sugerencia: </span>
+            {suggestion.reason}. Revisala y creá la tarea solo si te sirve.
+          </p>
+          <Field label="Título de la tarea" htmlFor="followup-title" error={action.fieldErrors?.title}>
+            <Input id="followup-title" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </Field>
+        </>
+      ) : null}
       <Field label="Fecha y hora del seguimiento" htmlFor="followup-due" hint={suggestionHint} error={action.fieldErrors?.dueAt}>
         <Input id="followup-due" type="datetime-local" step={300} value={dueAt} onChange={(e) => setDueAt(e.target.value)} required />
       </Field>
@@ -70,6 +86,7 @@ export function ThanksPanel({
   markedSentAt,
   clientWhatsappE164,
   canManage,
+  aiVariant = false,
 }: {
   appointmentId: string;
   initialMessage: string;
@@ -77,9 +94,12 @@ export function ThanksPanel({
   markedSentAt: string | null;
   clientWhatsappE164: string | null;
   canManage: boolean;
+  /** Con IA configurada y flag `ai_followup`: botón para redactar una variante editable. */
+  aiVariant?: boolean;
 }) {
   const save = useAction(saveThanksAction);
   const sent = useAction(markThanksSentAction);
+  const variant = useAction(draftThanksAiAction);
   const [message, setMessage] = useState(initialMessage);
   const [savedMessage, setSavedMessage] = useState(saved ? initialMessage : null);
   const [channel, setChannel] = useState<"whatsapp" | "copy" | "other">("other");
@@ -98,6 +118,28 @@ export function ThanksPanel({
       <p className="text-stone">Texto por plantilla, editable. Nada se envía solo: copialo o abrilo en WhatsApp y después marcalo como enviado. Guardado, también aparece en la tarjeta del link del cliente.</p>
       {save.error || sent.error ? <Alert tone="danger">{save.error ?? sent.error}</Alert> : null}
       {markedSentAt ? <p className="rounded-[var(--radius-md)] border border-success/30 bg-[#eef6f0] px-3 py-2 font-semibold text-success">Marcado como enviado · {formatDateTime(markedSentAt)}</p> : null}
+      {canManage && aiVariant && !markedSentAt ? (
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="ghost"
+            className="h-10 self-start"
+            disabled={variant.pending}
+            aria-busy={variant.pending}
+            onClick={() =>
+              void variant.run({ appointmentId }).then((r) => {
+                if (r.ok) setMessage(r.data.message);
+              })
+            }
+          >
+            {variant.pending ? "Redactando…" : "Redactar una variante con IA"}
+          </Button>
+          {variant.error ? (
+            <p role="alert" className="text-xs text-danger">
+              {variant.error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <Field label="Mensaje de agradecimiento" htmlFor="thanks-message" error={save.fieldErrors?.message}>
         <Textarea id="thanks-message" rows={5} maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} disabled={!canManage} />
       </Field>

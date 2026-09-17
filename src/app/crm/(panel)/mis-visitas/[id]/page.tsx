@@ -9,7 +9,10 @@ import { tryVisitScope } from "@/server/visits/access";
 import { getVisitDetail } from "@/server/visits/queries";
 import { MAX_CHECKIN_ATTEMPTS } from "@/server/visits/service";
 import { getVisitSettings } from "@/server/visits/settings";
-import { buildVisitBrief, structureVisitReport } from "@/server/visits/ai-extension";
+import { buildVisitBrief, structureVisitReport, suggestFollowUp } from "@/server/visits/ai-extension";
+import "@/server/ai/visits/register";
+import { aiReportAvailable } from "@/server/ai/visits/service";
+import { VisitBriefCard } from "@/components/visits/brief-card";
 import { CHECKIN_REASON_LABEL, formatDistance, type CheckinReason } from "@/server/visits/geofence";
 import { FOLLOW_UP_DELAY_HOURS, INTEREST_LABEL, type Interest } from "@/server/visits/rules";
 import { isTerminal } from "@/server/visits/state";
@@ -73,10 +76,13 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
   const mapsUrl = mapsQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : null;
   const clientWa = d.phones.find((p) => p.phone_e164 && p.is_whatsapp)?.phone_e164 ?? d.phones.find((p) => p.phone_e164)?.phone_e164 ?? null;
   const last = d.checkins[0] ?? null;
-  // Puntos de extensión de IA: hoy devuelven null y no se muestra nada.
-  const [brief, proposal] = await Promise.all([
-    terminal ? Promise.resolve(null) : buildVisitBrief({ appointmentId: v.id }),
-    d.report?.status === "draft" ? structureVisitReport(d.report.body) : Promise.resolve(null),
+  // IA de visitas (docs/ai/VISITS_AI.md): brief previo, propuesta guardada del informe, seguimiento sugerido.
+  const aiCtx = { db, actor };
+  const [brief, proposal, followSuggestion, aiAssist] = await Promise.all([
+    terminal ? Promise.resolve(null) : buildVisitBrief(aiCtx, { appointmentId: v.id }),
+    d.report?.status === "draft" ? structureVisitReport(aiCtx, { appointmentId: v.id, text: d.report.body }) : Promise.resolve(null),
+    v.status === "completed" && !d.followUpTask ? suggestFollowUp(aiCtx, { appointmentId: v.id }) : Promise.resolve(null),
+    v.status === "completed" && d.permissions.canManage ? aiReportAvailable(db) : Promise.resolve(false),
   ]);
   const interest = (d.report?.interest as Interest | null) ?? null;
   const delayH = FOLLOW_UP_DELAY_HOURS[interest ?? "medium"];
@@ -101,16 +107,7 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
         </div>
       </header>
 
-      {brief ? (
-        <Card title="Antes de la visita">
-          <p className="font-semibold">{brief.headline}</p>
-          <ul className="mt-2 list-disc pl-5 text-sm">
-            {brief.points.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
+      {brief ? <VisitBriefCard appointmentId={v.id} brief={brief} canRefresh={d.permissions.canManage} /> : null}
 
       <Card title={terminal ? "Estado" : "Siguiente paso"}>
         {v.status === "cancelled" ? <p className="text-sm">La visita fue cancelada{v.cancel_reason ? `: ${v.cancel_reason}` : "."}</p> : null}
@@ -186,6 +183,7 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
                 appointmentId={v.id}
                 finishedAt={(v.finished_at ?? v.ends_at).toISOString()}
                 proposal={proposal}
+                aiAssist={aiAssist}
                 initial={{
                   body: d.report?.body ?? "",
                   interest,
@@ -203,10 +201,11 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
           <Card title="Seguimiento">
             <FollowUpPanel
               // Remonta al cambiar la sugerencia (p. ej. al confirmar el informe con otro interés).
-              key={utcToLocalInput(d.report?.follow_up_at ?? d.suggestedFollowUpAt)}
+              key={utcToLocalInput(followSuggestion?.dueAt ?? d.report?.follow_up_at ?? d.suggestedFollowUpAt)}
               appointmentId={v.id}
               reportConfirmed={d.report?.status === "confirmed"}
-              suggestedLocal={utcToLocalInput(d.report?.follow_up_at ?? d.suggestedFollowUpAt)}
+              suggestion={followSuggestion ? { title: followSuggestion.title, reason: followSuggestion.reason } : null}
+              suggestedLocal={utcToLocalInput(followSuggestion?.dueAt ?? d.report?.follow_up_at ?? d.suggestedFollowUpAt)}
               suggestionHint={`Interés ${interest ? INTEREST_LABEL[interest].toLowerCase() : "sin indicar"}: sugerido ${delayH >= 48 && delayH % 24 === 0 ? `${delayH / 24} días` : `${delayH} h`} después de la visita. Editable.`}
               task={d.followUpTask ? { id: d.followUpTask.id, title: d.followUpTask.title, dueAt: d.followUpTask.due_at?.toISOString() ?? null, status: d.followUpTask.status } : null}
               canCreate={d.permissions.canManage && d.permissions.canCreateTasks}
@@ -220,6 +219,7 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
               markedSentAt={d.thanks?.marked_sent_at?.toISOString() ?? null}
               clientWhatsappE164={clientWa}
               canManage={d.permissions.canManage}
+              aiVariant={aiAssist}
             />
           </Card>
         </>
