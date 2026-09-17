@@ -1,4 +1,4 @@
-import { Bath, BedDouble, Car, Ruler } from "lucide-react";
+import { Bath, BedDouble, Car, Ruler, Rotate3d } from "lucide-react";
 import type { PublicPrice, PublicPropertyCard, PublicStatus } from "@/server/properties/public";
 import { OPERATION_NOUN, formatArea, formatPrice } from "@/server/properties/public-helpers";
 
@@ -51,6 +51,23 @@ export function Specs({ p, className }: { p: PublicPropertyCard; className?: str
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Insignia «360°» de las tarjetas: identifica desde el listado las propiedades con tour publicado (el único camino
+ * hacia el tour era entrar a la ficha). No se renderiza si la propiedad no tiene tour visible en el sitio.
+ */
+export function TourBadge({ hasTour, className }: { hasTour: boolean; className?: string }) {
+  if (!hasTour) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full bg-brick px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] text-paper ${className ?? ""}`}
+      title="Esta propiedad tiene tour virtual 360°"
+    >
+      <Rotate3d aria-hidden className="size-3.5" strokeWidth={2} />
+      360°<span className="sr-only"> · tour virtual</span>
+    </span>
   );
 }
 

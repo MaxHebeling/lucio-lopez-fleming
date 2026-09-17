@@ -200,6 +200,18 @@ En ese caso no hay nada que hacer desde el editor: consultá con quien administr
 
 Otros errores al subir: «Formato no admitido: subí … en JPG, PNG, WebP o AVIF», «El archivo supera el máximo de … MB», «La panorámica es muy chica (… px de ancho). Mínimo 2048 px», «No pudimos leer la imagen: puede estar dañada…» y «Error de red al subir. Probá de nuevo.».
 
+## Cómo encuentra un cliente el tour 360° en el sitio
+
+Hay tres caminos, y conviene conocerlos para mandarle al cliente el link correcto:
+
+- **La insignia 360°**: en los listados de venta y alquiler, las propiedades con tour publicado muestran una insignia **360°** sobre la foto, tanto en la vista de grilla como en la de lista.
+- **El filtro «Con tour 360°»**: en el panel de filtros de los listados, con el número de propiedades que lo tienen al lado. El filtro solo aparece si hay al menos una propiedad publicada con tour.
+- **El link directo**: `…/propiedades/{titulo-de-la-propiedad}#tour` abre la ficha con el tour ya iniciado, sin que el cliente tenga que buscar la pestaña. Es exactamente el link que copia el botón **Compartir** de adentro del tour, así que para mandarlo por WhatsApp alcanza con entrar al tour y tocar **Compartir**. También funciona `?tour=1` al final de la dirección de la ficha.
+
+Dentro de la ficha, el tour siempre está en la pestaña **Tour 360°** (con un punto rojo al lado) y en la portada con el botón **Entrar al tour 360°**.
+
+Con el flag `virtual_tours` apagado no hay insignia, ni filtro, ni tour: la ficha queda solo con fotos.
+
 ## Activar o desactivar los tours 360° con el flag virtual_tours
 <!-- ruta: /crm/integraciones; permisos: integrations.manage -->
 

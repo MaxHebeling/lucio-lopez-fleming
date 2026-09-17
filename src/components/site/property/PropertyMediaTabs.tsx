@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MEDIA_TAB_LABEL, type MediaTabKey, type PublicTour } from "@/server/tours/model";
 import { TourLauncher } from "@/components/site/tour/TourLauncher";
 import type { TourGuideConfig } from "@/components/site/tour/TourExperience";
@@ -26,13 +26,35 @@ type Props = {
 };
 
 /**
+ * ¿La URL pide abrir el tour? Acepta `#tour` (lo que comparte el botón Compartir del tour) y `?tour=1`.
+ * Se lee del navegador, no de la página: leer `searchParams` en la ficha la volvería dinámica y el HTML inicial dejaría
+ * de traer galería y pestañas (la ficha es ISR con `revalidate`). En el servidor es `false` y se resuelve al hidratar.
+ */
+function wantsTour(): boolean {
+  if (window.location.hash.toLowerCase() === "#tour") return true;
+  const v = new URLSearchParams(window.location.search).get("tour");
+  return v === "1" || v === "on" || v === "true";
+}
+
+function subscribeToHash(onChange: () => void): () => void {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+
+const noTourOnServer = () => false;
+
+/**
  * Selector de medios de la ficha: [FOTOS] [TOUR 360°] [PLANO] [VIDEO], solo las disponibles (ver mediaTabs()).
  * Pestañas accesibles (flechas, Inicio/Fin). La galería se mantiene montada: el contenido indexable no cambia.
  */
 export function PropertyMediaTabs({ tabs, photos, tour, floorPlans, videos, headline, fallbackCoverUrl, propertyCode, operation, shareUrl, whatsappUrl, isDemo, guide }: Props) {
   const id = useId();
-  const [active, setActive] = useState<MediaTabKey>(tabs[0]!);
+  /** null = todavía no eligió pestaña: manda el link (`#tour`) y, si no, la primera disponible. */
+  const [chosen, setChosen] = useState<MediaTabKey | null>(null);
   const refs = useRef<Partial<Record<MediaTabKey, HTMLButtonElement | null>>>({});
+  const deepLink = useSyncExternalStore(subscribeToHash, wantsTour, noTourOnServer);
+  const setActive = setChosen;
+  const active: MediaTabKey = chosen ?? (deepLink && tabs.includes("tour") ? "tour" : tabs[0]!);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = tabs.indexOf(active);
@@ -97,6 +119,7 @@ export function PropertyMediaTabs({ tabs, photos, tour, floorPlans, videos, head
           whatsappUrl={whatsappUrl}
           isDemo={isDemo}
           guide={guide ?? null}
+          autoOpen={deepLink}
           onShowPhotos={tabs.includes("fotos") ? showPhotos : undefined}
         />
       </div>

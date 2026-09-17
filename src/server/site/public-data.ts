@@ -54,7 +54,7 @@ export async function readPublic<T>(read: () => Promise<T>): Promise<T> {
 
 const facetsCached = unstable_cache(
   async (operation: PublicOperation | null, typeKey: string | null) => getPublicFacets(getDb(), operation ?? undefined, typeKey ?? undefined),
-  ["site", "facets", "v2"],
+  ["site", "facets", "v3"],
   PROPERTIES,
 );
 /**
@@ -64,7 +64,7 @@ const facetsCached = unstable_cache(
 export const getSiteFacets = cache(async (operation?: PublicOperation, typeKey?: string): Promise<Facets> => {
   const base = await readPublic(() => facetsCached(operation ?? null, null));
   if (!typeKey) return base;
-  if (!base.types.some((t) => t.key === typeKey)) return { ...base, operations: [], zones: [], features: [], total: 0 };
+  if (!base.types.some((t) => t.key === typeKey)) return { ...base, operations: [], zones: [], features: [], tours: 0, total: 0 };
   return readPublic(() => facetsCached(operation ?? null, typeKey));
 });
 
@@ -72,14 +72,14 @@ export const getSiteFacets = cache(async (operation?: PublicOperation, typeKey?:
 
 const showcaseCached = unstable_cache(
   async (limit: number, preferCoverWidth: number | null) => getShowcaseProperties(getDb(), limit, preferCoverWidth ? { preferCoverWidth } : {}),
-  ["site", "showcase", "v3"],
+  ["site", "showcase", "v4"],
   PROPERTIES,
 );
 export const getSiteShowcase = cache((limit: number, preferCoverWidth?: number) => readPublic(() => showcaseCached(limit, preferCoverWidth ?? null)));
 
 const recentCached = unstable_cache(
   async (limit: number, excludeCodes: number[], operation: PublicOperation | null) => getRecentProperties(getDb(), limit, excludeCodes, operation ?? undefined),
-  ["site", "recent", "v3"],
+  ["site", "recent", "v4"],
   PROPERTIES,
 );
 export const getSiteRecent = (limit: number, excludeCodes: number[] = [], operation?: PublicOperation) =>
@@ -95,12 +95,12 @@ export const getSiteJourneyProperty = cache((code: number, photoSourceUrls: stri
 
 // ───────── Ficha ─────────
 
-const propertyCached = unstable_cache(async (slug: string) => getPublicPropertyBySlug(getDb(), slug), ["site", "property", "v2"], PROPERTIES);
+const propertyCached = unstable_cache(async (slug: string) => getPublicPropertyBySlug(getDb(), slug), ["site", "property", "v3"], PROPERTIES);
 export const getSiteProperty = cache((slug: string) => readPublic(() => propertyCached(slug)));
 
 const similarCached = unstable_cache(
   async (p: Pick<PublicPropertyDetail, "code" | "typeKey" | "typeCategory" | "zone" | "prices">, limit: number) => getSimilarProperties(getDb(), p as PublicPropertyDetail, limit),
-  ["site", "similar", "v2"],
+  ["site", "similar", "v3"],
   PROPERTIES,
 );
 export const getSiteSimilar = (p: PublicPropertyDetail, limit: number) =>

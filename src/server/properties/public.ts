@@ -9,6 +9,7 @@
  */
 import "server-only";
 import { sql, type Executor } from "../db";
+import { isEnabled } from "../flags";
 import {
   OPERATION_SLUGS,
   PAGE_SIZE,
@@ -48,6 +49,8 @@ export type PublicPropertyCard = {
   landAreaM2: number | null;
   cover: PublicPhoto | null;
   photoCount: number;
+  /** Tiene tour 360° publicado y visible en el sitio (false con el flag `virtual_tours` apagado). */
+  hasTour: boolean;
   publishedAt: string | null;
 };
 
@@ -197,12 +200,17 @@ type CardRow = {
   prices: Array<{ operation: string; currency: string; amount: string | number | null; price_hidden: boolean; expenses_amount: string | number | null; expenses_currency: string | null }> | null;
   cover: (MediaSource & { width: number | null; height: number | null; alt_text: string | null }) | null;
   photo_count: number;
+  has_tour: boolean;
 };
 
 const OP_ORDER: Record<string, number> = { sale: 0, rent: 1, temporary_rent: 2 };
 
-/** Columnas de tarjeta (explícitas) + precios activos (monto anulado si está oculto) + portada + conteo de fotos. */
-const cardSelect = sql`
+/** ¿Tiene tour 360° publicado? Con el flag `virtual_tours` apagado el sitio no muestra tours: no se consulta. */
+const hasTourExpr = (tours: boolean) =>
+  tours ? sql`exists (select 1 from virtual_tours vt where vt.property_id = p.id and vt.status = 'published')` : sql`false`;
+
+/** Columnas de tarjeta (explícitas) + precios activos (monto anulado si está oculto) + portada + conteo de fotos + tour. */
+const cardSelect = (tours: boolean) => sql`
   p.id, p.code, p.slug, p.title, p.type_key, t.name as type_name, t.category as type_category, p.status, p.featured, p.location_id,
   p.bedrooms, p.rooms, p.bathrooms, p.garages, p.total_area_m2, p.covered_area_m2, p.land_area_m2, p.published_at,
   (select jsonb_agg(jsonb_build_object(
@@ -217,7 +225,8 @@ const cardSelect = sql`
     where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed'
     order by m.is_cover desc, m.sort_order, m.created_at limit 1) as cover,
   (select count(*)::int from property_media m
-    where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed') as photo_count`;
+    where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed') as photo_count,
+  ${hasTourExpr(tours)} as has_tour`;
 
 /** Publicadas y visibles. `not p.is_demo` es redundante con la base (una demo no puede publicarse) y se deja como defensa. */
 const publishedWhere = sql`p.is_published and not p.is_demo and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')`;
@@ -270,6 +279,7 @@ function mapCard(idx: LocationIndex, r: CardRow): PublicPropertyCard {
     landAreaM2: toNum(r.land_area_m2),
     cover: coverUrl && r.cover ? { url: coverUrl, width: r.cover.width, height: r.cover.height, alt: r.cover.alt_text?.trim() || photoAlt(headline, 1, r.photo_count) } : null,
     photoCount: r.photo_count,
+    hasTour: r.has_tour,
     publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null,
   };
 }
@@ -287,7 +297,8 @@ export function publicTextSearchCondition(q: string) {
   return sql<boolean>`f_unaccent(lower(p.title || ' ' || case when p.hide_exact_address then '' else coalesce(p.address_street, '') end || ' ' || coalesce(p.description, ''))) like ('%' || f_unaccent(lower(${q})) || '%')`;
 }
 
-function buildWhere(idx: LocationIndex, f: SearchFilters) {
+/** `tours`: con el flag `virtual_tours` apagado el filtro «con tour» se ignora (una URL vieja sigue mostrando resultados). */
+function buildWhere(idx: LocationIndex, f: SearchFilters, tours = false) {
   const conds = [publishedWhere];
   const op = f.operacion ? OPERATION_SLUGS[f.operacion] : null;
 
@@ -311,6 +322,7 @@ function buildWhere(idx: LocationIndex, f: SearchFilters) {
   if (f.superficie_min !== undefined) conds.push(sql`coalesce(p.total_area_m2, p.land_area_m2, p.covered_area_m2) >= ${f.superficie_min}`);
   if (f.superficie_max !== undefined) conds.push(sql`coalesce(p.total_area_m2, p.land_area_m2, p.covered_area_m2) <= ${f.superficie_max}`);
   if (f.credito) conds.push(sql`p.credit_eligible is true`);
+  if (f.tour && tours) conds.push(hasTourExpr(true));
   for (const key of f.caracteristicas) {
     conds.push(sql`exists (select 1 from property_features pf join features fe on fe.id = pf.feature_id where pf.property_id = p.id and fe.key = ${key})`);
   }
@@ -341,13 +353,14 @@ function orderBy(f: SearchFilters, op: string | null) {
 
 export async function searchPublicProperties(db: Executor, f: SearchFilters, pageSize = PAGE_SIZE): Promise<SearchResult> {
   const idx = await locationIndex(db);
-  const { where, op } = buildWhere(idx, f);
+  const tours = await isEnabled(db, "virtual_tours");
+  const { where, op } = buildWhere(idx, f, tours);
   const countRow = await sql<{ n: number }>`select count(*)::int as n from properties p where ${where}`.execute(db);
   const total = countRow.rows[0]?.n ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(1, f.pagina), pageCount);
   const rows = await sql<CardRow>`
-    select ${cardSelect}
+    select ${cardSelect(tours)}
     from properties p join property_types t on t.key = p.type_key
     where ${where}
     order by ${orderBy(f, op)}
@@ -363,6 +376,8 @@ export type Facets = {
   types: Array<{ key: string; name: string; plural: string; count: number }>;
   zones: ZoneCount[];
   features: Array<{ key: string; name: string; count: number }>;
+  /** Publicadas con tour 360°. 0 con el flag `virtual_tours` apagado: el filtro «con tour» no se ofrece. */
+  tours: number;
   total: number;
 };
 
@@ -375,7 +390,8 @@ export async function getPublicFacets(db: Executor, operation?: PublicOperation,
   const idx = await locationIndex(db);
   const opFilter = operation ? sql`and exists (select 1 from property_operations o where o.property_id = p.id and o.is_active and o.operation = ${operation})` : sql``;
   const typeFilter = typeKey ? sql`and p.type_key = ${typeKey}` : sql``;
-  const [ops, types, locs, feats, total] = await Promise.all([
+  const toursOn = await isEnabled(db, "virtual_tours");
+  const [ops, types, locs, feats, tours, total] = await Promise.all([
     sql<{ operation: string; n: number }>`
       select o.operation, count(distinct p.id)::int as n from properties p join property_operations o on o.property_id = p.id and o.is_active
       where ${publishedWhere} ${typeFilter} group by o.operation`.execute(db),
@@ -388,6 +404,9 @@ export async function getPublicFacets(db: Executor, operation?: PublicOperation,
       select fe.key, fe.name, count(*)::int as n from properties p join property_features pf on pf.property_id = p.id join features fe on fe.id = pf.feature_id
       where ${publishedWhere} ${opFilter} ${typeFilter} and fe.grp in ('amenity', 'building_amenity', 'building_service', 'ambient')
       group by fe.key, fe.name having count(*) >= 3 order by n desc limit 24`.execute(db),
+    toursOn
+      ? sql<{ n: number }>`select count(*)::int as n from properties p where ${publishedWhere} ${opFilter} ${typeFilter} and ${hasTourExpr(true)}`.execute(db)
+      : Promise.resolve({ rows: [{ n: 0 }] }),
     sql<{ n: number }>`select count(*)::int as n from properties p where ${publishedWhere} ${opFilter} ${typeFilter}`.execute(db),
   ]);
 
@@ -410,6 +429,7 @@ export async function getPublicFacets(db: Executor, operation?: PublicOperation,
     types: types.rows.map((t) => ({ key: t.key, name: t.name, plural: t.name_plural, count: t.n })),
     zones: [...zones.values()].sort((a, b) => b.count - a.count).map((z) => ({ ...z, areas: z.areas.sort((a, b) => b.count - a.count) })),
     features: feats.rows.map((r) => ({ key: r.key, name: r.name, count: r.n })),
+    tours: tours.rows[0]?.n ?? 0,
     total: total.rows[0]?.n ?? 0,
   };
 }
@@ -432,6 +452,7 @@ export const SHOWCASE_MIN_PHOTOS = 8;
  */
 export async function getShowcaseProperties(db: Executor, limit = 6, opts: { preferCoverWidth?: number } = {}): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
+  const tours = await isEnabled(db, "virtual_tours");
   // Hero a sangre: primero las portadas con ancho real conocido ≥ preferCoverWidth (sin dato de ancho no se supone nada).
   const wide = opts.preferCoverWidth
     ? sql`coalesce((select coalesce(m.width, f.width) from property_media m left join files f on f.id = m.file_id and f.deleted_at is null
@@ -439,7 +460,7 @@ export async function getShowcaseProperties(db: Executor, limit = 6, opts: { pre
            order by m.is_cover desc, m.sort_order, m.created_at limit 1) >= ${opts.preferCoverWidth}, false) desc,`
     : sql``;
   const rows = await sql<CardRow>`
-    select ${cardSelect}
+    select ${cardSelect(tours)}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       and (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image'
@@ -455,8 +476,9 @@ export async function getShowcaseProperties(db: Executor, limit = 6, opts: { pre
 /** Últimas publicadas disponibles. `operation` las limita a una operación (p. ej. la foto real de "Alquileres" en el home). */
 export async function getRecentProperties(db: Executor, limit = 10, excludeCodes: number[] = [], operation?: PublicOperation): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
+  const tours = await isEnabled(db, "virtual_tours");
   const rows = await sql<CardRow>`
-    select ${cardSelect}
+    select ${cardSelect(tours)}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       ${excludeCodes.length ? sql`and not (p.code = any(${excludeCodes}::int[]))` : sql``}
@@ -512,8 +534,9 @@ type DetailRow = CardRow & {
 export async function getPublicPropertyBySlug(db: Executor, slug: string): Promise<PropertyLookup> {
   if (!/^[a-z0-9-]{3,160}$/.test(slug)) return { kind: "not_found" };
   const idx = await locationIndex(db);
+  const tours = await isEnabled(db, "virtual_tours");
   const found = await sql<DetailRow>`
-    select ${cardSelect},
+    select ${cardSelect(tours)},
       p.description, p.address_street, p.address_number, p.hide_exact_address, p.latitude, p.longitude,
       p.toilets, p.uncovered_area_m2, p.age_years, p.orientation, p.disposition, p.condition,
       p.credit_eligible, p.professional_use, p.allows_pets, p.attributes, t.field_schema,
@@ -618,11 +641,12 @@ export async function getPublicPropertyBySlug(db: Executor, slug: string): Promi
  */
 export async function getSimilarProperties(db: Executor, p: PublicPropertyDetail, limit = 4): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
+  const tours = await isEnabled(db, "virtual_tours");
   const op = p.prices[0]?.operation ?? null;
   const amount = p.prices[0]?.amount ?? null;
   const localityIds = p.zone.localitySlug ? (locationFilterIds(idx, p.zone.localitySlug) ?? []) : [];
   const rows = await sql<CardRow>`
-    select ${cardSelect}
+    select ${cardSelect(tours)}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved') and p.code <> ${p.code}
       and (p.type_key = ${p.typeKey} or t.category = ${p.typeCategory})

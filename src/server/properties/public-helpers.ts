@@ -50,6 +50,7 @@ export const searchFiltersSchema = z.object({
   superficie_min: num(1e9),
   superficie_max: num(1e9),
   credito: z.preprocess((v) => first(v) === "1" || first(v) === "on" || first(v) === "true", z.boolean()),
+  tour: z.preprocess((v) => first(v) === "1" || first(v) === "on" || first(v) === "true", z.boolean()),
   caracteristicas: z.preprocess((v) => {
     const all = (Array.isArray(v) ? v : [v]).flatMap((x) => (typeof x === "string" ? x.split(",") : []));
     return [...new Set(all.map((s) => s.trim()).filter((s) => /^[a-z0-9_]{2,80}$/.test(s)))].slice(0, 12);
@@ -73,7 +74,7 @@ export function filtersToQuery(f: Partial<SearchFilters>, omit: Array<keyof Sear
   const qs = new URLSearchParams();
   const order: Array<keyof SearchFilters> = [
     "q", "operacion", "tipo", "zona", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras",
-    "superficie_min", "superficie_max", "credito", "caracteristicas", "orden", "pagina",
+    "superficie_min", "superficie_max", "credito", "tour", "caracteristicas", "orden", "pagina",
   ];
   for (const k of order) {
     if (omit.includes(k)) continue;
@@ -90,7 +91,7 @@ export function filtersToQuery(f: Partial<SearchFilters>, omit: Array<keyof Sear
 }
 
 export function activeFilterCount(f: SearchFilters, omit: Array<keyof SearchFilters> = []): number {
-  const keys: Array<keyof SearchFilters> = ["tipo", "zona", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras", "superficie_min", "superficie_max", "credito", "q", "operacion"];
+  const keys: Array<keyof SearchFilters> = ["tipo", "zona", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras", "superficie_min", "superficie_max", "credito", "tour", "q", "operacion"];
   let n = 0;
   for (const k of keys) {
     if (omit.includes(k)) continue;

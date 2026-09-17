@@ -90,6 +90,13 @@ URLs de assets: función `is_tour_asset_url()` (solo `/tours/...` o `https://hos
 
 ## 5. Experiencia pública
 
+- **Descubrimiento** (antes de la ficha): insignia **360°** en la tarjeta de propiedad (grilla y lista) cuando
+  `PublicPropertyCard.hasTour`; filtro **«Con tour 360°»** en los listados (`?tour=1`), ofrecido solo si
+  `Facets.tours > 0`; y **link directo** `…/propiedades/{slug}#tour` (también `?tour=1`), que es lo que comparte el botón
+  Compartir del tour. `hasTour` y `Facets.tours` se calculan en SQL contra `virtual_tours.status = 'published'` y son
+  `false`/`0` con el flag apagado, así que la insignia y el filtro desaparecen sin tocar la UI; una URL vieja con
+  `?tour=1` no vacía el listado (el filtro se ignora). El link se lee en el cliente (`useSyncExternalStore` sobre
+  `location`), nunca con `searchParams`: la ficha sigue siendo ISR y el HTML inicial mantiene galería y pestañas.
 - **Pestañas** solo con tour publicado (y flag encendido). Sin tour, la ficha es exactamente la de antes (test e2e).
   Orden: Fotos (si hay), Tour 360°, Plano (planos cargados o plano del tour), Video (si hay). La galería y todo el
   contenido indexable (texto, JSON-LD) no cambian.

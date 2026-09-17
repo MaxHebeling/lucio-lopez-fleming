@@ -45,6 +45,18 @@ describe("filtros de búsqueda en la URL", () => {
     expect(f.tipo).toBeUndefined();
   });
 
+  it("el filtro «con tour 360°» viaja en la URL como booleano y cuenta como filtro activo", () => {
+    expect(parseSearchFilters({ tour: "1" }).tour).toBe(true);
+    expect(parseSearchFilters({ tour: "on" }).tour).toBe(true);
+    expect(parseSearchFilters({ tour: "0" }).tour).toBe(false);
+    expect(parseSearchFilters({}).tour).toBe(false);
+    const f = parseSearchFilters({ tipo: "casa", tour: "1" });
+    expect(filtersToQuery(f)).toBe("?tipo=casa&tour=1");
+    expect(activeFilterCount(f)).toBe(2);
+    // Apagado no ensucia la URL.
+    expect(filtersToQuery({ ...f, tour: false })).toBe("?tipo=casa");
+  });
+
   it("query string estable, sin vacíos ni claves fijadas por la ruta", () => {
     const f = parseSearchFilters({ tipo: "casa", operacion: "venta", pagina: "2", caracteristicas: "pileta" });
     expect(filtersToQuery(f, ["operacion"])).toBe("?tipo=casa&caracteristicas=pileta&pagina=2");
