@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, Phone } from "lucide-react";
-import { LeadForm } from "@/components/site/LeadForm";
 import { TextReveal } from "./Reveal";
 import { OwnerCaptureSteps } from "./OwnerCaptureSteps";
 
@@ -33,7 +32,7 @@ export function OwnersCapture({ types, phone, steps = false, photos = false }: {
           </ul>
         </div>
         <div className="owners-card">
-          {steps ? <OwnerCaptureSteps types={types} photosEnabled={photos} /> : <LeadForm kind="owner" size="lg" submitLabel="Quiero vender mi propiedad" appraisalTypes={types} />}
+          <OwnerCaptureSteps types={types} photosEnabled={photos} stepByStep={steps} />
         </div>
       </div>
     </section>

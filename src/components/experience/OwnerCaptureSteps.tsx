@@ -44,7 +44,7 @@ function newKey(): string {
 
 type Photo = { key: string; name: string; state: "uploading" | "done" | "error"; token?: string; error?: string };
 
-export function OwnerCaptureSteps({ types, photosEnabled }: { types: string[]; photosEnabled: boolean }) {
+export function OwnerCaptureSteps({ types, photosEnabled, stepByStep = true }: { types: string[]; photosEnabled: boolean; /** Flag `owner_capture_steps` apagado: formulario completo en una sola vista (mismo envío). */ stepByStep?: boolean }) {
   const [state, action, pending] = useActionState<LeadFormState, FormData>(submitLeadAction, { status: "idle" });
   const id = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -61,7 +61,7 @@ export function OwnerCaptureSteps({ types, photosEnabled }: { types: string[]; p
   const current = steps[step]!;
 
   useEffect(() => {
-    setEnhanced(true);
+    if (stepByStep) setEnhanced(true);
     if (keyRef.current) keyRef.current.value = newKey();
     const sp = new URLSearchParams(window.location.search);
     for (const k of UTM_FIELDS) {
@@ -69,7 +69,7 @@ export function OwnerCaptureSteps({ types, photosEnabled }: { types: string[]; p
       const v = sp.get(k);
       if (v && input instanceof HTMLInputElement) input.value = v.slice(0, 200);
     }
-  }, []);
+  }, [stepByStep]);
 
   useEffect(() => {
     inFlight.current = false;
