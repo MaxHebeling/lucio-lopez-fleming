@@ -379,6 +379,17 @@ export async function saveVisitReport(db: Database, actor: Actor, raw: SchemaIn<
       after: { status: values.status, interest: input.interest, followUpAt: followUpAt?.toISOString() ?? null, dictated: values.dictated },
     });
     await recordVisitEvent(trx, actor, v.id, input.confirm ? "report_confirmed" : "report_saved", { interest: input.interest });
+    // Informe confirmado por una persona → reacción de IA (datos del perfil SUGERIDOS y seguimiento sugerido).
+    // Payload sin texto del informe ni datos del cliente: solo ids y marcas.
+    if (input.confirm && prev?.status !== "confirmed") {
+      await emitEvent(trx, actor, {
+        type: "visit.report_confirmed",
+        aggregateType: "appointment",
+        aggregateId: v.id,
+        payload: { assignedUserId: v.assigned_user_id, propertyId: v.property_id, contactId: v.contact_id, interest: input.interest, hasObjections: Boolean(input.objections), hasNextStep: Boolean(input.nextStep), link: `/crm/mis-visitas/${v.id}` },
+        dedupeKey: `visit.report_confirmed:${v.id}:${now.toISOString()}`,
+      });
+    }
     return { status: values.status, followUpAt };
   });
 }

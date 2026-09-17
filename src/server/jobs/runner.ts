@@ -14,7 +14,8 @@ import { errorFields, log } from "../log";
 import { TimeoutError, withTimeout } from "../resilience";
 import { systemActor, type SystemActor } from "../auth/actor";
 import { organizationId } from "../org";
-import { claimJobs, completeJob, failJob, recoverExpiredLeases } from "./queue";
+import { withEventCause } from "../events";
+import { claimJobs, completeJob, failJob, jobCause, recoverExpiredLeases } from "./queue";
 import { getJobDeadHandler, getJobHandler, PermanentJobError } from "./registry";
 import { notifyRole } from "../notifications";
 
@@ -60,7 +61,8 @@ export async function runJobs(db: Database, opts: { budgetMs?: number; workerId?
     try {
       if (!handler) throw new PermanentJobError(`Sin handler registrado para ${job.type}`);
       const ctrl = new AbortController();
-      const running = handler(job.payload, { db, actor: jobActor, jobId: job.id, attempt: job.attempts, signal: ctrl.signal });
+      // Un job encolado por una automatización corre con su causa: los eventos que emita quedan marcados como derivados.
+      const running = withEventCause(jobCause(job), () => handler(job.payload, { db, actor: jobActor, jobId: job.id, attempt: job.attempts, signal: ctrl.signal }));
       const result = await withTimeout(job.timeout_ms, () => running).catch((e: unknown) => {
         if (e instanceof TimeoutError) {
           ctrl.abort();

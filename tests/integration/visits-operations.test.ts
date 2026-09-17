@@ -128,7 +128,7 @@ describe("visitas: flujo completo del agente", () => {
     const timeline = (await db.selectFrom("appointment_events").select("kind").where("appointment_id", "=", visitId).orderBy("id").execute()).map((e) => e.kind);
     expect(timeline).toEqual(["scheduled", "assigned", "en_route", "checked_in", "started", "finished", "report_saved", "report_confirmed", "followup_created", "thanks_saved", "thanks_marked_sent"]);
     const events = (await db.selectFrom("domain_events").select("event_type").where("aggregate_id", "=", visitId).orderBy("id").execute()).map((e) => e.event_type);
-    expect(events).toEqual(["visit.scheduled", "appointment.created", "appointment.assigned", "appointment.en_route", "agent.checked_in", "appointment.started", "appointment.finished", "visit.completed", "followup.created"]);
+    expect(events).toEqual(["visit.scheduled", "appointment.created", "appointment.assigned", "appointment.en_route", "agent.checked_in", "appointment.started", "appointment.finished", "visit.completed", "visit.report_confirmed", "followup.created"]);
     const audits = (await db.selectFrom("audit_logs").select("action").where("entity_id", "=", visitId).orderBy("id").execute()).map((a) => a.action);
     expect(audits).toEqual(expect.arrayContaining(["VISIT_EN_ROUTE", "VISIT_CHECKED_IN", "VISIT_STARTED", "VISIT_FINISHED", "VISIT_REPORT_CONFIRMED", "VISIT_FOLLOWUP_CREATED", "VISIT_THANKS_MARKED_SENT"]));
 

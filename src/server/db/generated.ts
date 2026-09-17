@@ -45,6 +45,23 @@ export interface AdjustmentIndices {
   source: string;
 }
 
+export interface AiAnomalies {
+  assigned_user_id: string | null;
+  dedupe_key: string;
+  detected_at: Generated<Timestamp>;
+  entity_id: string | null;
+  entity_type: string;
+  evidence: Generated<Json>;
+  id: Generated<string>;
+  kind: string;
+  last_seen_at: Generated<Timestamp>;
+  notified_at: Timestamp | null;
+  organization_id: string;
+  resolved_at: Timestamp | null;
+  severity: string;
+  title: string;
+}
+
 export interface AiConversations {
   created_at: Generated<Timestamp>;
   expires_at: Timestamp;
@@ -53,6 +70,20 @@ export interface AiConversations {
   mode: string;
   module: string | null;
   organization_id: string;
+  user_id: string;
+}
+
+export interface AiDailyBriefs {
+  ai_attempts: Generated<number>;
+  computed_at: Generated<Timestamp>;
+  day: string;
+  facts: Json;
+  facts_hash: string;
+  narrative: Json | null;
+  narrative_hash: string | null;
+  narrative_prompt: string | null;
+  organization_id: string;
+  stale: Generated<boolean>;
   user_id: string;
 }
 
@@ -486,7 +517,11 @@ export interface DomainEvents {
   actor_user_id: string | null;
   aggregate_id: string;
   aggregate_type: string;
+  causation_id: Int8 | null;
+  caused_by_automation: string | null;
+  correlation_id: Int8 | null;
   dedupe_key: string | null;
+  depth: Generated<number>;
   dispatch_attempts: Generated<number>;
   dispatched_at: Timestamp | null;
   event_type: string;
@@ -593,6 +628,9 @@ export interface Integrations {
 
 export interface Jobs {
   attempts: Generated<number>;
+  causation_depth: number | null;
+  causation_event_id: Int8 | null;
+  caused_by_automation: string | null;
   created_at: Generated<Timestamp>;
   dedupe_key: string | null;
   finished_at: Timestamp | null;
@@ -1297,7 +1335,8 @@ export interface Roles {
 }
 
 export interface SalesRecommendations {
-  contact_id: string;
+  assigned_user_id: string | null;
+  contact_id: string | null;
   created_at: Generated<Timestamp>;
   decided_at: Timestamp | null;
   decided_by: string | null;
@@ -1307,13 +1346,18 @@ export interface SalesRecommendations {
   evidence: Generated<Json>;
   fingerprint: string;
   id: Generated<string>;
+  last_seen_at: Timestamp | null;
+  link: string | null;
   organization_id: string;
   priority: string;
   reason: string;
+  resolved_at: Timestamp | null;
   rule_key: string;
   snoozed_until: Timestamp | null;
+  source: Generated<string>;
   status: string;
   task_id: string | null;
+  task_template: Json | null;
   title: string;
   updated_at: Generated<Timestamp>;
 }
@@ -1558,7 +1602,9 @@ export interface WebhookEvents {
 export interface DB {
   activities: Activities;
   adjustment_indices: AdjustmentIndices;
+  ai_anomalies: AiAnomalies;
   ai_conversations: AiConversations;
+  ai_daily_briefs: AiDailyBriefs;
   ai_feedback: AiFeedback;
   ai_interactions: AiInteractions;
   ai_knowledge_chunks: AiKnowledgeChunks;

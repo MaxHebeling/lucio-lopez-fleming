@@ -136,10 +136,11 @@ export async function gatherNbaFacts(db: Executor, organizationId: string, r: { 
 export type NextActionItem = Recommendation & { entityType: NbaEntityType; entityId: string };
 
 async function decisions(db: Executor, contactId: string, now: Date) {
-  const rows = await db.selectFrom("sales_recommendations").select(["rule_key", "fingerprint", "status", "snoozed_until", "task_id"]).where("entity_type", "=", "contact").where("entity_id", "=", contactId).execute();
+  const rows = await db.selectFrom("sales_recommendations").select(["rule_key", "fingerprint", "status", "snoozed_until", "task_id"]).where("entity_type", "=", "contact").where("entity_id", "=", contactId).where("source", "=", "sales_nba").execute();
   return (r: Recommendation) => {
     const d = rows.find((x) => x.rule_key === r.ruleKey && x.fingerprint === r.fingerprint);
-    if (!d || d.status === "open") return false;
+    // `expired` = propuesta del sistema cuya situación desapareció (Tareas sugeridas): no es una decisión humana.
+    if (!d || d.status === "open" || d.status === "expired") return false;
     if (d.status === "snoozed") return Boolean(d.snoozed_until && d.snoozed_until > now);
     return true;
   };
@@ -176,11 +177,11 @@ async function upsertDecision(
   const now = new Date();
   const row = await sql<{ id: string }>`
     insert into sales_recommendations(organization_id, contact_id, entity_type, entity_id, rule_key, fingerprint, priority, title, reason, evidence,
-      status, snoozed_until, dismiss_note, task_id, decided_by, decided_at)
+      status, snoozed_until, dismiss_note, task_id, decided_by, decided_at, source, link, task_template)
     values (${staff.organizationId}, ${contactId}, 'contact', ${contactId}, ${rec.ruleKey}, ${rec.fingerprint}, ${rec.priority}, ${rec.title},
       ${rec.reason.slice(0, 500)}, ${JSON.stringify(rec.evidence.slice(0, 10))}::jsonb, ${d.status}, ${d.snoozedUntil ?? null}, ${d.note ?? null},
-      ${d.taskId ?? null}, ${staff.userId}, ${now})
-    on conflict (entity_type, entity_id, rule_key, fingerprint) do update set status = excluded.status, snoozed_until = excluded.snoozed_until,
+      ${d.taskId ?? null}, ${staff.userId}, ${now}, 'sales_nba', ${`/crm/contactos/${contactId}`}, ${JSON.stringify(rec.task)}::jsonb)
+    on conflict (entity_type, entity_id, rule_key, fingerprint) do update set status = excluded.status, snoozed_until = excluded.snoozed_until, resolved_at = null,
       dismiss_note = excluded.dismiss_note, task_id = coalesce(excluded.task_id, sales_recommendations.task_id),
       decided_by = excluded.decided_by, decided_at = excluded.decided_at
     returning id`.execute(db);
@@ -249,12 +250,61 @@ export async function openProposalsForContacts(db: Executor, organizationId: str
     .select(["contact_id", "title", "priority", "created_at"])
     .where("organization_id", "=", organizationId)
     .where("contact_id", "in", contactIds)
+    .where("source", "=", "sales_nba")
     .where("status", "=", "open")
     .orderBy(sql`case priority when 'high' then 0 when 'medium' then 1 else 2 end`)
     .orderBy("created_at", "desc")
     .execute();
   const out = new Map<string, { title: string; priority: "high" | "medium" | "low" }>();
-  for (const r of rows) if (!out.has(r.contact_id)) out.set(r.contact_id, { title: r.title, priority: r.priority as "high" | "medium" | "low" });
+  for (const r of rows) if (r.contact_id && !out.has(r.contact_id)) out.set(r.contact_id, { title: r.title, priority: r.priority as "high" | "medium" | "low" });
+  return out;
+}
+
+/** Responsable comercial de un contacto: agente del lead (el indicado o el abierto más reciente) → oportunidad abierta → contacto. */
+export async function salesAssignee(db: Executor, organizationId: string, contactId: string, leadId: string | null = null): Promise<string | null> {
+  const r = await sql<{ user_id: string | null }>`
+    select coalesce(
+      (select l.assigned_user_id from leads l where l.id = ${leadId} and l.organization_id = ${organizationId}),
+      (select l.assigned_user_id from leads l where l.contact_id = ${contactId} and l.organization_id = ${organizationId} and l.deleted_at is null
+          and l.status in ('new', 'contacted', 'qualified') and l.assigned_user_id is not null order by l.created_at desc limit 1),
+      (select o.assigned_user_id from opportunities o where o.contact_id = ${contactId} and o.organization_id = ${organizationId} and o.deleted_at is null
+          and o.status = 'open' and o.assigned_user_id is not null order by o.created_at desc limit 1),
+      (select c.assigned_user_id from contacts c where c.id = ${contactId} and c.organization_id = ${organizationId})
+    ) as user_id`.execute(db);
+  return r.rows[0]?.user_id ?? null;
+}
+
+/**
+ * Registra propuestas del sistema (`open`, origen `sales_nba`) para un contacto. Idempotente por (contacto, regla,
+ * huella): una propuesta ya existente solo actualiza responsable, prioridad y texto si sigue abierta. Devuelve las
+ * reglas nuevas (y emite recommendation.created por cada una).
+ */
+export async function upsertSalesProposals(
+  trx: Executor,
+  system: SystemActor,
+  input: { organizationId: string; contactId: string; leadId: string | null; recs: Recommendation[]; assignedUserId: string | null },
+  now = new Date(),
+): Promise<Array<{ id: string; rule: RecommendationRule; created: boolean }>> {
+  const out: Array<{ id: string; rule: RecommendationRule; created: boolean }> = [];
+  for (const rec of input.recs) {
+    const row = await sql<{ id: string; inserted: boolean }>`
+      insert into sales_recommendations(organization_id, contact_id, entity_type, entity_id, rule_key, fingerprint, priority, title, reason, evidence, status,
+        source, assigned_user_id, link, task_template, last_seen_at)
+      values (${input.organizationId}, ${input.contactId}, 'contact', ${input.contactId}, ${rec.ruleKey}, ${rec.fingerprint}, ${rec.priority}, ${rec.title},
+        ${rec.reason.slice(0, 500)}, ${JSON.stringify(rec.evidence.slice(0, 10))}::jsonb, 'open',
+        'sales_nba', ${input.assignedUserId}, ${`/crm/contactos/${input.contactId}`}, ${JSON.stringify(rec.task)}::jsonb, ${now})
+      on conflict (entity_type, entity_id, rule_key, fingerprint) do update set
+        assigned_user_id = excluded.assigned_user_id, priority = excluded.priority, title = excluded.title, reason = excluded.reason,
+        evidence = excluded.evidence, link = excluded.link, task_template = excluded.task_template, last_seen_at = excluded.last_seen_at,
+        status = case when sales_recommendations.status = 'expired' then 'open' else sales_recommendations.status end,
+        resolved_at = case when sales_recommendations.status = 'expired' then null else sales_recommendations.resolved_at end
+      returning id, (xmax = 0) as inserted`.execute(trx);
+    const r = row.rows[0]!;
+    out.push({ id: r.id, rule: rec.ruleKey, created: r.inserted });
+    if (r.inserted) {
+      await emitEvent(trx, system, { type: "recommendation.created", aggregateType: "sales_recommendation", aggregateId: r.id, payload: { rule: rec.ruleKey, priority: rec.priority, contactId: input.contactId, leadId: input.leadId }, dedupeKey: `recommendation.created:${r.id}` });
+    }
+  }
   return out;
 }
 
@@ -262,19 +312,7 @@ export async function openProposalsForContacts(db: Executor, organizationId: str
 export async function proposeRecommendations(db: Database, system: SystemActor, input: { organizationId: string; contactId: string; leadId: string | null }, now = new Date()): Promise<RecommendationRule[]> {
   const facts = await gatherNbaFacts(db, input.organizationId, { contactId: input.contactId, leadId: input.leadId, opportunityId: null, scopeUserId: null }, now);
   const recs = recommendNextActions(facts, 3);
-  const created: RecommendationRule[] = [];
-  await db.transaction().execute(async (trx) => {
-    for (const rec of recs) {
-      const row = await sql<{ id: string }>`
-        insert into sales_recommendations(organization_id, contact_id, entity_type, entity_id, rule_key, fingerprint, priority, title, reason, evidence, status)
-        values (${input.organizationId}, ${input.contactId}, 'contact', ${input.contactId}, ${rec.ruleKey}, ${rec.fingerprint}, ${rec.priority}, ${rec.title},
-          ${rec.reason.slice(0, 500)}, ${JSON.stringify(rec.evidence.slice(0, 10))}::jsonb, 'open')
-        on conflict (entity_type, entity_id, rule_key, fingerprint) do nothing
-        returning id`.execute(trx);
-      if (!row.rows[0]) continue;
-      created.push(rec.ruleKey);
-      await emitEvent(trx, system, { type: "recommendation.created", aggregateType: "sales_recommendation", aggregateId: row.rows[0].id, payload: { rule: rec.ruleKey, priority: rec.priority, contactId: input.contactId, leadId: input.leadId }, dedupeKey: `recommendation.created:${row.rows[0].id}` });
-    }
-  });
-  return created;
+  const assignedUserId = await salesAssignee(db, input.organizationId, input.contactId, input.leadId);
+  const rows = await db.transaction().execute((trx) => upsertSalesProposals(trx, system, { ...input, recs, assignedUserId }, now));
+  return rows.filter((r) => r.created).map((r) => r.rule);
 }
