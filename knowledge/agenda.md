@@ -47,6 +47,8 @@ Para programar una visita (turno para mostrar una propiedad):
 
 Si no ponés título se arma con tipo, propiedad y contacto; si no ponés lugar, en visitas se usa la dirección de la propiedad. Si la visita está vinculada a una oportunidad que estaba en una etapa anterior, la oportunidad pasa sola a «Visita programada». Si agendás para otra persona, le llega la notificación «Visita agendada para vos».
 
+Con el portal de visitas encendido, la misma visita aparece en **Mis visitas** (`/crm/mis-visitas`) del agente asignado. Ahí marca la salida, confirma la llegada, finaliza y carga el informe: ver la guía de visitas.
+
 ## Agendar una llamada, reunión o seguimiento
 <!-- ruta: /crm/agenda/nueva; permisos: agenda.manage -->
 
@@ -73,7 +75,7 @@ Si el horario choca, el formulario muestra el error **«El agente ya tiene una c
 2. Elegí otro horario u otra **Duración**, o asigná la cita a otro **Agente** si tenés permiso.
 3. Volvé a tocar **Agendar** (o **Reprogramar**).
 
-Solo cuentan como activas las citas **Programadas** y **Confirmadas**. Una cita **Cancelada**, **Realizada** o marcada como **No asistió** libera el horario. Dos citas pueden ser consecutivas (una termina a la hora exacta en que empieza la otra) sin que se considere superposición.
+Ocupan el horario las citas activas: **Programada**, **Confirmada** y, en las visitas que se operan desde **Mis visitas**, **En camino**, **Check-in** y **En curso**. Una cita **Cancelada**, **Realizada** o marcada como **No asistió** libera el horario. Dos citas pueden ser consecutivas (una termina a la hora exacta en que empieza la otra) sin que se considere superposición.
 
 ## Confirmar una cita con el cliente
 <!-- ruta: /crm/agenda/[id]; permisos: agenda.manage -->
@@ -99,13 +101,16 @@ Después de la visita, reunión o llamada, registrá cómo fue:
 3. En **¿Cómo fue? (obligatorio)** escribí el resultado: interés, objeciones, próximos pasos (mínimo 3 caracteres).
 4. Tocá **Guardar resultado**.
 
-La cita pasa a **Realizada** y el resultado queda visible en el detalle. El botón solo aparece cuando la hora de inicio ya pasó y la cita está Programada o Confirmada: no se puede completar una cita futura.
+La cita pasa a **Realizada** y el resultado queda visible en el detalle. El botón solo aparece cuando la hora de inicio ya pasó y la cita sigue activa: Programada, Confirmada, En camino, Check-in o En curso. No se puede completar una cita futura.
 
 Si es una **Visita**, además:
 
 - se agrega «Visita realizada: …» al historial del contacto;
 - si está vinculada a una oportunidad abierta en una etapa anterior, la oportunidad pasa sola a «Visita realizada»;
-- si la automatización «Seguimiento posterior a visita» está activa, se crea la tarea «Seguimiento post-visita» para el día siguiente.
+- si la automatización «Seguimiento posterior a visita» está activa, se crea la tarea «Seguimiento post-visita» para el día siguiente;
+- con **Mis visitas** encendido, el historial de la visita registra «Visita finalizada» con «Desde la Agenda», y el informe post-visita se puede cargar igual desde **Mis visitas**.
+
+Si la visita la está operando el agente en **Mis visitas**, lo habitual es cerrarla ahí con **Finalizar visita**: en ese caso no se crea la tarea automática y el seguimiento lo crea una persona desde la tarjeta **Seguimiento**.
 
 ## Marcar que el cliente no se presentó a la cita
 <!-- ruta: /crm/agenda/[id]; permisos: agenda.manage -->
@@ -116,7 +121,7 @@ Si el cliente o interesado no vino a la visita o no atendió la llamada agendada
 2. En **Acciones** tocá **No asistió**.
 3. Confirmá en el cartel «¿Marcar que el contacto no asistió?».
 
-La cita pasa al estado **No asistió** y deja de estar activa, así que libera el horario del agente. Igual que **Marcar realizada**, este botón solo aparece cuando la hora de inicio ya pasó y la cita sigue Programada o Confirmada.
+La cita pasa al estado **No asistió** y deja de estar activa, así que libera el horario del agente. Este botón solo aparece cuando la hora de inicio ya pasó y la cita está Programada, Confirmada, En camino o Check-in; con la visita **En curso** ya no se puede marcar. En **Mis visitas** este estado se ve como «No se presentó», y **Mis visitas** no tiene un botón propio para marcarlo: se hace desde la Agenda.
 
 Una cita marcada como No asistió no mueve la oportunidad vinculada ni genera tareas automáticas. Si querés volver a intentar, agendá una cita nueva con **Agendar**. Hoy el CRM no permite volver una cita No asistió, Realizada o Cancelada a un estado activo; en esos casos la tarjeta **Acciones** muestra «La cita ya no está activa».
 
@@ -132,7 +137,7 @@ Para cambiar el día, la hora o la duración de una cita, o reasignarla:
 5. Opcionalmente escribí el **Motivo (opcional)**.
 6. Tocá **Reprogramar**.
 
-Solo se reprograman citas activas (Programadas o Confirmadas). Al reprogramar, la cita vuelve a **Programada**. Si el nuevo horario choca con otra cita activa del agente, aparece «El agente ya tiene una cita en ese horario» y no se guarda. Si la cita queda a cargo de otra persona, esa persona recibe la notificación «Cita reprogramada». El cambio (horario anterior, nuevo y motivo) queda en la auditoría.
+Solo se reprograman citas que todavía no empezaron: Programadas, Confirmadas o con el agente **En camino**. Con la visita en Check-in o En curso el botón ya no aparece. Al reprogramar se mueve la misma cita (no se crea otra) y vuelve a **Programada**; si estaba En camino, se borra la salida. El link del cliente y el seguimiento siguen vinculados, y en **Mis visitas** el historial suma «Visita reprogramada». Quien supervisa también puede pasar una visita a otro agente con **Reasignar** en el **Centro operativo**. Si el nuevo horario choca con otra cita activa del agente, aparece «El agente ya tiene una cita en ese horario» y no se guarda. Si la cita queda a cargo de otra persona, esa persona recibe la notificación «Cita reprogramada». El cambio (horario anterior, nuevo y motivo) queda en la auditoría.
 
 ## Cancelar una cita
 <!-- ruta: /crm/agenda/[id]; permisos: agenda.manage -->
@@ -144,7 +149,7 @@ Si la visita, llamada o reunión no se va a hacer:
 3. Escribí el **Motivo (obligatorio)**, con al menos 3 caracteres.
 4. Tocá **Cancelar cita** para confirmar.
 
-La cita pasa a **Cancelada**, libera el horario del agente y el motivo queda visible en el detalle como «Motivo de cancelación». Solo se cancelan citas activas (Programadas o Confirmadas).
+La cita pasa a **Cancelada**, libera el horario del agente y el motivo queda visible en el detalle como «Motivo de cancelación». Se pueden cancelar todas las citas activas: Programadas, Confirmadas y visitas En camino, Check-in o En curso. **Mis visitas** no tiene botón para cancelar: se hace desde acá. Si la visita tenía un link del cliente vigente, la página pasa a mostrar solo el cierre.
 
 Las citas canceladas se ocultan de la agenda; para verlas tildá **Ver canceladas** y tocá **Ver**. Hoy el CRM no permite borrar una cita ni reactivar una cancelada: si el cliente vuelve a querer la visita, creá una cita nueva con **Agendar**.
 
@@ -155,19 +160,20 @@ Cada cita (visita, llamada, reunión o seguimiento) tiene uno de estos estados:
 
 - **Programada**: recién agendada o reprogramada. Ocupa el horario del agente.
 - **Confirmada**: el cliente confirmó. Ocupa el horario.
-- **Realizada**: se hizo y tiene el resultado cargado.
+- **En camino**, **Check-in** y **En curso**: solo en visitas. Los marca el agente asignado desde **Mis visitas** (salió, llegó, empezó). Ocupan el horario.
+- **Realizada**: se hizo (en **Mis visitas** se ve como «Finalizada»).
 - **Cancelada**: no se hace; tiene motivo. Oculta salvo con **Ver canceladas**.
-- **No asistió**: el contacto no se presentó.
+- **No asistió**: el contacto no se presentó (en **Mis visitas**, «No se presentó»).
 
-Transiciones posibles desde la tarjeta **Acciones**:
+Qué muestra la tarjeta **Acciones** según el estado:
 
-1. Programada → Confirmada con **Confirmar**.
-2. Programada o Confirmada → Realizada con **Marcar realizada** (solo después de la hora de inicio).
-3. Programada o Confirmada → No asistió con **No asistió** (solo después de la hora de inicio).
-4. Programada o Confirmada → Cancelada con **Cancelar cita**.
-5. Confirmada → Programada al **Reprogramar**.
+1. **Programada**: **Confirmar**, **Reprogramar** y **Cancelar cita**. Después de la hora de inicio, también **Marcar realizada** y **No asistió**.
+2. **Confirmada** y **En camino**: lo mismo, sin **Confirmar**.
+3. **Check-in**: **Cancelar cita** y, después de la hora de inicio, **Marcar realizada** y **No asistió**. Ya no se reprograma.
+4. **En curso**: **Cancelar cita** y **Marcar realizada** (después de la hora de inicio).
+5. **Realizada**, **Cancelada** y **No asistió** son finales: «La cita ya no está activa.»
 
-Realizada, Cancelada y No asistió son estados finales. Solo quien tiene `agenda.manage` ve la tarjeta **Acciones**; con `agenda.read_all` solamente se puede consultar.
+Reprogramar vuelve la cita a **Programada** desde Confirmada o En camino. En visitas con **Mis visitas** encendido, el encabezado de la cita muestra **Abrir en Mis visitas** (si la visita es tuya o ves todas). Solo quien tiene `agenda.manage` ve la tarjeta **Acciones**; con `agenda.read_all` solamente se puede consultar.
 
 ## Ver mis tareas del día y las vencidas
 <!-- ruta: /crm/tareas; permisos: tasks.manage, tasks.read_all -->
