@@ -28,7 +28,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/c
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   }
-  const canSend = can(actor, "reports.generate") && ["generated", "failed"].includes(report.status);
+  const canSend = can(actor, "reports.generate") && report.canResend;
+  const deliveryPending = report.delivery?.status === "awaiting_credentials";
   const canInvite = canAny(actor, ["users.manage", "reports.generate"]);
 
   return (
@@ -50,10 +51,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/c
         <div className="mb-4 flex flex-col gap-3">
           {sp.existente ? <Alert tone="info">Ya existía un informe para ese propietario y período: se muestra el existente.</Alert> : null}
           {sp.actualizado ? <Alert tone="success">Informe regenerado con los datos actuales.</Alert> : null}
-          {report.last_error ? <Alert tone="danger">Último envío fallido: {report.last_error}</Alert> : null}
+          {deliveryPending ? (
+            <Alert tone="warning">El email no salió: {report.delivery?.last_error ?? "falta configurar el envío de emails"}. Podés reenviarlo cuando esté configurado.</Alert>
+          ) : report.delivery && ["failed", "cancelled"].includes(report.delivery.status) ? (
+            <Alert tone="danger">Último envío fallido: {report.delivery.last_error ?? report.last_error ?? "sin detalle"}</Alert>
+          ) : null}
           {canSend ? (
             report.portalUser?.is_active ? (
-              <ActionForm action={sendReportAction} submitLabel={report.status === "failed" ? "Reintentar envío" : `Enviar a ${report.portalUser.email}`} confirm="¿Enviar el informe al propietario? Lo va a poder ver en el portal.">
+              <ActionForm action={sendReportAction} submitLabel={report.delivery ? `Reenviar a ${report.portalUser.email}` : `Enviar a ${report.portalUser.email}`} confirm="¿Enviar el informe al propietario? Lo va a poder ver en el portal.">
                 <input type="hidden" name="id" value={report.id} />
               </ActionForm>
             ) : (

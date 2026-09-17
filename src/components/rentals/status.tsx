@@ -7,8 +7,15 @@ const CONTRACT_TONE: Record<string, Tone> = { draft: "neutral", active: "success
 const OBLIGATION_TONE: Record<string, Tone> = { pending: "neutral", partially_paid: "warning", paid: "success", overdue: "danger", waived: "info" };
 const SETTLEMENT_TONE: Record<string, Tone> = { draft: "neutral", approved: "info", paid: "success", cancelled: "danger" };
 const ADJUSTMENT_TONE: Record<string, Tone> = { proposed: "warning", applied: "success", rejected: "danger" };
-const REPORT_TONE: Record<string, Tone> = { generated: "neutral", queued: "info", sent: "success", delivered: "success", failed: "danger" };
-export const REPORT_STATUS_LABEL: Record<string, string> = { generated: "Generado", queued: "En cola de envío", sent: "Enviado", delivered: "Entregado", failed: "Falló el envío" };
+const REPORT_TONE: Record<string, Tone> = { generated: "neutral", queued: "info", sent: "success", delivered: "success", failed: "danger", awaiting_credentials: "warning" };
+export const REPORT_STATUS_LABEL: Record<string, string> = {
+  generated: "Generado",
+  queued: "En cola de envío",
+  sent: "Enviado",
+  delivered: "Entregado",
+  failed: "Falló el envío",
+  awaiting_credentials: "Email sin configurar",
+};
 export const PROPERTY_STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
   available: "Disponible",

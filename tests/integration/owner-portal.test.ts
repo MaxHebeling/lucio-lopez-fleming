@@ -212,7 +212,7 @@ describe("informes a propietarios", () => {
     await expect(sendOwnerReport(db, staff, r3.id)).rejects.toThrow(/invitalo/);
 
     await sendOwnerReport(db, staff, r1.id);
-    await expect(sendOwnerReport(db, staff, r1.id)).rejects.toThrow(/ya fue enviado/);
+    await expect(sendOwnerReport(db, staff, r1.id)).rejects.toThrow(/se está enviando/);
     const queued = await db.selectFrom("owner_reports").select("status").where("id", "=", r1.id).executeTakeFirstOrThrow();
     expect(queued.status).toBe("queued");
     const msg = await db.selectFrom("outbound_messages").select(["id", "template_key", "payload"]).where("entity_id", "=", r1.id).executeTakeFirstOrThrow();
