@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { formatArea } from "@/server/properties/public-helpers";
 import { getSiteDemoShowcase } from "@/server/site/public-data";
 import { mediaTabs } from "@/server/tours/model";
+import { buildTourFacts } from "@/server/tours/guide";
 import { DEMO_TOUR_PATH } from "@/server/tours/demo-constants";
 import { Gallery } from "@/components/site/property/Gallery";
 import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
@@ -88,6 +89,14 @@ export default async function DemoTourPage() {
           shareUrl={url}
           whatsappUrl={null}
           isDemo
+          guide={
+            demo.guideEnabled
+              ? {
+                  ai: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+                  facts: buildTourFacts({ bedrooms: p.bedrooms, bathrooms: p.bathrooms, toilets: p.toilets, rooms: p.rooms, garages: p.garages, coveredAreaM2: p.coveredAreaM2, totalAreaM2: p.totalAreaM2, landAreaM2: p.landAreaM2 }),
+                }
+              : null
+          }
         />
       </div>
 

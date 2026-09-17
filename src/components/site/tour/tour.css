@@ -851,3 +851,79 @@ button.tour-plan-point:hover .tour-plan-name {
     padding-top: calc(7.5rem + env(safe-area-inset-top));
   }
 }
+
+/* ───────── Guía «Preguntá por esta casa» ───────── */
+.tour-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  color: var(--paper);
+}
+.tour-guide-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--paper) 72%, transparent);
+}
+.tour-guide-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.tour-guide-input {
+  min-width: 0;
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--tour-line);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.06);
+  padding: 0 1rem;
+  font-size: 1rem;
+  color: var(--paper);
+}
+.tour-guide-input::placeholder {
+  color: color-mix(in srgb, var(--paper) 55%, transparent);
+}
+.tour-guide-input:focus-visible {
+  outline: 2px solid #f1c7c3;
+  outline-offset: 2px;
+}
+.tour-guide-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tour-guide-suggestions button {
+  min-height: 36px;
+  border: 1px solid var(--tour-line);
+  border-radius: 999px;
+  padding: 0 0.8rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--paper) 88%, transparent);
+}
+.tour-guide-suggestions button:hover {
+  border-color: color-mix(in srgb, var(--paper) 45%, transparent);
+}
+.tour-guide-answer:empty {
+  display: none;
+}
+.tour-guide-answer p {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+.tour-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.tour-guide-actions:empty {
+  display: none;
+}
+.tour-guide-note {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--paper) 58%, transparent);
+}

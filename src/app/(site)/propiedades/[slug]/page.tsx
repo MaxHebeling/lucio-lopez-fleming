@@ -19,6 +19,8 @@ import { pageMetadata, siteUrl } from "@/components/site/seo";
 import { Fact, Paragraphs } from "@/components/site/property/facts";
 import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
 import { mediaTabs } from "@/server/tours/model";
+import { buildTourFacts } from "@/server/tours/guide";
+import { formatPrice } from "@/server/properties/public-helpers";
 
 
 /**
@@ -184,6 +186,30 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
             shareUrl={url}
             whatsappUrl={closed ? null : whatsappHref(waNumber, `Hola, estoy viendo el tour 360° de la propiedad Cód. ${p.code} (${p.headline}): ${url}`)}
             isDemo={false}
+            guide={
+              extras.guideEnabled
+                ? {
+                    ai: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+                    facts: buildTourFacts({
+                      bedrooms: p.bedrooms,
+                      bathrooms: p.bathrooms,
+                      toilets: p.toilets,
+                      rooms: p.rooms,
+                      garages: p.garages,
+                      coveredAreaM2: p.coveredAreaM2,
+                      totalAreaM2: p.totalAreaM2,
+                      landAreaM2: p.landAreaM2,
+                      ageYears: p.ageYears,
+                      orientation: p.orientation,
+                      creditEligible: p.creditEligible,
+                      allowsPets: p.allowsPets,
+                      price: main ? formatPrice(main.amount, main.currency, main.priceHidden) : null,
+                      expenses: main?.expenses ? formatPrice(main.expenses.amount, main.expenses.currency, false) : null,
+                      features: p.features.flatMap((g) => g.items),
+                    }),
+                  }
+                : null
+            }
           />
         ) : (
           gallery

@@ -103,10 +103,10 @@ export const getSiteSimilar = (p: PublicPropertyDetail, limit: number) =>
 // ───────── Tours virtuales, planos y videos de la ficha ─────────
 // El flag `virtual_tours` se evalúa dentro de la caché: cambiarlo desde Integraciones invalida el sitio (ver la acción).
 
-const mediaExtrasCached = unstable_cache(async (code: number) => loadSitePropertyMediaExtras(getDb(), code), ["site", "property-media-extras", "v1"], PROPERTIES);
+const mediaExtrasCached = unstable_cache(async (code: number) => loadSitePropertyMediaExtras(getDb(), code), ["site", "property-media-extras", "v2"], PROPERTIES);
 export const getSitePropertyMediaExtras = cache((code: number) => readPublic(() => mediaExtrasCached(code)));
 
-const demoCached = unstable_cache(async () => loadSiteDemoShowcase(getDb()), ["site", "demo-tour", "v1"], PROPERTIES);
+const demoCached = unstable_cache(async () => loadSiteDemoShowcase(getDb()), ["site", "demo-tour", "v2"], PROPERTIES);
 /** Demo pública del tour. null con el flag apagado o sin demo sembrada (la ruta responde 404). */
 export const getSiteDemoShowcase = cache(() => readPublic(demoCached));
 
