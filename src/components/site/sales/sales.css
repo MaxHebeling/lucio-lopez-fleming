@@ -200,6 +200,13 @@
   .compare-tray-with-bar {
     bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
   }
+  /* Mientras la bandeja está visible, el final de la página puede subir por encima de ella (no tapa CTAs). */
+  body:has(.compare-tray) main {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+  body:has(.compare-tray-with-bar) main {
+    padding-bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
+  }
   @media (min-width: 1024px) {
     .compare-tray-with-bar {
       bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
