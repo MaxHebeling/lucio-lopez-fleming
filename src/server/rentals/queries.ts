@@ -52,7 +52,7 @@ export async function listContracts(db: Database, actor: Actor, f: ContractListF
     );
   }
   if (f.expiringDays) q = q.where("c.status", "=", "active").where("c.end_date", "<=", addDays(today, f.expiringDays));
-  return q.orderBy(sql`case c.status when 'active' then 0 when 'draft' then 1 else 2 end`).orderBy("c.end_date").limit(300).execute();
+  return q.select(sql<number>`(count(*) over())::int`.as("total_count")).orderBy(sql`case c.status when 'active' then 0 when 'draft' then 1 else 2 end`).orderBy("c.end_date").limit(300).execute();
 }
 
 export async function getContractDetail(db: Database, actor: Actor, id: string) {
@@ -182,7 +182,7 @@ export async function listReceivables(db: Database, actor: Actor, filter: Receiv
     const term = `%${q.trim().slice(0, 100)}%`;
     query = query.where((eb) => eb.or([eb("c.code", "ilike", term), eb("p.title", "ilike", term)]));
   }
-  return query.orderBy("o.due_date").orderBy("c.code").limit(500).execute();
+  return query.select(sql<number>`(count(*) over())::int`.as("total_count")).orderBy("o.due_date").orderBy("c.code").limit(500).execute();
 }
 
 export async function listSettlements(db: Database, actor: Actor, f: { status?: string; month?: string } = {}) {
@@ -210,7 +210,7 @@ export async function listSettlements(db: Database, actor: Actor, f: { status?: 
     ]);
   if (f.status) q = q.where("s.status", "=", f.status);
   if (f.month && /^\d{4}-\d{2}$/.test(f.month)) q = q.where("s.period_start", "=", `${f.month}-01`);
-  return q.orderBy("s.period_start", "desc").orderBy("c.code").limit(300).execute();
+  return q.select(sql<number>`(count(*) over())::int`.as("total_count")).orderBy("s.period_start", "desc").orderBy("c.code").limit(300).execute();
 }
 
 export async function contractsForSettlement(db: Database, actor: Actor) {

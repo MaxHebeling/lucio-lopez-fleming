@@ -53,8 +53,10 @@ export async function getBoard(db: Executor, actor: Actor, opts: { pipelineKey?:
   if (!scope.all) q = q.where("o.assigned_user_id", "=", scope.userId);
   else if (opts.agent === "none") q = q.where("o.assigned_user_id", "is", null);
   else if (opts.agent && /^[0-9a-f-]{36}$/i.test(opts.agent)) q = q.where("o.assigned_user_id", "=", opts.agent);
-  const cards = (await q.orderBy("o.stage_entered_at", "desc").limit(500).execute()) as BoardCard[];
-  return { pipelines, pipeline, cards, scopeAll: scope.all };
+  const rows = await q.select(sql<number>`(count(*) over())::int`.as("total_count")).orderBy("o.stage_entered_at", "desc").limit(500).execute();
+  const totalCount = rows[0]?.total_count ?? 0;
+  const cards = rows as unknown as BoardCard[];
+  return { pipelines, pipeline, cards, totalCount, scopeAll: scope.all };
 }
 
 export async function getOpportunityDetail(db: Executor, actor: Actor, id: string) {

@@ -68,7 +68,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps<"/crm/
         <EmptyState title="No hay cuotas para cobrar en esta vista" description="Cuando haya cuotas pendientes o vencidas aparecen acá." />
       ) : (
         <>
-          <ListLimitNotice shown={rows.length} limit={500} noun="cuotas" />
+          <ListLimitNotice total={rows[0]?.total_count} shown={rows.length} limit={500} noun="cuotas" />
           <ul className="flex flex-col gap-3">
           {rows.map((r) => {
             const remaining = centsToString(toCents(r.amount) - toCents(r.paid_amount));

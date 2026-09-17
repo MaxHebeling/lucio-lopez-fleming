@@ -72,7 +72,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/crm/al
               <Alert tone="warning">Hay ajustes vencidos sin calcular por falta de valores de índice. Revisá la ficha de cada contrato marcado.</Alert>
             </div>
           ) : null}
-          <ListLimitNotice shown={rows.length} limit={300} noun="contratos" />
+          <ListLimitNotice total={rows[0]?.total_count} shown={rows.length} limit={300} noun="contratos" />
           <Table label="Contratos">
             <thead>
               <tr>

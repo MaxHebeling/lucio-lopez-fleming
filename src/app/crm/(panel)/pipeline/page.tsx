@@ -76,7 +76,7 @@ export default async function PipelinePage({ searchParams }: PageProps<"/crm/pip
               <EmptyState title="No hay oportunidades en este pipeline" description="Convertí un lead o creá una oportunidad desde un contacto." />
             </div>
           ) : null}
-          <ListLimitNotice shown={total} limit={500} noun="oportunidades" />
+          <ListLimitNotice total={board.totalCount} shown={total} limit={500} noun="oportunidades" />
           <Board
             key={`${board.pipeline.key}-${sp.agente ?? ""}`}
             stages={board.pipeline.stages}

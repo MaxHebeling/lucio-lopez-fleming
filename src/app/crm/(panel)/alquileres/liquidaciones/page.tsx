@@ -86,7 +86,7 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/crm/
         <EmptyState title="No hay liquidaciones" description="Generalas por contrato y mes cuando haya cobros registrados." />
       ) : (
         <>
-          <ListLimitNotice shown={rows.length} limit={300} noun="liquidaciones" />
+          <ListLimitNotice total={rows[0]?.total_count} shown={rows.length} limit={300} noun="liquidaciones" />
           <Table label="Liquidaciones">
           <thead>
             <tr>
