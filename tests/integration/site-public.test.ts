@@ -6,6 +6,7 @@ import {
   getPublicFacets,
   getPublicPropertyBySlug,
   getRecentProperties,
+  SHOWCASE_MIN_PHOTOS,
   getShowcaseProperties,
   getSimilarProperties,
   listPublishedForSitemap,
@@ -321,7 +322,7 @@ describe("DTOs públicos de propiedades", () => {
     );
   });
 
-  it("showcase: publicadas disponibles con ≥ 8 fotos verificadas, destacadas primero; recientes y similares sin vendidas", async () => {
+  it("showcase: publicadas disponibles con ≥ 8 fotos publicables, destacadas primero; recientes y similares sin vendidas", async () => {
     const db = testDb();
     const showcase = await getShowcaseProperties(db);
     expect(showcase.map((s) => s.code)).toEqual([9001]);
@@ -420,6 +421,44 @@ describe("formularios públicos → CRM", () => {
     } finally {
       await db.updateTable("feature_flags").set({ enabled: true }).where("key", "=", "public_lead_capture").execute();
       resetFlagCache();
+    }
+  });
+});
+
+describe("home: fotos publicables servidas desde el origen (source_only)", () => {
+  it("destacadas y portadas por zona cuentan las fotos no fallidas, no solo las verificadas/copiadas", async () => {
+    const db = testDb();
+    const praderas = await db.selectFrom("locations").select("id").where("slug", "=", "praderas-san-lorenzo").executeTakeFirstOrThrow();
+    const origin = await insertProperty({ code: 9101, slug: "casa-origen-9101", title: "Casa con fotos de origen", location: praderas.id, publishedAt: "2020-01-01T00:00:00Z" });
+    const fewValid = await insertProperty({ code: 9102, slug: "casa-pocas-validas-9102", title: "Casa con fotos rotas", location: praderas.id });
+    const soldMany = await insertProperty({ code: 9103, slug: "casa-vendida-fotos-9103", title: "Casa vendida con fotos", status: "sold", location: praderas.id });
+    const created = [origin, fewValid, soldMany];
+    try {
+      await db
+        .insertInto("property_operations")
+        .values(created.map((id) => ({ property_id: id, operation: "sale", currency: "USD" as const, amount: "150000" })))
+        .execute();
+      await addPhotos(origin, SHOWCASE_MIN_PHOTOS, "source_only");
+      await addPhotos(fewValid, SHOWCASE_MIN_PHOTOS - 1, "source_only");
+      for (let i = 0; i < 3; i++) {
+        await db.insertInto("property_media").values({ property_id: fewValid, kind: "image", source_url: `https://static1.adinco.net/test/${fewValid}-rota-${i}.jpg`, status: "failed", sort_order: 20 + i }).execute();
+      }
+      await addPhotos(soldMany, 12, "source_only");
+
+      const showcase = await getShowcaseProperties(db, 6);
+      const codes = showcase.map((s) => s.code);
+      // Destacada del equipo primero; la de fotos de origen entra aunque ninguna esté verificada.
+      expect(codes).toEqual([9001, 9101]);
+      expect(showcase[1]!.cover?.url).toContain(`${origin}-1.jpg`);
+
+      const zones = await getZoneShowcase(db, await getPublicFacets(db), 5);
+      const vsl = zones.find((z) => z.slug === "villa-san-lorenzo");
+      // La portada de la zona sale de la propiedad disponible con más fotos publicables (9101), no de la vendida.
+      expect(vsl?.cover?.url).toContain(`${origin}-1.jpg`);
+    } finally {
+      await db.deleteFrom("property_media").where("property_id", "in", created).execute();
+      await db.deleteFrom("property_operations").where("property_id", "in", created).execute();
+      await db.deleteFrom("properties").where("id", "in", created).execute();
     }
   });
 });
