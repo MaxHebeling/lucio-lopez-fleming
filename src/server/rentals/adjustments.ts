@@ -44,6 +44,7 @@ async function loadIndexValues(trx: Tx, key: IndexKey, periodStart: string, effe
  */
 export async function proposeRentAdjustment(db: Database, actor: Actor, contractId: string, opts: { auto?: boolean } = {}): Promise<ProposeResult> {
   requirePermission(actor, "rentals.adjust");
+  let attemptedDate: string | null = null;
   try {
     return await db.transaction().execute(async (trx): Promise<ProposeResult> => {
       const c = await loadContractForUpdate(trx, contractId);
@@ -51,6 +52,7 @@ export async function proposeRentAdjustment(db: Database, actor: Actor, contract
       if (!c.adjustment_index_key || !c.adjustment_period_months || !c.next_adjustment_date)
         return { status: "not_applicable", reason: "El contrato no tiene ajustes pendientes" };
       const effectiveDate = c.next_adjustment_date;
+      attemptedDate = effectiveDate;
       const existing = await trx
         .selectFrom("rent_adjustments")
         .select(["id", "status"])
@@ -103,11 +105,13 @@ export async function proposeRentAdjustment(db: Database, actor: Actor, contract
       return { status: "proposed", adjustmentId: row.id, newAmount: calc.newAmount, factor: calc.factor };
     });
   } catch (e) {
-    if (pgCode(e) === "23505") {
+    if (pgCode(e) === "23505" && attemptedDate) {
+      // Otro proceso propuso el MISMO ajuste (contrato + fecha efectiva) en paralelo: se devuelve ese, no otro del contrato.
       const again = await db
         .selectFrom("rent_adjustments")
         .select("id")
         .where("contract_id", "=", contractId)
+        .where("effective_date", "=", attemptedDate)
         .where("status", "<>", "rejected")
         .orderBy("calculated_at", "desc")
         .executeTakeFirst();
