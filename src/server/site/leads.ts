@@ -13,8 +13,12 @@ import { rateLimit } from "../rate-limit";
 import { AppError } from "../errors";
 import { errorFields, log } from "../log";
 import { normalizePhone } from "../contacts/normalize";
+import { claimOwnerPhotos } from "./owner-capture";
 
 export const LEAD_FORM_KINDS = ["property", "visit", "contact", "appraisal", "owner"] as const;
+export const OWNER_CONDITIONS = ["a_estrenar", "muy_bueno", "bueno", "a_refaccionar"] as const;
+export const OWNER_CONDITION_LABEL: Record<(typeof OWNER_CONDITIONS)[number], string> = { a_estrenar: "A estrenar", muy_bueno: "Muy bueno", bueno: "Bueno", a_refaccionar: "A refaccionar" };
+export const OWNER_MAX_PHOTOS = 4;
 export type LeadFormKind = (typeof LEAD_FORM_KINDS)[number];
 
 const RATE_LIMIT = { perIp: 6, windowSeconds: 600 } as const;
@@ -40,6 +44,11 @@ export const publicLeadSchema = z
     appraisalType: optionalText(60, "Tipo inválido"),
     appraisalZone: optionalText(160, "La zona es muy larga"),
     appraisalGoal: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["vender", "alquilar", "conocer"]).optional()),
+    // Captación paso a paso (owner_capture_steps): datos opcionales que el propietario conoce. Nada de tasación.
+    ownerAreaM2: z.preprocess((v) => (v === "" || v === undefined || v === null ? undefined : Number(v)), z.number({ error: "Superficie inválida" }).positive("Superficie inválida").max(10_000_000, "Superficie inválida").optional()),
+    ownerBedrooms: z.preprocess((v) => (v === "" || v === undefined || v === null ? undefined : Number(v)), z.number().int().min(0).max(50, "Revisá los dormitorios").optional()),
+    ownerCondition: z.preprocess((v) => (v === "" ? undefined : v), z.enum(OWNER_CONDITIONS).optional()),
+    photoTokens: z.preprocess((v) => (v === undefined || v === "" ? undefined : Array.isArray(v) ? v : [v]), z.array(z.string().regex(/^[A-Za-z0-9_-]{32,64}$/)).max(OWNER_MAX_PHOTOS).optional()),
     // Visita
     visitWhen: optionalText(120, "Texto muy largo"),
     // Anti-spam e idempotencia
@@ -86,6 +95,12 @@ function composeMessage(v: z.infer<typeof publicLeadSchema>): string | null {
   if (v.kind === "appraisal" || v.kind === "owner") {
     if (v.appraisalType) lines.push(`Tipo: ${v.appraisalType}`);
     if (v.appraisalZone) lines.push(`Ubicación: ${v.appraisalZone}`);
+  }
+  if (v.kind === "owner") {
+    if (v.ownerAreaM2 !== undefined) lines.push(`Superficie aproximada: ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(v.ownerAreaM2)} m²`);
+    if (v.ownerBedrooms !== undefined) lines.push(`Dormitorios: ${v.ownerBedrooms}`);
+    if (v.ownerCondition) lines.push(`Estado: ${OWNER_CONDITION_LABEL[v.ownerCondition]}`);
+    if (v.photoTokens?.length) lines.push(`Fotos enviadas: ${v.photoTokens.length} (en el lead)`);
   }
   if (v.message) lines.push(v.message);
   return lines.length ? lines.join("\n") : null;
@@ -147,6 +162,7 @@ export async function submitPublicLead(db: Database, actor: Actor, ip: string | 
       idempotencyKey: v.idempotencyKey ? `web:${v.idempotencyKey}` : null,
       priority: v.kind === "visit" ? "high" : "normal",
     });
+    if (v.kind === "owner" && v.photoTokens?.length) await claimOwnerPhotos(db, res.leadId, v.photoTokens);
     return { status: "sent", duplicate: res.duplicate };
   } catch (e) {
     if (e instanceof AppError && e.code === "validation") {

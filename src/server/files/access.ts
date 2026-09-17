@@ -46,6 +46,20 @@ export async function authorizeFileAccess(db: Executor, actor: Actor, fileId: st
     union all
     select 'social_asset', null, null, null, null from social_assets s where s.file_id = ${fileId}`.execute(db);
 
+  // Fotos que un propietario adjuntó al lead de captación: quien ve todos los leads o el agente asignado a ese lead.
+  if (actor.kind === "staff" || actor.kind === "system") {
+    const lead = await db
+      .selectFrom("lead_attachments as a")
+      .innerJoin("leads as l", "l.id", "a.lead_id")
+      .select(["l.assigned_user_id", "l.organization_id"])
+      .where("a.file_id", "=", fileId)
+      .where("l.deleted_at", "is", null)
+      .executeTakeFirst();
+    if (lead && lead.organization_id === actor.organizationId && (can(actor, "leads.read_all") || (actor.kind === "staff" && can(actor, "leads.read_own") && lead.assigned_user_id === actor.userId))) {
+      return { ok: true, file: servable };
+    }
+  }
+
   for (const ref of refs.rows) {
     if (actor.kind === "staff" || actor.kind === "system") {
       const needed = { property_document: "properties.read_private", property_media: "properties.read", owner_report: "reports.read", social_asset: "marketing.read" }[ref.entity];

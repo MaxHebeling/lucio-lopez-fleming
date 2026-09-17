@@ -17,7 +17,7 @@ export type LeadFormState =
 const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
 /** Campos que escribe la persona: si el envío se rechaza vuelven en el estado (sin JS el formulario se re-renderiza con ellos). */
-const ECHO_FIELDS = ["name", "phone", "email", "message", "appraisalGoal", "appraisalType", "appraisalZone", "visitWhen"] as const;
+const ECHO_FIELDS = ["name", "phone", "email", "message", "appraisalGoal", "appraisalType", "appraisalZone", "visitWhen", "ownerAreaM2", "ownerBedrooms", "ownerCondition"] as const;
 const ECHO_MAX = 2000;
 
 function echoValues(raw: Record<string, unknown>): LeadFormValues {
