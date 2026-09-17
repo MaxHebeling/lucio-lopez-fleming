@@ -30,6 +30,10 @@ export const EVENT_TYPES = [
   "owner_report.due",
   "integration.failed",
   "conversation.handoff",
+  // AI Core (Fase 1). Solo metadatos (ids, modo, resultado): nunca preguntas ni respuestas. Ninguna automatización
+  // del sistema los escucha y la IA no reacciona a eventos: no hay loops. `ai.recommendation.*` queda para la Fase 5.
+  "ai.answer.generated",
+  "ai.feedback.recorded",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
