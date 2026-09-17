@@ -28,7 +28,7 @@ export const OWNER_UPLOAD_RATE = { perIp: 12, windowSeconds: 600 } as const;
 const tokenHash = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /** Storage de producción listo: driver S3 con todas sus variables. El driver local no cuenta (no persiste en Vercel). */
-export function storageConfiguredForUploads(env: NodeJS.ProcessEnv = process.env): boolean {
+export function storageConfiguredForUploads(env: Record<string, string | undefined> = process.env): boolean {
   return env.STORAGE_DRIVER === "s3" && ["STORAGE_ENDPOINT", "STORAGE_BUCKET_PUBLIC", "STORAGE_BUCKET_PRIVATE", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"].every((k) => Boolean(env[k]?.trim()));
 }
 
