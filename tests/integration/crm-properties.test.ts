@@ -1,3 +1,4 @@
+import { sql } from "@/server/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { assignAgents, changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
@@ -452,6 +453,23 @@ describe("multimedia", () => {
       expect(store.objects.has(`private/${key}`)).toBe(false);
     } finally {
       getSpy.mockRestore();
+    }
+  });
+
+  it("la purga periódica de fotos públicas no toca el storage si no hay pendientes (storage sin configurar no la hace fallar)", async () => {
+    const db = testDb();
+    const prevDriver = process.env.STORAGE_DRIVER;
+    const prevEndpoint = process.env.STORAGE_ENDPOINT;
+    process.env.STORAGE_DRIVER = "s3"; // como producción antes de cargar las claves S3
+    delete process.env.STORAGE_ENDPOINT;
+    setStorageForTests(undefined);
+    try {
+      await sql`update files set storage_removed_at = now() where deleted_at is not null and visibility = 'public'`.execute(db);
+      await expect(removeDeletedPublicMedia(db)).resolves.toEqual({ removed: 0, failed: 0 });
+    } finally {
+      process.env.STORAGE_DRIVER = prevDriver;
+      if (prevEndpoint !== undefined) process.env.STORAGE_ENDPOINT = prevEndpoint;
+      setStorageForTests(store);
     }
   });
 });
