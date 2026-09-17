@@ -19,7 +19,14 @@ function useCompare(): [CompareItem[], (next: CompareItem[]) => void] {
 export function CompareToggle({ code, label, className = "" }: { code: number; label: string; className?: string }) {
   const [list, save] = useCompare();
   const ready = useSyncExternalStore(hydrationStore.subscribe, hydrationStore.client, hydrationStore.server);
-  if (!ready) return null;
+  // Antes de hidratar (o sin JS) se reserva el lugar invisible: sin botón muerto y sin desplazar el layout (CLS).
+  if (!ready)
+    return (
+      <span aria-hidden className={`compare-toggle invisible ${className}`}>
+        <Plus className="size-3.5" />
+        Comparar
+      </span>
+    );
   const selected = list.some((x) => x.code === code);
   const full = !selected && list.length >= COMPARE_MAX;
   return (
