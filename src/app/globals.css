@@ -10,14 +10,14 @@
   --paper-2: #ebe5dc;
   --ink: #141312;
   --ink-2: #3a3734;
-  --stone: #77716a;
+  --stone: #6b655e; /* ≥ 4,5:1 sobre paper (5,07) y paper-2 (4,60) */
   --line: #d9d1c6;
   --brick: #ae2c25;
   --brick-deep: #8c211b;
   --siena: #b8643f;
   --white: #ffffff;
   --success: #2f6b3f;
-  --warning: #9a6b12;
+  --warning: #825b0e; /* ≥ 4,5:1 sobre los fondos de aviso (#f6ecd6: 5,18) */
   --danger: #a3261f;
 
   --radius-sm: 4px;

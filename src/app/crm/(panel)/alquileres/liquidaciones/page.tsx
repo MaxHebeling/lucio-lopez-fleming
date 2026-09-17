@@ -84,7 +84,7 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/crm/
       {rows.length === 0 ? (
         <EmptyState title="No hay liquidaciones" description="Generalas por contrato y mes cuando haya cobros registrados." />
       ) : (
-        <Table>
+        <Table label="Liquidaciones">
           <thead>
             <tr>
               <th>Mes</th>

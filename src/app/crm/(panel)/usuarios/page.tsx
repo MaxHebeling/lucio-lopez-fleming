@@ -58,7 +58,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/crm/usuari
         <EmptyState title={filtered ? "Ningún usuario coincide" : "Todavía no hay usuarios"} description={filtered ? "Probá con otros filtros." : "Invitá al equipo para que pueda ingresar."} />
       ) : (
         <>
-          <Table>
+          <Table label="Usuarios">
             <thead>
               <tr>
                 <th scope="col">Nombre</th>

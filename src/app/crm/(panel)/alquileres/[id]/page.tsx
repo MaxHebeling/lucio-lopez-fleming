@@ -218,7 +218,7 @@ export default async function ContractPage({ params, searchParams }: PageProps<"
           {obligations.length === 0 ? (
             <EmptyState title="Sin cuotas" description={c.status === "draft" ? "Se generan al activar el contrato." : "No hay cuotas para este contrato."} />
           ) : (
-            <Table className="border-0">
+            <Table label="Cuotas del contrato" className="border-0">
               <thead>
                 <tr>
                   <th>Período</th>
@@ -264,7 +264,7 @@ export default async function ContractPage({ params, searchParams }: PageProps<"
           {payments.length === 0 ? (
             <p className="text-sm text-stone">Todavía no se registraron cobros.</p>
           ) : (
-            <Table className="border-0">
+            <Table label="Cobros del contrato" className="border-0">
               <thead>
                 <tr>
                   <th>Fecha</th>

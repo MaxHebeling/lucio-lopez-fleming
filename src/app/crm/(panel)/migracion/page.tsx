@@ -145,7 +145,7 @@ export default async function MigrationPage({ searchParams }: PageProps<"/crm/mi
             <p className="text-sm text-stone">{status === "open" ? "No hay advertencias abiertas." : "No hay advertencias con ese filtro."}</p>
           ) : (
             <>
-              <Table>
+              <Table label="Advertencias de migración">
                 <thead>
                   <tr>
                     <th scope="col">Advertencia</th>

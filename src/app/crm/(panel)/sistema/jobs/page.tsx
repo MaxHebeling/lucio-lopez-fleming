@@ -54,7 +54,7 @@ export default async function JobsPage({ searchParams }: PageProps<"/crm/sistema
         <EmptyState title={`No hay jobs ${JOB_STATUS[status]?.label.toLowerCase() ?? status}`} description={status === "dead" ? "Ninguna tarea agotó sus reintentos." : undefined} />
       ) : (
         <>
-          <Table>
+          <Table label="Jobs">
             <thead>
               <tr>
                 <th scope="col">Tipo</th>

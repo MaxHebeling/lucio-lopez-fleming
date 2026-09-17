@@ -8,8 +8,10 @@ export default function RecoverPage() {
   return (
     <main className="flex min-h-svh items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-sm">
-        <p className="font-display text-4xl leading-none text-ink">Lucio López Fleming</p>
-        <p className="mb-8 mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-brick">CRM · Recuperar contraseña</p>
+        <h1>
+          <span className="block font-display text-4xl leading-none text-ink">Lucio López Fleming</span>
+          <span className="mb-8 mt-2 block text-xs font-semibold uppercase tracking-[0.2em] text-brick">CRM · Recuperar contraseña</span>
+        </h1>
         <div className="rounded-[var(--radius-lg)] border border-line bg-white p-6 shadow-[var(--shadow-soft)]">
           <p className="mb-4 text-sm text-ink-2">Ingresá el email con el que entrás al CRM y te enviamos un link para definir una contraseña nueva.</p>
           <RecoverForm />

@@ -91,7 +91,7 @@ export default async function AutomationsPage({ searchParams }: PageProps<"/crm/
           {runs.length === 0 ? (
             <p className="text-sm text-stone">{runStatus ? "No hay ejecuciones con error." : "Todavía no se ejecutó ninguna automatización."}</p>
           ) : (
-            <Table>
+            <Table label="Ejecuciones recientes">
               <thead>
                 <tr>
                   <th scope="col">Automatización</th>

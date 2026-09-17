@@ -30,7 +30,7 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/crm
       <PageHeader title="Integraciones" description="Estado real de cada conexión externa. Sin credenciales, una integración queda en espera: nunca simula respuestas." />
       <div className="flex flex-col gap-5">
         <Card title="Estado">
-          <Table>
+          <Table label="Estado de integraciones">
             <thead>
               <tr>
                 <th scope="col">Integración</th>
@@ -135,7 +135,7 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/crm
           {logs.length === 0 ? (
             <p className="text-sm text-stone">Sin llamadas registradas{key || status ? " para ese filtro" : ""}.</p>
           ) : (
-            <Table>
+            <Table label="Registro de llamadas">
               <thead>
                 <tr>
                   <th scope="col">Fecha</th>

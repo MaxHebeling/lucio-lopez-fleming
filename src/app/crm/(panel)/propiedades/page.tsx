@@ -196,7 +196,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
               </li>
             ))}
           </ul>
-          <Table className="hidden md:block">
+          <Table label="Propiedades" className="hidden md:block">
             <thead>
               <tr>
                 <th scope="col">

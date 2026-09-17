@@ -165,7 +165,7 @@ export default async function PublicacionesPage({ searchParams }: PageProps<"/cr
           />
         ) : (
           <>
-            <Table className="hidden md:block">
+            <Table label="Publicaciones" className="hidden md:block">
               <thead>
                 <tr>
                   <th>Propiedad</th>

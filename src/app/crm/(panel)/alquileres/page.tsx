@@ -71,7 +71,7 @@ export default async function ContractsPage({ searchParams }: PageProps<"/crm/al
               <Alert tone="warning">Hay ajustes vencidos sin calcular por falta de valores de índice. Revisá la ficha de cada contrato marcado.</Alert>
             </div>
           ) : null}
-          <Table>
+          <Table label="Contratos">
             <thead>
               <tr>
                 <th>Contrato</th>

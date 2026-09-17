@@ -231,7 +231,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           <Card title="Precios">
             <div className="flex flex-col gap-5">
               {d.operations.length ? (
-                <Table>
+                <Table label="Precios">
                   <thead>
                     <tr>
                       <th scope="col">Operación</th>
@@ -367,7 +367,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="publicaciones" className="scroll-mt-28">
           <Card title="Publicaciones por canal">
-            <Table>
+            <Table label="Publicaciones por canal">
               <thead>
                 <tr>
                   <th scope="col">Canal</th>
@@ -409,7 +409,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           <section id="leads" className="scroll-mt-28">
             <Card title="Leads relacionados">
               {d.leads.length ? (
-                <Table>
+                <Table label="Leads relacionados">
                   <thead>
                     <tr>
                       <th scope="col">Contacto</th>
