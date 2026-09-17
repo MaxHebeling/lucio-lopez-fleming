@@ -58,8 +58,7 @@ export type PropertyListItem = {
   address_street: string | null;
   address_number: string | null;
   updated_at: Date;
-  cover_file_id: string | null;
-  cover_source_url: string | null;
+  cover: { file_id: string | null; source_url: string | null; file_storage_driver: string | null; file_storage_key: string | null; file_visibility: string | null } | null;
   lead_agent_name: string | null;
   operations: Array<{ operation: string; currency: string; amount: string | number | null; price_hidden: boolean }>;
 };
@@ -124,8 +123,9 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
     "p.address_street",
     "p.address_number",
     "p.updated_at",
-    sql<string | null>`(select pm.file_id from property_media pm where pm.property_id = p.id and pm.deleted_at is null and pm.kind = 'image' order by pm.is_cover desc, pm.sort_order, pm.created_at limit 1)`.as("cover_file_id"),
-    sql<string | null>`(select pm.source_url from property_media pm where pm.property_id = p.id and pm.deleted_at is null and pm.kind = 'image' order by pm.is_cover desc, pm.sort_order, pm.created_at limit 1)`.as("cover_source_url"),
+    sql<PropertyListItem["cover"]>`(select jsonb_build_object('file_id', pm.file_id, 'source_url', pm.source_url, 'file_storage_driver', f.storage_driver, 'file_storage_key', f.storage_key, 'file_visibility', f.visibility)
+      from property_media pm left join files f on f.id = pm.file_id and f.deleted_at is null
+      where pm.property_id = p.id and pm.deleted_at is null and pm.kind = 'image' order by pm.is_cover desc, pm.sort_order, pm.created_at limit 1)`.as("cover"),
     sql<string | null>`(select u.full_name from property_agents pa join users u on u.id = pa.user_id where pa.property_id = p.id and pa.role = 'lead' limit 1)`.as("lead_agent_name"),
     (eb) =>
       jsonArrayFrom(
@@ -235,7 +235,15 @@ export async function getPropertyDetail(db: Database, actor: Actor, id: string) 
     db.selectFrom("property_operations").select(["id", "operation", "currency", "amount", "price_hidden", "expenses_amount", "expenses_currency", "is_active"]).where("property_id", "=", id).orderBy(sql`array_position(array['sale','rent','temporary_rent'], operation)`).execute(),
     db.selectFrom("property_price_history as h").leftJoin("users as u", "u.id", "h.changed_by").select(["h.id", "h.operation", "h.previous_currency", "h.previous_amount", "h.new_currency", "h.new_amount", "h.source", "h.reason", "h.changed_at", "u.full_name as changed_by_name"]).where("h.property_id", "=", id).orderBy("h.changed_at", "desc").orderBy("h.id", "desc").limit(50).execute(),
     db.selectFrom("property_status_history as h").leftJoin("users as u", "u.id", "h.changed_by").select(["h.id", "h.from_status", "h.to_status", "h.reason", "h.changed_at", "u.full_name as changed_by_name"]).where("h.property_id", "=", id).orderBy("h.changed_at", "desc").orderBy("h.id", "desc").limit(50).execute(),
-    db.selectFrom("property_media as m").select(["m.id", "m.kind", "m.file_id", "m.original_file_id", "m.source_url", "m.sort_order", "m.is_cover", "m.alt_text", "m.width", "m.height", "m.status", "m.last_error"]).where("m.property_id", "=", id).where("m.deleted_at", "is", null).orderBy("m.sort_order").orderBy("m.created_at").execute(),
+    db
+      .selectFrom("property_media as m")
+      .leftJoin("files as f", (j) => j.onRef("f.id", "=", "m.file_id").on("f.deleted_at", "is", null))
+      .select(["m.id", "m.kind", "m.file_id", "m.original_file_id", "m.source_url", "m.sort_order", "m.is_cover", "m.alt_text", "m.width", "m.height", "m.status", "m.last_error", "f.storage_driver as file_storage_driver", "f.storage_key as file_storage_key", "f.visibility as file_visibility"])
+      .where("m.property_id", "=", id)
+      .where("m.deleted_at", "is", null)
+      .orderBy("m.sort_order")
+      .orderBy("m.created_at")
+      .execute(),
     db.selectFrom("property_features as pf").innerJoin("features as f", "f.id", "pf.feature_id").select(["f.key", "f.name", "f.grp"]).where("pf.property_id", "=", id).orderBy("f.grp").orderBy("f.sort_order").execute(),
     db.selectFrom("property_agents as pa").innerJoin("users as u", "u.id", "pa.user_id").select(["pa.user_id", "pa.role", "u.full_name", "u.is_active"]).where("pa.property_id", "=", id).orderBy(sql`pa.role = 'lead'`, "desc").orderBy("u.full_name").execute(),
     db.selectFrom("publication_channels as c").leftJoin("property_publications as pp", (j) => j.onRef("pp.channel_key", "=", "c.key").on("pp.property_id", "=", id)).select(["c.key", "c.name", "c.kind", "c.is_enabled", "pp.desired_state", "pp.sync_status", "pp.external_url", "pp.last_synced_at", "pp.last_attempt_at", "pp.last_error", "pp.attempts"]).orderBy(sql`array_position(array['web','portal','social'], c.kind)`).orderBy("c.name").execute(),

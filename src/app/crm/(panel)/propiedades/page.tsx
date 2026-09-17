@@ -9,6 +9,7 @@ import { OPERATION_LABEL, PROPERTY_STATUSES, STATUS_LABEL, type Operation, type 
 import { Badge, ButtonLink, EmptyState, Field, formatDate, formatMoney, Input, PageHeader, Select, Table, buttonClass } from "@/components/ui";
 import { PaginationBar } from "@/components/crm/pagination";
 import { PROPERTY_STATUS_TONE } from "@/components/crm/labels";
+import { crmImageSource } from "@/server/media/crm-preview";
 
 export const metadata: Metadata = { title: "Propiedades" };
 
@@ -38,10 +39,14 @@ function price(p: PropertyListItem) {
   );
 }
 
+/**
+ * Miniatura por el optimizador (antes se bajaba la foto original: ~9 MB por página). Mismo `sizes` en la tarjeta mobile
+ * (80 px) y en la tabla (64 px): el navegador pide una sola URL aunque ambas estén en el DOM.
+ */
 function Thumb({ p }: { p: PropertyListItem }) {
-  const src = p.cover_file_id ? `/api/files/${p.cover_file_id}` : p.cover_source_url;
-  if (!src) return <div className="flex size-full items-center justify-center bg-paper-2 text-[10px] text-stone">Sin foto</div>;
-  return <Image src={src} alt="" fill unoptimized sizes="96px" className="object-cover" />;
+  const img = p.cover ? crmImageSource(p.cover) : null;
+  if (!img) return <div className="flex size-full items-center justify-center bg-paper-2 text-[10px] text-stone">Sin foto</div>;
+  return <Image src={img.src} alt="" fill unoptimized={!img.optimize} sizes="80px" className="object-cover" />;
 }
 
 export default async function PropertiesPage({ searchParams }: PageProps<"/crm/propiedades">) {

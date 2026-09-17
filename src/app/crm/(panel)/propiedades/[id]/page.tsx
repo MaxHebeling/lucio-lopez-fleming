@@ -14,6 +14,7 @@ import { JsonView } from "@/components/crm/json-view";
 import { LEAD_STATUS, PROPERTY_STATUS_TONE, SYNC_STATUS } from "@/components/crm/labels";
 import { duplicateAction, markVerifiedAction } from "../actions";
 import { MediaManager } from "../_components/media-manager";
+import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
 
@@ -315,7 +316,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="multimedia" className="scroll-mt-28">
           <Card title="Multimedia">
-            <MediaManager propertyId={p.id} media={d.media} canManage={canMedia} />
+            <MediaManager propertyId={p.id} media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))} canManage={canMedia} />
           </Card>
         </section>
 
