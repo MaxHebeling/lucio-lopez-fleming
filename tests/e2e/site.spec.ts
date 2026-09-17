@@ -356,13 +356,18 @@ test("captación: «Quiero vender mi propiedad» crea un único lead sell_my_pro
     const form = page.locator("#vender form");
     await expect(form.getByRole("radio", { name: "Vender" })).toBeInViewport();
     await expect(form.getByRole("radio", { name: "Vender" })).toBeChecked();
+    // Paso a paso (flag owner_capture_steps): sin ubicación no avanza; sin teléfono ni email, error propio.
+    const next = form.getByRole("button", { name: "Siguiente" });
+    await next.click();
+    await expect(form.getByText("Contanos dónde está la propiedad")).toBeVisible();
+    await form.getByLabel("Barrio o localidad").fill("Villa San Lorenzo");
+    await next.click();
+    await form.getByRole("radiogroup", { name: "Tipo de propiedad" }).locator("label").nth(1).click();
+    for (let i = 0; i < 4; i++) await next.click();
     const submit = form.getByRole("button", { name: "Quiero vender mi propiedad" });
-    // Validación visible: sin ubicación el navegador no deja enviar; sin teléfono ni email, error propio.
     await form.getByLabel("Nombre y apellido").fill("Propietaria E2E");
-    await form.getByLabel("¿Dónde está?").fill("Villa San Lorenzo");
     await submit.click();
     await expect(form.getByText("Dejanos un teléfono o un email para responderte")).toBeVisible();
-    await form.getByLabel("Tipo de propiedad").selectOption({ index: 1 });
     await form.getByLabel("Email").fill(email);
     await form.getByLabel("Contanos algo más (opcional)").fill(`Casa con pileta ${stamp}`);
     await submit.dblclick();
