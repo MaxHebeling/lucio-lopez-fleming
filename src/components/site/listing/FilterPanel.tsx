@@ -1,17 +1,29 @@
 import type { Facets } from "@/server/properties/public";
 import type { SearchFilters } from "@/server/properties/public-helpers";
 
-type Props = { facets: Facets; filters: SearchFilters; action: string; lockOperation: boolean; lockType: boolean; idPrefix: string };
+type Props = {
+  facets: Facets;
+  filters: SearchFilters;
+  /** Tipo y localidad elegidos (con nombre) aunque hoy no tengan resultados: se muestran marcados y en 0, no desaparecen. */
+  selected?: { type: { key: string; plural: string } | null; zone: { slug: string; name: string } | null };
+  action: string;
+  lockOperation: boolean;
+  lockType: boolean;
+  idPrefix: string;
+};
 
 const MIN_OPTIONS = [1, 2, 3, 4, 5];
 
 /**
- * Filtros completos como formulario GET (URL compartible, funciona sin JS). Conteos en vivo desde la base.
+ * Filtros completos como formulario GET (URL compartible, funciona sin JS). Conteos en vivo desde la base, calculados
+ * dentro de la operación y el tipo elegidos: tipos, localidades, barrios y características sin resultados no se ofrecen.
  * Las claves que fija la ruta (p. ej. operación en /propiedades/venta) no se repiten en la URL.
  */
-export function FilterPanel({ facets, filters: f, action, lockOperation, lockType, idPrefix }: Props) {
+export function FilterPanel({ facets, filters: f, selected, action, lockOperation, lockType, idPrefix }: Props) {
   const id = (k: string) => `${idPrefix}-${k}`;
   const zoneForAreas = facets.zones.filter((z) => z.areas.length);
+  const missingType = selected?.type && !facets.types.some((t) => t.key === selected.type!.key) ? selected.type : null;
+  const missingZone = selected?.zone && !facets.zones.some((z) => z.slug === selected.zone!.slug) ? selected.zone : null;
   return (
     <form action={action} method="get" className="grid gap-6" aria-label="Filtros de búsqueda">
       <div>
@@ -48,6 +60,7 @@ export function FilterPanel({ facets, filters: f, action, lockOperation, lockTyp
           </label>
           <select id={id("tipo")} name="tipo" defaultValue={f.tipo ?? ""} className="field-control">
             <option value="">Todos</option>
+            {missingType ? <option value={missingType.key}>{missingType.plural} (0)</option> : null}
             {facets.types.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.plural} ({t.count})
@@ -64,6 +77,7 @@ export function FilterPanel({ facets, filters: f, action, lockOperation, lockTyp
           </label>
           <select id={id("zona")} name="zona" defaultValue={f.zona ?? ""} className="field-control">
             <option value="">Todas</option>
+            {missingZone ? <option value={missingZone.slug}>{missingZone.name} (0)</option> : null}
             {facets.zones.map((z) => (
               <option key={z.slug} value={z.slug}>
                 {z.name} ({z.count})

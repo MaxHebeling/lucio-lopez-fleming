@@ -18,6 +18,8 @@ export type MediaItem = {
   height: number | null;
   status: string;
   last_error: string | null;
+  /** Fuente calculada en el servidor (crmImageSource): optimizada cuando el optimizador puede leer el original. */
+  preview?: { src: string; optimize: boolean } | null;
 };
 
 const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/avif"];
@@ -280,14 +282,15 @@ export function MediaManager({ propertyId, media, canManage }: { propertyId: str
 }
 
 function MediaThumb({ item, position }: { item: MediaItem; position: number }) {
-  const src = item.file_id ? `/api/files/${item.file_id}` : item.source_url;
+  const src = item.preview?.src ?? (item.file_id ? `/api/files/${item.file_id}` : item.source_url);
+  const optimize = item.preview?.optimize ?? false;
   const alt = item.alt_text || `${KIND_LABEL[item.kind] ?? "Archivo"} ${position}`;
   if (!src || (item.kind !== "image" && item.kind !== "floor_plan")) {
     return <div className="flex aspect-[4/3] items-center justify-center bg-paper-2 text-xs text-stone">{KIND_LABEL[item.kind] ?? item.kind}</div>;
   }
   return (
     <div className="relative aspect-[4/3] bg-paper-2">
-      <Image src={src} alt={alt} fill unoptimized sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" className={item.kind === "floor_plan" ? "object-contain" : "object-cover"} />
+      <Image src={src} alt={alt} fill unoptimized={!optimize} sizes="(min-width: 1280px) 20rem, (min-width: 1024px) 36vw, (min-width: 640px) 45vw, 92vw" className={item.kind === "floor_plan" ? "object-contain" : "object-cover"} />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { monthLabel, todayInSalta } from "@/server/rentals/dates";
 import { EmptyState, Field, Input, PageHeader, buttonClass, cx, formatDate, formatMoney } from "@/components/ui";
 import { ObligationStatus } from "@/components/rentals/status";
 import { PaymentForm } from "../payment-form";
+import { ListLimitNotice } from "@/components/crm/list-limit-notice";
 
 export const metadata: Metadata = { title: "Cobros" };
 
@@ -66,7 +67,9 @@ export default async function ReceivablesPage({ searchParams }: PageProps<"/crm/
       {rows.length === 0 ? (
         <EmptyState title="No hay cuotas para cobrar en esta vista" description="Cuando haya cuotas pendientes o vencidas aparecen acá." />
       ) : (
-        <ul className="flex flex-col gap-3">
+        <>
+          <ListLimitNotice shown={rows.length} limit={500} noun="cuotas" />
+          <ul className="flex flex-col gap-3">
           {rows.map((r) => {
             const remaining = centsToString(toCents(r.amount) - toCents(r.paid_amount));
             return (
@@ -102,7 +105,8 @@ export default async function ReceivablesPage({ searchParams }: PageProps<"/crm/
               </li>
             );
           })}
-        </ul>
+          </ul>
+        </>
       )}
     </>
   );

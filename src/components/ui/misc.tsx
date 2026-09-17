@@ -60,10 +60,13 @@ export function Alert({ tone = "info", children }: { tone?: "info" | "danger" | 
   );
 }
 
-/** Tabla con scroll horizontal propio (la página nunca scrollea en horizontal). */
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * Tabla con scroll horizontal propio (la página nunca scrollea en horizontal). El contenedor es una región enfocable
+ * con nombre: quien navega con teclado puede desplazarla con las flechas (WCAG 2.1.1, axe scrollable-region-focusable).
+ */
+export function Table({ children, className, label }: { children: ReactNode; className?: string; label: string }) {
   return (
-    <div className={cx("relative max-w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white", className)}>
+    <div role="region" aria-label={label} tabIndex={0} className={cx("relative max-w-full min-w-0 overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brick", className)}>
       <table className="w-full min-w-[640px] text-left text-sm [&_td]:border-t [&_td]:border-line [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-stone">
         {children}
       </table>

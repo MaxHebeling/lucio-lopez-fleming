@@ -11,6 +11,7 @@ import { flatParams } from "@/components/crm/pagination";
 import { requireScope } from "../_shared/load";
 import { Board } from "./board";
 import { moveStageAction } from "./actions";
+import { ListLimitNotice } from "@/components/crm/list-limit-notice";
 
 export const metadata: Metadata = { title: "Pipeline" };
 
@@ -75,6 +76,7 @@ export default async function PipelinePage({ searchParams }: PageProps<"/crm/pip
               <EmptyState title="No hay oportunidades en este pipeline" description="Convertí un lead o creá una oportunidad desde un contacto." />
             </div>
           ) : null}
+          <ListLimitNotice shown={total} limit={500} noun="oportunidades" />
           <Board
             key={`${board.pipeline.key}-${sp.agente ?? ""}`}
             stages={board.pipeline.stages}

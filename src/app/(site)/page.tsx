@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { connection } from "next/server";
+import { cache } from "react";
 import { ArrowRight } from "lucide-react";
-import { getDb } from "@/server/db";
-import { getPublicFacets, getRecentProperties, getShowcaseProperties, getZoneShowcase } from "@/server/properties/public";
 import { telHref, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
+import { getSiteFacets, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
 import { CinematicHero } from "@/components/experience/CinematicHero";
 import { PropertyShowcase } from "@/components/experience/PropertyShowcase";
 import { StickyStory } from "@/components/experience/StickyStory";
@@ -22,9 +21,25 @@ import trabajoPlanos from "../../../public/brand/photos/trabajo-planos.jpg";
 import escritorio from "../../../public/brand/photos/oficina-escritorio.jpg";
 import modular from "../../../public/brand/photos/oficina-modular.jpg";
 
+/** ISR: el home se sirve desde caché y se regenera al invalidar (revalidatePublicSite) o cada 5 minutos como respaldo. */
+export const revalidate = 300;
+
+/** Portada del hero: foto a sangre, se prefieren las de ancho real conocido ≥ 1600 px (ver getShowcaseProperties). */
+const HERO_MIN_WIDTH = 1600;
+
+/**
+ * Datos del home, una sola vez por render (metadata y página comparten): facetas generales (total, zonas, tipos para
+ * tasación), facetas de venta (operación por defecto del buscador), showcase (hero + destacadas), zonas y recientes.
+ */
+const loadHome = cache(async () => {
+  const [info, facets, saleFacets, showcase] = await Promise.all([getSiteInfo(), getSiteFacets(), getSiteFacets("sale"), getSiteShowcase(7, HERO_MIN_WIDTH)]);
+  const [hero, ...featured] = showcase;
+  const [zones, recent] = await Promise.all([getSiteZoneShowcase(facets.zones, 5), getSiteRecent(10, showcase.map((p) => p.code))]);
+  return { info, facets, saleFacets, hero: hero ?? null, featured, zones, recent };
+});
+
 export async function generateMetadata(): Promise<Metadata> {
-  await connection();
-  const [hero] = await getShowcaseProperties(getDb(), 1);
+  const { hero } = await loadHome();
   return {
     ...pageMetadata({
       title: "Lucio López Fleming Inmobiliaria · Salta, desde 1974",
@@ -38,11 +53,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  await connection();
-  const db = getDb();
-  const [info, facets, showcase, zones] = await Promise.all([getSiteInfo(), getPublicFacets(db), getShowcaseProperties(db, 7), getZoneShowcase(db, 5)]);
-  const [hero, ...featured] = showcase;
-  const recent = await getRecentProperties(db, 10, showcase.map((p) => p.code));
+  const { info, facets, saleFacets, hero, featured, zones, recent } = await loadHome();
   const wa = whatsappHref(info.whatsappE164, "Hola, les escribo desde la web de Lucio López Fleming.");
   const year = info.foundedYear;
   const phoneHref = telHref(info.mainPhone);
@@ -55,10 +66,10 @@ export default async function HomePage() {
   return (
     <>
       <CinematicHero
-        property={hero ?? null}
+        property={hero}
         eyebrow="Inmobiliaria en Salta"
         titleLines={["Buenos negocios,", <em key="y">{year ? `desde ${year}.` : "en Salta."}</em>]}
-        search={<HeroSearch facets={facets} contact={heroContact} />}
+        search={<HeroSearch facets={saleFacets} total={facets.total} contact={heroContact} />}
       />
 
       <Manifesto foundedYear={year} />

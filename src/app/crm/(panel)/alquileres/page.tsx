@@ -7,6 +7,7 @@ import { listContracts } from "@/server/rentals/queries";
 import { CONTRACT_STATUS_LABEL, INDEX_LABEL } from "@/server/rentals/schema";
 import { Alert, ButtonLink, EmptyState, Field, Input, PageHeader, Select, Table, buttonClass, formatDate, formatMoney } from "@/components/ui";
 import { ContractStatus } from "@/components/rentals/status";
+import { ListLimitNotice } from "@/components/crm/list-limit-notice";
 
 export const metadata: Metadata = { title: "Contratos de alquiler" };
 
@@ -71,7 +72,8 @@ export default async function ContractsPage({ searchParams }: PageProps<"/crm/al
               <Alert tone="warning">Hay ajustes vencidos sin calcular por falta de valores de índice. Revisá la ficha de cada contrato marcado.</Alert>
             </div>
           ) : null}
-          <Table>
+          <ListLimitNotice shown={rows.length} limit={300} noun="contratos" />
+          <Table label="Contratos">
             <thead>
               <tr>
                 <th>Contrato</th>

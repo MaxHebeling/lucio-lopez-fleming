@@ -3,7 +3,8 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-const PORT = 3106;
+// E2E_PORT permite correr suites en paralelo desde distintos worktrees sin pisarse (por defecto 3106).
+const PORT = Number(process.env.E2E_PORT ?? 3106);
 
 /**
  * E2E del sitio público contra `next start` (build de producción) en :3106 y la base de .env.local (llf_dev_web,

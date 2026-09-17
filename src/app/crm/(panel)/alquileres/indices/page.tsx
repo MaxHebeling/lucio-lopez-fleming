@@ -120,7 +120,7 @@ export default async function IndicesPage() {
             <p className="text-sm text-stone">Necesitás el permiso de ajustes para cargar valores.</p>
           )}
           {data.monthly.length ? (
-            <Table className="mt-4">
+            <Table label="Índices cargados" className="mt-4">
               <thead>
                 <tr>
                   <th>Índice</th>
@@ -148,7 +148,7 @@ export default async function IndicesPage() {
 
       {data.recentDaily.length ? (
         <Card title="ICL y CER: una semana antes y después de hoy" className="mt-5">
-          <Table>
+          <Table label="ICL y CER alrededor de hoy">
             <thead>
               <tr>
                 <th>Fecha</th>

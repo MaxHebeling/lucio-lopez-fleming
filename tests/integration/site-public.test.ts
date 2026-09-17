@@ -15,6 +15,7 @@ import {
   searchPublicProperties,
 } from "@/server/properties/public";
 import { parseSearchFilters } from "@/server/properties/public-helpers";
+import { getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "@/server/properties/public-home";
 import { submitPublicLead } from "@/server/site/leads";
 import { loadSiteInfo } from "@/server/site/info";
 import { testDb } from "../helpers/db";
@@ -185,9 +186,10 @@ describe("DTOs públicos de propiedades", () => {
     // Fotos: sin la fallida, portada primero
     expect(r.property.photos).toHaveLength(9);
     expect(r.property.photos[0]!.url).toContain("-1.jpg");
-    expect(r.property.photos[2]!.alt).toBe("Casa en venta en Tres Cerritos — foto 3 de 9");
+    expect(r.property.photos[2]!.alt).toBe("Casa de 3 dormitorios en venta en Tres Cerritos — foto 3 de 9");
     expect(r.property.advisor).toEqual({ name: "Asesora Pública", whatsappE164: "+5493875000000" });
-    expect(r.property.headline).toBe("Casa en venta en Tres Cerritos");
+    // Titular con diferencial real (dormitorios cargados) para no repetir el de otras casas del mismo barrio
+    expect(r.property.headline).toBe("Casa de 3 dormitorios en venta en Tres Cerritos");
   });
 
   it("dirección pública (no oculta) sí muestra altura y coordenadas exactas; asesor sin perfil público no aparece", async () => {
@@ -220,6 +222,14 @@ describe("DTOs públicos de propiedades", () => {
     expect(await resolveLegacyPath(db, "/luciolopez-9001")).toBe("casa-venta-tres-cerritos-9001");
     expect(await resolveLegacyPath(db, "/luciolopez-9002")).toBeNull();
     expect(await resolveLegacyPath(db, "/luciolopez-1")).toBeNull();
+  });
+
+  it("sitio anterior: publicada → ficha; existió y no está publicada → búsqueda por tipo/operación/localidad; sin rastro → no existe", async () => {
+    const db = testDb();
+    expect(await resolveLegacyTarget(db, "/luciolopez-9001")).toEqual({ kind: "property", slug: "casa-venta-tres-cerritos-9001" });
+    expect(await resolveLegacyTarget(db, "/luciolopez-9002")).toEqual({ kind: "search", operation: "sale", typeKey: "casa", zoneSlug: "salta" });
+    expect(await resolveLegacyTarget(db, "/luciolopez-1")).toEqual({ kind: "not_found" });
+    expect(await resolveLegacyTarget(db, "/../x")).toEqual({ kind: "not_found" });
   });
 
   it("búsqueda: solo publicadas, filtros por operación/tipo/zona/precio, precio oculto no matchea rangos", async () => {
@@ -282,6 +292,35 @@ describe("DTOs públicos de propiedades", () => {
     expect(rent.total).toBe(1);
   });
 
+  it("facetas dentro de operación y tipo: zonas y total del tipo; tipos de la operación; operaciones del tipo", async () => {
+    const db = testDb();
+    const saleLand = await getPublicFacets(db, "sale", "terreno");
+    expect(saleLand.total).toBe(1);
+    expect(saleLand.zones.map((z) => [z.slug, z.count])).toEqual([["villa-san-lorenzo", 1]]);
+    expect(saleLand.types.map((t) => t.key).sort()).toEqual(["casa", "terreno"]);
+    expect(saleLand.operations).toEqual([{ slug: "venta", count: 1 }]);
+    const rentLand = await getPublicFacets(db, "rent", "terreno");
+    expect(rentLand.total).toBe(0);
+    expect(rentLand.zones).toEqual([]);
+  });
+
+  it("home: portada por zona en una consulta, sin repetir el conteo de facetas; combinaciones indexables con resultados", async () => {
+    const db = testDb();
+    const facets = await getPublicFacets(db);
+    const zones = await getZoneShowcase(db, facets, 5);
+    expect(zones.map((z) => [z.slug, z.count, Boolean(z.cover)])).toEqual([
+      ["salta", 2, true],
+      ["villa-san-lorenzo", 1, true],
+    ]);
+    expect(zones[0]!.cover?.url).toContain("static1.adinco.net");
+    expect(zones[0]!.cover?.alt).toBe("Propiedad publicada en Salta");
+    const combos = await listListingCombinations(db);
+    const key = (c: (typeof combos)[number]) => `${c.operation}|${c.typeKey ?? "-"}|${c.zoneSlug ?? "-"}|${c.count}`;
+    expect(combos.map(key).sort()).toEqual(
+      ["alquiler|-|salta|1", "alquiler|casa|-|1", "alquiler|casa|salta|1", "venta|-|salta|2", "venta|-|villa-san-lorenzo|1", "venta|casa|-|2", "venta|casa|salta|2", "venta|terreno|-|1", "venta|terreno|villa-san-lorenzo|1"].sort(),
+    );
+  });
+
   it("showcase: publicadas disponibles con ≥ 8 fotos verificadas, destacadas primero; recientes y similares sin vendidas", async () => {
     const db = testDb();
     const showcase = await getShowcaseProperties(db);
@@ -293,6 +332,15 @@ describe("DTOs públicos de propiedades", () => {
     const similar = await getSimilarProperties(db, detail.property);
     expect(similar.map((s) => s.code)).toContain(9001);
     expect(similar.map((s) => s.code)).not.toContain(9002);
+  });
+
+  it("cambios de propiedades fuera de la UI invalidan el sitio: automatizaciones de sistema activas con su acción registrada", async () => {
+    const { getAction } = await import("@/server/automation/actions");
+    await import("@/server/site/revalidate");
+    const defs = await testDb().selectFrom("automation_definitions").select(["trigger_event", "is_enabled", "is_system", "actions"]).where("key", "like", "site_revalidate_%").execute();
+    expect(defs.map((d) => d.trigger_event).sort()).toEqual(["property.price_changed", "property.published", "property.status_changed", "property.unpublished", "property.updated"]);
+    expect(defs.every((d) => d.is_enabled && d.is_system && JSON.stringify(d.actions) === '[{"type":"revalidate_public_site"}]')).toBe(true);
+    expect(getAction("revalidate_public_site")).toBeTypeOf("function");
   });
 
   it("sitemap solo incluye publicadas", async () => {

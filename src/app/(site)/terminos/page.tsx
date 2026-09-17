@@ -3,7 +3,7 @@ import Link from "next/link";
 import { pageMetadata } from "@/components/site/seo";
 import { LegalPage } from "../legal";
 
-export const metadata: Metadata = pageMetadata({ title: "Términos de uso", description: "Condiciones de uso del sitio web de Lucio López Fleming Inmobiliaria.", path: "/terminos" });
+export const metadata: Metadata = pageMetadata({ title: "Términos de uso", description: "Condiciones de uso del sitio de Lucio López Fleming Inmobiliaria: información de propiedades, ubicaciones, formularios y propiedad intelectual.", path: "/terminos" });
 
 export default function TerminosPage() {
   return (

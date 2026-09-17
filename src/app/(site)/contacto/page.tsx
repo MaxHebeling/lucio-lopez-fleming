@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import { Mail, Phone } from "lucide-react";
 import { telHref, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
@@ -14,8 +13,10 @@ export const metadata: Metadata = pageMetadata({
   path: "/contacto",
 });
 
+/** ISR: se sirve desde caché; se regenera al invalidar el sitio (sedes, conteos) o a los 5 minutos. */
+export const revalidate = 300;
+
 export default async function ContactoPage() {
-  await connection();
   const info = await getSiteInfo();
   const wa = whatsappHref(info.whatsappE164, "Hola, les escribo desde la web de Lucio López Fleming.");
   return (

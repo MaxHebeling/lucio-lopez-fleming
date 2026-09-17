@@ -15,3 +15,4 @@ import "../marketing/publish";
 import "../media/copy";
 import "../rentals/jobs";
 import "../properties/media";
+import "../site/revalidate";

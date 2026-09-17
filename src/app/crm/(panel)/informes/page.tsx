@@ -32,7 +32,7 @@ export default async function ReportsPage() {
       {reports.length === 0 ? (
         <EmptyState title="Todavía no hay informes" description="Generá el primero eligiendo propietario y período." />
       ) : (
-        <Table>
+        <Table label="Informes">
           <thead>
             <tr>
               <th>Propietario</th>

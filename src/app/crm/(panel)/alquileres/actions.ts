@@ -16,6 +16,7 @@ import { changeOwnerEmail, inviteOwner, setOwnerAccessActive } from "@/server/ow
 import { searchContacts } from "@/server/rentals/queries";
 import { getActor } from "@/server/next/context";
 import { requirePermission } from "@/server/auth/actor";
+import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
 import {
   cancelSettlementSchema,
   createContractSchema,
@@ -57,6 +58,8 @@ export async function createContractAction(_prev: FormState, fd: FormData): Prom
 
 export async function activateContractAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const r = await runAction("rentals.activate", uuid, { id: fd.get("id") }, (d, actor) => activateContract(getDb(), actor, d.id));
+  // Activar puede marcar la propiedad como alquilada: el sitio público se actualiza en el momento.
+  if (r.ok && r.data.propertyMarkedRented) revalidatePublicSiteInRequest();
   return toState(r, (d) => `Contrato activado: ${d.obligations} cuotas generadas${d.propertyMarkedRented ? " y propiedad marcada como alquilada" : ""}.`);
 }
 

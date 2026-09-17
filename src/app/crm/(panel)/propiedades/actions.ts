@@ -20,6 +20,13 @@ import { listLocationChildren, searchOwnerCandidates } from "@/server/properties
 import { createLocation, createLocationSchema } from "@/server/properties/locations";
 import { deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText } from "@/server/properties/media";
 import { markPropertyVerified } from "@/server/migration/review";
+import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
+
+/** Después de un cambio que se ve en el sitio público: refresca esta vista del CRM e invalida la caché del sitio. */
+function refreshAndRevalidateSite() {
+  refresh();
+  revalidatePublicSiteInRequest();
+}
 
 const id = z.uuid();
 const reason = z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().trim().max(500).nullable().optional());
@@ -33,7 +40,7 @@ export async function createPropertyAction(input: unknown) {
 
 export async function updatePropertyAction(propertyId: string, input: unknown) {
   const r = await runAction("properties.update", z.object({ id, data: updatePropertySchema }), { id: propertyId, data: input }, (d, actor) => updateProperty(getDb(), actor, d.id, d.data));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return prefixFieldErrors(r, "data.");
 }
 
@@ -41,25 +48,25 @@ export async function changePriceAction(propertyId: string, input: unknown) {
   const schema = z.object({ id, op: operationInputSchema, reason });
   const raw = (input ?? {}) as Record<string, unknown>;
   const r = await runAction("properties.change_price", schema, { id: propertyId, op: raw, reason: raw.reason }, (d, actor) => changePrice(getDb(), actor, d.id, d.op, d.reason));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return prefixFieldErrors(r, "op.");
 }
 
 export async function changeStatusAction(propertyId: string, to: string, why: string | null) {
   const r = await runAction("properties.change_status", z.object({ id, to: z.enum(PROPERTY_STATUSES), reason }), { id: propertyId, to, reason: why }, (d, actor) => changeStatus(getDb(), actor, d.id, d.to, d.reason));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
 export async function publishAction(propertyId: string) {
   const r = await runAction("properties.publish", id, propertyId, (d, actor) => publishProperty(getDb(), actor, d));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
 export async function unpublishAction(propertyId: string, why: string | null) {
   const r = await runAction("properties.unpublish", z.object({ id, reason }), { id: propertyId, reason: why }, (d, actor) => unpublishProperty(getDb(), actor, d.id, d.reason));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
@@ -73,7 +80,7 @@ export async function duplicateAction(propertyId: string) {
 export async function assignAgentsAction(propertyId: string, leadUserId: string | null, supportUserIds: string[]) {
   const schema = z.object({ id, lead: id.nullable(), support: z.array(id).max(20) });
   const r = await runAction("properties.assign_agents", schema, { id: propertyId, lead: leadUserId || null, support: supportUserIds }, (d, actor) => assignAgents(getDb(), actor, d.id, d.lead, d.support));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
@@ -103,25 +110,25 @@ export async function createLocationAction(input: unknown) {
 
 export async function reorderMediaAction(propertyId: string, ids: string[]) {
   const r = await runAction("properties.media.reorder", z.object({ id, ids: z.array(id).max(200) }), { id: propertyId, ids }, (d, actor) => reorderPropertyMedia(getDb(), actor, d.id, d.ids));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
 export async function setCoverAction(propertyId: string, mediaId: string) {
   const r = await runAction("properties.media.cover", z.object({ id, mediaId: id }), { id: propertyId, mediaId }, (d, actor) => setPropertyCover(getDb(), actor, d.id, d.mediaId));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
 export async function altTextAction(propertyId: string, mediaId: string, altText: string) {
   const r = await runAction("properties.media.alt", z.object({ id, mediaId: id, altText: z.string().max(1000) }), { id: propertyId, mediaId, altText }, (d, actor) => updateMediaAltText(getDb(), actor, d.id, d.mediaId, d.altText));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 
 export async function deleteMediaAction(propertyId: string, mediaId: string) {
   const r = await runAction("properties.media.delete", z.object({ id, mediaId: id }), { id: propertyId, mediaId }, (d, actor) => deletePropertyMedia(getDb(), actor, d.id, d.mediaId));
-  if (r.ok) refresh();
+  if (r.ok) refreshAndRevalidateSite();
   return r;
 }
 

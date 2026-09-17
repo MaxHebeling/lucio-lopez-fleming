@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { connection } from "next/server";
 import { ArrowRight } from "lucide-react";
-import { getDb } from "@/server/db";
-import { getPublicFacets } from "@/server/properties/public";
 import { plural } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
+import { getSiteFacets } from "@/server/site/public-data";
 import { Reveal, SurveyLine, TextReveal } from "@/components/experience/Reveal";
 import { Offices } from "@/components/site/home/Offices";
 import { pageMetadata } from "@/components/site/seo";
@@ -20,9 +18,11 @@ export const metadata: Metadata = pageMetadata({
   path: "/empresa",
 });
 
+/** ISR: se sirve desde caché; se regenera al invalidar el sitio (sedes, conteos) o a los 5 minutos. */
+export const revalidate = 300;
+
 export default async function EmpresaPage() {
-  await connection();
-  const [info, facets] = await Promise.all([getSiteInfo(), getPublicFacets(getDb())]);
+  const [info, facets] = await Promise.all([getSiteInfo(), getSiteFacets()]);
   const year = info.foundedYear;
   return (
     <>

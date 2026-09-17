@@ -28,10 +28,8 @@ export function Offices({ branches, headingLevel = 2 }: { branches: PublicBranch
                 {b.schedule ? (
                   <li className="flex gap-2.5">
                     <Clock aria-hidden className="mt-0.5 size-5 shrink-0 text-brick" strokeWidth={1.6} />
-                    <span>
-                      <span className="sr-only">Horario: </span>
-                      {/^\d/.test(b.schedule) ? `Horario: ${b.schedule} h` : b.schedule}
-                    </span>
+                    {/* Un horario sin días ("16 a 19") se rotula visible; uno con días ya se entiende solo. Un único "Horario:" para lectores. */}
+                    {/^\d/.test(b.schedule) ? <span>Horario: {b.schedule} h</span> : <span><span className="sr-only">Horario: </span>{b.schedule}</span>}
                   </li>
                 ) : null}
                 {b.phone && telHref(b.phone) ? (

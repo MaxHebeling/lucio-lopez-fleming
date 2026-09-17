@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/server/db";
 import { runAction } from "@/server/next/action";
+import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
 import { inviteUser, inviteUserSchema, resendInvite, setUserActive, setUserBranches, setUserRoles, updateUserProfile, updateUserProfileSchema } from "@/server/users/service";
 
 const id = z.uuid();
@@ -18,7 +19,10 @@ export async function inviteUserAction(input: unknown) {
 
 export async function updateUserProfileAction(userId: string, input: unknown) {
   const r = await runAction("users.update", updateUserProfileSchema, input, (d, actor) => updateUserProfile(getDb(), actor, userId, d));
-  if (r.ok) refresh();
+  if (r.ok) {
+    refresh();
+    revalidatePublicSiteInRequest(); // nombre y WhatsApp del asesor se muestran en las fichas
+  }
   return r;
 }
 
@@ -36,7 +40,10 @@ export async function setUserBranchesAction(userId: string, branchIds: string[])
 
 export async function setUserActiveAction(userId: string, active: boolean) {
   const r = await runAction("users.active", z.object({ id, active: z.boolean() }), { id: userId, active }, (d, actor) => setUserActive(getDb(), actor, d.id, d.active));
-  if (r.ok) refresh();
+  if (r.ok) {
+    refresh();
+    revalidatePublicSiteInRequest(); // nombre y WhatsApp del asesor se muestran en las fichas
+  }
   return r;
 }
 

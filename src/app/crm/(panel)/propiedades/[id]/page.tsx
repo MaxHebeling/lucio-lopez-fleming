@@ -15,6 +15,7 @@ import { JsonView } from "@/components/crm/json-view";
 import { LEAD_STATUS, PROPERTY_STATUS_TONE, SYNC_STATUS } from "@/components/crm/labels";
 import { duplicateAction, markVerifiedAction } from "../actions";
 import { MediaManager } from "../_components/media-manager";
+import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
 
@@ -241,7 +242,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           <Card title="Precios">
             <div className="flex flex-col gap-5">
               {d.operations.length ? (
-                <Table>
+                <Table label="Precios">
                   <thead>
                     <tr>
                       <th scope="col">Operación</th>
@@ -325,7 +326,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="multimedia" className="scroll-mt-28">
           <Card title="Multimedia">
-            <MediaManager propertyId={p.id} media={d.media} canManage={canMedia} />
+            <MediaManager propertyId={p.id} media={d.media.map((m) => ({ ...m, preview: crmImageSource(m) }))} canManage={canMedia} />
           </Card>
         </section>
 
@@ -377,7 +378,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="publicaciones" className="scroll-mt-28">
           <Card title="Publicaciones por canal">
-            <Table>
+            <Table label="Publicaciones por canal">
               <thead>
                 <tr>
                   <th scope="col">Canal</th>
@@ -419,7 +420,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           <section id="leads" className="scroll-mt-28">
             <Card title="Leads relacionados">
               {d.leads.length ? (
-                <Table>
+                <Table label="Leads relacionados">
                   <thead>
                     <tr>
                       <th scope="col">Contacto</th>

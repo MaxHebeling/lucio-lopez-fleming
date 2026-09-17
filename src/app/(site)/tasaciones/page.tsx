@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { connection } from "next/server";
 import { Phone } from "lucide-react";
-import { getDb } from "@/server/db";
-import { getPublicFacets } from "@/server/properties/public";
 import { telHref, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
+import { getSiteFacets } from "@/server/site/public-data";
 import { LeadForm } from "@/components/site/LeadForm";
 import { WhatsAppIcon } from "@/components/site/icons";
 import { pageMetadata } from "@/components/site/seo";
@@ -17,9 +15,11 @@ export const metadata: Metadata = pageMetadata({
   path: "/tasaciones",
 });
 
+/** ISR: se sirve desde caché; se regenera al invalidar el sitio (sedes, conteos) o a los 5 minutos. */
+export const revalidate = 300;
+
 export default async function TasacionesPage() {
-  await connection();
-  const [info, facets] = await Promise.all([getSiteInfo(), getPublicFacets(getDb())]);
+  const [info, facets] = await Promise.all([getSiteInfo(), getSiteFacets()]);
   const wa = whatsappHref(info.whatsappE164, "Hola, quiero pedir una tasación.");
   const phone = telHref(info.mainPhone);
   return (

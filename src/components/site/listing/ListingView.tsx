@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, LayoutGrid, List, X } from "lucide-react";
-import { getDb } from "@/server/db";
-import { getPublicFacets, getPublicType, getRecentProperties, getZoneName, searchPublicProperties, type PublicPropertyCard } from "@/server/properties/public";
+import type { PublicPropertyCard } from "@/server/properties/public";
+import { getSiteFacets, getSiteRecent, getSiteType, getSiteZoneName } from "@/server/site/public-data";
 import {
   OPERATION_SLUGS,
   SORTS,
@@ -16,23 +16,15 @@ import { PriceBlock, Specs, StatusBadge } from "../property-bits";
 import { JsonLd } from "../JsonLd";
 import { siteUrl } from "../seo";
 import { FilterPanel } from "./FilterPanel";
-import { MobileFilters } from "./MobileFilters";
+import { FiltersButton, FiltersShell } from "./MobileFilters";
 import { SortSelect } from "./SortSelect";
+import { listingTitle, searchListing, type ListingPreset } from "./listing-page";
 import Image from "next/image";
 
-export type ListingPreset = { basePath: string; lock: Array<keyof SearchFilters>; eyebrow: string };
+export type { ListingPreset } from "./listing-page";
 
-/** Título dinámico real: "Casas en venta en Villa San Lorenzo". */
-export async function listingTitle(f: SearchFilters): Promise<string> {
-  const db = getDb();
-  const [type, zone] = await Promise.all([f.tipo ? getPublicType(db, f.tipo) : null, getZoneName(db, f.zona, f.barrio)]);
-  let t = type ? type.plural : "Propiedades";
-  if (f.operacion === "venta") t += " en venta";
-  else if (f.operacion === "alquiler") t += " en alquiler";
-  else if (f.operacion === "temporario") t += " en alquiler temporario";
-  t += zone ? ` en ${zone}` : " en Salta";
-  return t;
-}
+/** `sizes` de la grilla: 1 columna (gutter a cada lado) → 2 → con panel lateral 2 → 3; el contenedor tope es 1440 px. */
+const GRID_SIZES = "(min-width: 1440px) 330px, (min-width: 1280px) 24vw, (min-width: 1024px) 36vw, (min-width: 640px) 46vw, 90vw";
 
 function chipLabel(k: keyof SearchFilters, f: SearchFilters, names: { type: string | null; zone: string | null; area: string | null }): string | null {
   const money = (n: number) => new Intl.NumberFormat("es-AR").format(n);
@@ -70,11 +62,11 @@ function chipLabel(k: keyof SearchFilters, f: SearchFilters, names: { type: stri
   }
 }
 
-function ListRow({ p }: { p: PublicPropertyCard }) {
+function ListRow({ p, preload = false }: { p: PublicPropertyCard; preload?: boolean }) {
   return (
     <article className="card grid gap-4 border-b border-line pb-6 sm:grid-cols-[minmax(0,17rem)_1fr] sm:gap-6">
       <div className="media-frame relative aspect-[4/3] overflow-hidden rounded-[var(--radius-lg)] bg-paper-2">
-        {p.cover ? <Image src={p.cover.url} alt={p.cover.alt} fill sizes="(min-width: 640px) 17rem, 92vw" className="card-img object-cover" /> : null}
+        {p.cover ? <Image src={p.cover.url} alt={p.cover.alt} fill sizes="(min-width: 640px) 17rem, 90vw" className="card-img object-cover" loading={preload ? "eager" : "lazy"} fetchPriority={preload ? "high" : undefined} /> : null}
         <StatusBadge status={p.status} className="absolute left-3 top-3" />
       </div>
       <div className="flex flex-col">
@@ -96,15 +88,15 @@ function ListRow({ p }: { p: PublicPropertyCard }) {
 }
 
 export async function ListingView({ filters: f, preset, view }: { filters: SearchFilters; preset: ListingPreset; view: "grilla" | "lista" }) {
-  const db = getDb();
   const op = f.operacion ? OPERATION_SLUGS[f.operacion] : undefined;
+  // Facetas dentro de la operación y el tipo vigentes: el panel no ofrece combinaciones sin resultados.
   const [result, facets, title, type, zoneName, areaName] = await Promise.all([
-    searchPublicProperties(db, f),
-    getPublicFacets(db, op),
+    searchListing(f),
+    getSiteFacets(op, f.tipo),
     listingTitle(f),
-    f.tipo ? getPublicType(db, f.tipo) : null,
-    f.zona ? getZoneName(db, f.zona) : null,
-    f.barrio ? getZoneName(db, f.zona, f.barrio) : null,
+    f.tipo ? getSiteType(f.tipo) : null,
+    f.zona ? getSiteZoneName(f.zona) : null,
+    f.barrio ? getSiteZoneName(f.zona, f.barrio) : null,
   ]);
   const omit = preset.lock;
   const href = (patch: Partial<SearchFilters>, extra: Record<string, string> = {}) => {
@@ -125,10 +117,10 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
   const featureNames = new Map(facets.features.map((x) => [x.key, x.name]));
   const sortHrefs = Object.fromEntries(SORTS.map((s) => [s, href({ orden: s, pagina: 1 }, viewExtra)])) as Record<SortKey, string>;
   const empty = result.total === 0;
-  const suggestions = empty ? await getRecentProperties(db, 3) : [];
+  const suggestions = empty ? await getSiteRecent(3) : [];
   const base = siteUrl();
 
-  const panel = (idPrefix: string) => <FilterPanel facets={facets} filters={f} action={preset.basePath} lockOperation={omit.includes("operacion")} lockType={omit.includes("tipo")} idPrefix={idPrefix} />;
+  const selected = { type: f.tipo && type ? { key: f.tipo, plural: type.plural } : null, zone: f.zona && zoneName ? { slug: f.zona, name: zoneName } : null };
 
   return (
     <div className="container-site pb-24 pt-8 lg:pt-12">
@@ -188,16 +180,15 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
       </header>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[18.5rem_1fr] xl:grid-cols-[20rem_1fr]">
-        <aside className="hidden lg:block" aria-label="Filtros">
-          <div className="sticky top-[calc(var(--header-h)+1.5rem)] max-h-[calc(100svh-var(--header-h)-3rem)] overflow-y-auto overscroll-contain pb-4 pr-2" data-lenis-prevent>
-            {panel("f")}
-          </div>
-        </aside>
+        {/* Un solo panel: columna lateral en desktop y diálogo a pantalla completa en mobile (sin JS, bloque visible). */}
+        <FiltersShell>
+          <FilterPanel facets={facets} filters={f} selected={selected} action={preset.basePath} lockOperation={omit.includes("operacion")} lockType={omit.includes("tipo")} idPrefix="f" />
+        </FiltersShell>
 
         <section aria-labelledby="resultados-conteo" className="min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="lg:hidden">
-              <MobileFilters count={nActive}>{panel("fm")}</MobileFilters>
+              <FiltersButton count={nActive} />
             </div>
             <form action={preset.basePath} method="get" className="flex items-center gap-2">
               {Object.entries(Object.fromEntries(new URLSearchParams(filtersToQuery({ ...f, orden: undefined, pagina: 1 }, omit).replace(/^\?/, "")))).map(([k, v]) => (
@@ -279,9 +270,9 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
             </div>
           ) : view === "lista" ? (
             <ul className="mt-8 grid gap-6">
-              {result.items.map((p) => (
+              {result.items.map((p, i) => (
                 <li key={p.code}>
-                  <ListRow p={p} />
+                  <ListRow p={p} preload={i === 0} />
                 </li>
               ))}
             </ul>
@@ -289,7 +280,7 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
             <ul className="mt-8 grid gap-x-6 gap-y-12 sm:grid-cols-2 xl:grid-cols-3">
               {result.items.map((p, i) => (
                 <li key={p.code}>
-                  <PropertyCard p={p} headingLevel={2} eager={i < 2} sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 34vw, (min-width: 640px) 46vw, 92vw" />
+                  <PropertyCard p={p} headingLevel={2} eager={i < 2} preload={i === 0} sizes={GRID_SIZES} />
                 </li>
               ))}
             </ul>
