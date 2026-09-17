@@ -5,7 +5,9 @@ import { addNote } from "@/server/notes/service";
 import { logOutreach } from "@/server/activities/outreach";
 import { captureLead } from "@/server/leads/capture";
 import { AppError } from "@/server/errors";
-import { createStaff, testDb } from "../helpers/db";
+import { createStaff, testDb, testSystemActor } from "../helpers/db";
+import { getLeadDetail } from "@/server/leads/queries";
+import { createManualLead } from "@/server/leads/service";
 import { key, uniqueEmail, uniquePhone } from "../helpers/crm";
 
 describe("contactos: alta, edición y búsqueda", () => {
@@ -122,5 +124,87 @@ describe("contactos: alta, edición y búsqueda", () => {
     expect(timeline.map((t) => t.title)).toContain("WhatsApp abierto desde el CRM");
     const actions = (await db.selectFrom("audit_logs").select("action").where("entity_id", "=", r.id).orderBy("id").execute()).map((a) => a.action);
     expect(actions).toEqual(["CONTACT_CREATED", "CONTACT_UPDATED", "CONTACT_ROLES_CHANGED", "CONTACT_TAGS_CHANGED", "CONTACT_PHONE_ADDED", "NOTE_ADDED", "OUTREACH_LOGGED", "CONTACT_PHONE_REMOVED"]);
+  });
+});
+
+describe("capturas anónimas no contaminan contactos existentes", () => {
+  it("ataque: teléfono del propietario + email del atacante por la web → el email NO queda en la ficha; va al lead para revisión", async () => {
+    const db = testDb();
+    const admin = await createStaff(db, ["administrador"]);
+    const phone = uniquePhone();
+    const ownerEmail = uniqueEmail("propietario");
+    const owner = await createContact(db, admin, { firstName: "Rosa", lastName: "Propietaria", emails: [{ email: ownerEmail }], phones: [{ phone }], roles: ["owner"], idempotencyKey: key() });
+    const anon = { kind: "anonymous" as const, organizationId: admin.organizationId };
+
+    const attackerEmail = uniqueEmail("atacante");
+    const attackerPhone = uniquePhone();
+    const lead = await captureLead(db, anon, { name: "Otro Nombre", phone, email: attackerEmail, sourceKey: "web_appraisal", operationInterest: "sell_my_property" });
+    expect(lead.contactId).toBe(owner.id);
+    const emails = await db.selectFrom("contact_emails").select("email_normalized").where("contact_id", "=", owner.id).execute();
+    expect(emails.map((e) => e.email_normalized)).toEqual([ownerEmail]);
+    const contact = await db.selectFrom("contacts").select("display_name").where("id", "=", owner.id).executeTakeFirstOrThrow();
+    expect(contact.display_name).toBe("Rosa Propietaria");
+    const row = await db.selectFrom("leads").select(["submitted_email", "submitted_phone"]).where("id", "=", lead.leadId).executeTakeFirstOrThrow();
+    expect(row).toEqual({ submitted_email: attackerEmail, submitted_phone: null });
+    const warning = await db.selectFrom("activities").select(["kind", "metadata"]).where("entity_id", "=", owner.id).where("kind", "=", "unverified_contact_data").executeTakeFirstOrThrow();
+    expect(warning.metadata).toMatchObject({ leadId: lead.leadId });
+
+    // Al revés: email del propietario + teléfono del atacante → el teléfono no se agrega
+    const byEmail = await captureLead(db, anon, { name: "Rosa", email: ownerEmail, phone: attackerPhone, phoneIsWhatsapp: true, sourceKey: "web_contact" });
+    expect(byEmail.contactId).toBe(owner.id);
+    const phones = await db.selectFrom("contact_phones").select(["phone_e164", "is_whatsapp"]).where("contact_id", "=", owner.id).execute();
+    expect(phones).toHaveLength(1);
+    expect(phones[0]!.is_whatsapp).toBe(false);
+    expect((await db.selectFrom("leads").select("submitted_phone").where("id", "=", byEmail.leadId).executeTakeFirstOrThrow()).submitted_phone).toMatch(/^\+54/);
+    // Un "quiero vender" anónimo no marca como propietario a un contacto existente
+    const buyerPhone = uniquePhone();
+    const buyer = await createContact(db, admin, { firstName: "Comprador", phones: [{ phone: buyerPhone }], roles: ["buyer"], idempotencyKey: key() });
+    await captureLead(db, anon, { name: "Comprador", phone: buyerPhone, sourceKey: "web_appraisal", operationInterest: "sell_my_property" });
+    const roles = await db.selectFrom("contact_roles").select("role").where("contact_id", "=", buyer.id).execute();
+    expect(roles.map((r) => r.role)).toEqual(["buyer"]);
+
+    // La ficha del lead muestra los datos enviados sin verificar
+    const detail = await getLeadDetail(db, admin, lead.leadId);
+    expect(detail.lead.submitted_email).toBe(attackerEmail);
+  });
+
+  it("captura legítima de un contacto nuevo guarda nombre, email y teléfono; un contacto nuevo que coincide con datos sin verificar queda como candidato a duplicado", async () => {
+    const db = testDb();
+    const admin = await createStaff(db, ["administrador"]);
+    const anon = { kind: "anonymous" as const, organizationId: admin.organizationId };
+    const phone = uniquePhone();
+    const email = uniqueEmail("nueva");
+    const r = await captureLead(db, anon, { name: "Nueva Consulta", phone, email, sourceKey: "web_contact" });
+    expect((await db.selectFrom("contact_emails").select("email_normalized").where("contact_id", "=", r.contactId).execute()).map((e) => e.email_normalized)).toEqual([email]);
+    expect(await db.selectFrom("contact_phones").select("id").where("contact_id", "=", r.contactId).execute()).toHaveLength(1);
+    expect((await db.selectFrom("leads").select(["submitted_email", "submitted_phone"]).where("id", "=", r.leadId).executeTakeFirstOrThrow())).toEqual({ submitted_email: null, submitted_phone: null });
+
+    // Vuelve con otro email desde el mismo teléfono: queda en el lead; si luego escribe solo con ese email, el contacto
+    // nuevo aparece como posible duplicado del anterior (revisión humana, nunca fusión automática)
+    const otherEmail = uniqueEmail("nueva-otro");
+    await captureLead(db, anon, { name: "Nueva Consulta", phone, email: otherEmail, sourceKey: "web_property" });
+    const later = await captureLead(db, anon, { name: "Nueva Consulta", email: otherEmail, sourceKey: "web_contact" });
+    expect(later.contactId).not.toBe(r.contactId);
+    const candidates = await listDuplicateCandidates(db, admin);
+    expect(candidates.some((c) => [c.a_id, c.b_id].includes(r.contactId) && [c.a_id, c.b_id].includes(later.contactId))).toBe(true);
+  });
+
+  it("carga del equipo sí agrega el email/teléfono nuevo al contacto existente; WhatsApp (número verificado por Meta) marca el teléfono", async () => {
+    const db = testDb();
+    const agent = await createStaff(db, ["agente"]);
+    const phone = uniquePhone();
+    const existing = await createContact(db, agent, { firstName: "Pablo", lastName: "Existente", phones: [{ phone }], idempotencyKey: key() });
+    const newEmail = uniqueEmail("pablo");
+    const r = await createManualLead(db, agent, { name: "Pablo Existente", phone, email: newEmail, sourceKey: "phone", idempotencyKey: key() });
+    expect(r.contactId).toBe(existing.id);
+    expect((await db.selectFrom("contact_emails").select("email_normalized").where("contact_id", "=", existing.id).execute()).map((e) => e.email_normalized)).toEqual([newEmail]);
+    expect((await db.selectFrom("leads").select("submitted_email").where("id", "=", r.leadId).executeTakeFirstOrThrow()).submitted_email).toBeNull();
+
+    const system = await testSystemActor(db);
+    await captureLead(db, system, { name: "Pablo", phone: `+549${phone}`, phoneIsWhatsapp: true, email: uniqueEmail("chat"), sourceKey: "whatsapp" });
+    const phones = await db.selectFrom("contact_phones").select("is_whatsapp").where("contact_id", "=", existing.id).execute();
+    expect(phones).toEqual([{ is_whatsapp: true }]);
+    // El email escrito en el chat no está verificado: no se agrega
+    expect(await db.selectFrom("contact_emails").select("id").where("contact_id", "=", existing.id).execute()).toHaveLength(1);
   });
 });

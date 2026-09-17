@@ -6,7 +6,7 @@ import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { getLeadDetail } from "@/server/leads/queries";
 import { listPipelines, listStaffUsers } from "@/server/crm/lookups";
-import { Badge, ButtonLink, Card, PageHeader, formatDateTime } from "@/components/ui";
+import { Alert, Badge, ButtonLink, Card, PageHeader, formatDateTime } from "@/components/ui";
 import { ContactButtons } from "@/components/crm/contact-actions";
 import { NotesSection } from "@/components/crm/notes-section";
 import { INTEREST_LABEL, LEAD_STATUS_LABEL, LEAD_STATUS_TONE, OPP_STATUS_LABEL, PRIORITY_LABEL, PRIORITY_TONE } from "@/components/crm/labels";
@@ -87,6 +87,30 @@ export default async function LeadPage({ params }: PageProps<"/crm/leads/[id]">)
               </p>
             </div>
           </Card>
+
+          {lead.submitted_email || lead.submitted_phone ? (
+            <Alert tone="warning">
+              <p className="font-semibold">Datos de contacto enviados sin verificar</p>
+              <p className="mt-1">
+                Esta consulta llegó por un canal no verificado con datos que no están en la ficha de {d.contact.display_name}. Pueden ser de otra
+                persona: confirmalos antes de usarlos o de agregarlos al contacto.
+              </p>
+              <dl className="mt-2 grid gap-1 sm:grid-cols-2">
+                {lead.submitted_email ? (
+                  <div>
+                    <dt className="text-xs">Email enviado</dt>
+                    <dd className="break-all">{lead.submitted_email}</dd>
+                  </div>
+                ) : null}
+                {lead.submitted_phone ? (
+                  <div>
+                    <dt className="text-xs">Teléfono enviado</dt>
+                    <dd>{lead.submitted_phone}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </Alert>
+          ) : null}
 
           <Card title="Consulta">
             <dl className="grid gap-3 text-sm sm:grid-cols-2">

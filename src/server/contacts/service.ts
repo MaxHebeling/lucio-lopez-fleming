@@ -2,6 +2,11 @@
  * Contactos únicos. Toda captura (web, WhatsApp, portales, importación, carga manual) pasa por
  * `resolveContactForCapture`: coincidencia exacta de email o teléfono normalizado → mismo contacto;
  * coincidencias ambiguas → se crea uno nuevo y se registra un candidato a duplicado para revisión humana.
+ *
+ * Confianza: solo una carga del equipo (staff) agrega emails/teléfonos NUEVOS a un contacto que ya existía.
+ * Una captura anónima o de un canal no verificado (web, portales, email escrito en un chat) no puede "colgar" su email
+ * o teléfono de la ficha de otra persona (se usarían luego para invitaciones y recordatorios): esos datos se devuelven en
+ * `unverified` para guardarlos en el lead y revisarlos a mano. Excepción: el número de WhatsApp (lo verifica Meta).
  */
 import { sql, type Database, type Executor, type Tx } from "../db";
 import { audit } from "../audit";
@@ -21,6 +26,21 @@ export type CaptureContactInput = {
 };
 
 export type ContactMatch = { contactId: string; by: "email" | "phone" };
+
+export type CaptureContactResult = {
+  contactId: string;
+  created: boolean;
+  /** Datos enviados que NO se agregaron al contacto existente por venir de una fuente no verificada. */
+  unverified: { email: string | null; phone: string | null };
+};
+
+/** Quién puede agregar datos de contacto nuevos a una ficha existente. */
+function captureTrust(actor: Actor, input: CaptureContactInput): { email: boolean; phone: boolean } {
+  if (actor.kind === "staff") return { email: true, phone: true };
+  // El número de un mensaje de WhatsApp entrante lo garantiza Meta (lo informa el webhook, no el usuario).
+  const verifiedWhatsapp = actor.kind === "system" && input.source === "whatsapp" && input.phoneIsWhatsapp === true;
+  return { email: false, phone: verifiedWhatsapp };
+}
 
 export async function findExactMatches(db: Executor, email: string | null, e164: string | null): Promise<ContactMatch[]> {
   const matches: ContactMatch[] = [];
@@ -57,7 +77,7 @@ export async function resolveContactForCapture(
   trx: Tx,
   actor: Actor,
   input: CaptureContactInput,
-): Promise<{ contactId: string; created: boolean }> {
+): Promise<CaptureContactResult> {
   const email = normalizeEmail(input.email);
   const phone = normalizePhone(input.phone, { assumeMobile: input.phoneIsWhatsapp, defaultAreaCode: "387" });
   const name = cleanName(input.name);
@@ -96,15 +116,24 @@ export async function resolveContactForCapture(
     for (const other of distinct) {
       await addDuplicateCandidate(trx, contactId, other, matches.find((m) => m.contactId === other)!.by === "email" ? "same_email" : "same_phone", 0.9);
     }
+    // Sin coincidencias en fichas, pero el dato ya llegó antes sin verificar en un lead de otro contacto: posible duplicado.
+    if (!distinct.length) await addUnverifiedDataCandidates(trx, contactId, email, phone?.e164 ?? null);
     await audit(trx, actor, { action: "CONTACT_CREATED", entityType: "contact", entityId: contactId, after: { source: input.source, via: "capture" } });
   }
 
+  const trust = captureTrust(actor, input);
+  const unverified: CaptureContactResult["unverified"] = { email: null, phone: null };
   if (email) {
-    await trx
-      .insertInto("contact_emails")
-      .values({ contact_id: contactId, email: input.email!.trim(), email_normalized: email, is_primary: created })
-      .onConflict((oc) => oc.columns(["contact_id", "email_normalized"]).doNothing())
-      .execute();
+    if (created || trust.email) {
+      await trx
+        .insertInto("contact_emails")
+        .values({ contact_id: contactId, email: input.email!.trim(), email_normalized: email, is_primary: created })
+        .onConflict((oc) => oc.columns(["contact_id", "email_normalized"]).doNothing())
+        .execute();
+    } else {
+      const has = await trx.selectFrom("contact_emails").select("id").where("contact_id", "=", contactId).where("email_normalized", "=", email).executeTakeFirst();
+      if (!has) unverified.email = email;
+    }
   }
   if (phone) {
     const existing = await trx
@@ -114,11 +143,15 @@ export async function resolveContactForCapture(
       .where(sql<string>`right(phone_e164, 10)`, "=", phoneMatchKey(phone.e164))
       .executeTakeFirst();
     if (!existing) {
-      await trx
-        .insertInto("contact_phones")
-        .values({ contact_id: contactId, phone_raw: input.phone!.trim().slice(0, 40), phone_e164: phone.e164, is_whatsapp: Boolean(input.phoneIsWhatsapp), is_primary: created })
-        .execute();
-    } else if (input.phoneIsWhatsapp && !existing.is_whatsapp) {
+      if (created || trust.phone) {
+        await trx
+          .insertInto("contact_phones")
+          .values({ contact_id: contactId, phone_raw: input.phone!.trim().slice(0, 40), phone_e164: phone.e164, is_whatsapp: Boolean(input.phoneIsWhatsapp), is_primary: created })
+          .execute();
+      } else {
+        unverified.phone = phone.e164;
+      }
+    } else if (input.phoneIsWhatsapp && !existing.is_whatsapp && trust.phone) {
       await trx.updateTable("contact_phones").set({ is_whatsapp: true, phone_e164: phone.e164 }).where("id", "=", existing.id).execute();
     }
   }
@@ -131,8 +164,33 @@ export async function resolveContactForCapture(
       .where((eb) => eb.or([eb("display_name", "=", email ?? ""), eb("display_name", "=", phone?.e164 ?? ""), eb("display_name", "=", "Sin nombre")]))
       .execute();
   }
-  if (input.role) await addContactRole(trx, contactId, input.role);
-  return { contactId, created };
+  // Una captura no verificada no marca como propietario a un contacto existente (queda el interés en el lead).
+  if (input.role && (created || trust.email || input.role !== "owner")) await addContactRole(trx, contactId, input.role);
+  return { contactId, created, unverified };
+}
+
+/** Contacto recién creado cuyo email/teléfono ya había llegado sin verificar en un lead de otro contacto. */
+async function addUnverifiedDataCandidates(trx: Tx, contactId: string, email: string | null, e164: string | null): Promise<void> {
+  if (!email && !e164) return;
+  const rows = await trx
+    .selectFrom("leads as l")
+    .innerJoin("contacts as c", "c.id", "l.contact_id")
+    .select(["l.contact_id", "l.submitted_email"])
+    .where("l.deleted_at", "is", null)
+    .where("c.deleted_at", "is", null)
+    .where("c.merged_into_id", "is", null)
+    .where("l.contact_id", "<>", contactId)
+    .where((eb) =>
+      eb.or([
+        ...(email ? [eb("l.submitted_email", "=", email)] : []),
+        ...(e164 ? [eb(sql<string>`right(l.submitted_phone, 10)`, "=", phoneMatchKey(e164))] : []),
+      ]),
+    )
+    .limit(20)
+    .execute();
+  for (const r of rows) {
+    await addDuplicateCandidate(trx, contactId, r.contact_id, email && r.submitted_email === email ? "same_email" : "same_phone", 0.6);
+  }
 }
 
 export async function addContactRole(db: Executor, contactId: string, role: ContactRole): Promise<void> {
