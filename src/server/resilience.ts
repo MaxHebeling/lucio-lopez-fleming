@@ -68,6 +68,53 @@ export async function retry<T>(
   throw lastError;
 }
 
+/**
+ * La llamada pudo haber tenido efecto en el proveedor pero no sabemos (timeout o respuesta perdida después de
+ * enviar una escritura no idempotente: enviar un mensaje, crear un aviso, publicar un post).
+ * NUNCA se reintenta automáticamente: queda para verificación humana.
+ */
+export class UncertainOutcomeError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "UncertainOutcomeError";
+  }
+}
+
+/** Errores de red en los que la petición seguro NO llegó al proveedor (no hubo conexión). */
+const NOT_SENT_NETWORK_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT", "ERR_INVALID_URL"]);
+
+export function isNotSentNetworkError(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let i = 0; i < 4 && cur && typeof cur === "object"; i++) {
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === "string" && NOT_SENT_NETWORK_CODES.has(code)) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * ¿Cuenta como falla de la integración (circuit breaker + alertas)?
+ * Sí: credenciales (401/403), 408/425/429/5xx, timeouts, red y errores sin estado HTTP.
+ * No: rechazos de datos (400/404/409/422 y demás 4xx): el proveedor respondió, el problema es el dato.
+ */
+export function countsAsIntegrationFailure(e: unknown): boolean {
+  if (e instanceof TimeoutError || e instanceof UncertainOutcomeError) return true;
+  const err = e as { status?: unknown; retryable?: unknown; code?: unknown } | null;
+  if (err && err.retryable === true) return true;
+  // Graph API (Meta): OAuthException 190/102 llega a veces con HTTP 400.
+  if (err && (err.code === 190 || err.code === 102)) return true;
+  const status = typeof err?.status === "number" ? err.status : null;
+  if (status === null) return true;
+  if (status === 401 || status === 403) return true;
+  if (isRetryableStatus(status)) return true;
+  return !(status >= 400 && status < 500);
+}
+
 export class CircuitOpenError extends Error {
   constructor(readonly integrationKey: string, readonly until: Date) {
     super(`Integración ${integrationKey} en pausa hasta ${until.toISOString()} por fallas repetidas`);
@@ -80,8 +127,9 @@ const OPEN_FOR_MS = 5 * 60_000;
 
 /**
  * Ejecuta una llamada a una integración registrando resultado en integration_logs y manejando el circuito.
- * Tras OPEN_AFTER_FAILURES fallas consecutivas se abre 5 min; al superar el umbral configurado se emite
- * integration.failed (una vez por apertura) para que la automatización alerte.
+ * Tras OPEN_AFTER_FAILURES fallas consecutivas se abre 5 min; desde el umbral configurado se emite
+ * integration.failed (como máximo una vez por hora mientras siga fallando) para que la automatización alerte.
+ * Los rechazos de datos (4xx salvo 401/403/408/425/429) no cuentan como falla: ver countsAsIntegrationFailure.
  */
 export async function callIntegration<T>(
   db: Database,
@@ -114,7 +162,16 @@ export async function callIntegration<T>(
   } catch (e) {
     const message = (e as Error).message?.slice(0, 1000) ?? String(e);
     const status = (e as { status?: number }).status ?? null;
-    const updated = await sql<{ consecutive_failures: number; opened: boolean }>`
+    if (!countsAsIntegrationFailure(e)) {
+      // Rechazo de datos: el proveedor está funcionando. Se registra, pero no abre el circuito ni alerta.
+      await db
+        .insertInto("integration_logs")
+        .values({ integration_key: key, operation, status: "error", http_status: status, error: message, duration_ms: Date.now() - t0, entity_type: meta.entityType ?? null, entity_id: meta.entityId ?? null, request_id: meta.requestId ?? null, metadata: JSON.stringify({ counted: false }) })
+        .execute();
+      log.info("integration.call_rejected", { integration: key, operation, error: message, status });
+      throw e;
+    }
+    const updated = await sql<{ consecutive_failures: number }>`
       update integrations set
         consecutive_failures = consecutive_failures + 1,
         last_error_at = now(), last_error = ${message}, updated_at = now(),
@@ -122,14 +179,15 @@ export async function callIntegration<T>(
         circuit_open_until = case when consecutive_failures + 1 >= ${OPEN_AFTER_FAILURES}
           then now() + make_interval(secs => ${OPEN_FOR_MS / 1000}) else circuit_open_until end
       where key = ${key}
-      returning consecutive_failures, (consecutive_failures = ${OPEN_AFTER_FAILURES}) as opened`.execute(db);
+      returning consecutive_failures`.execute(db);
     await db
       .insertInto("integration_logs")
       .values({ integration_key: key, operation, status: "error", http_status: status, error: message, duration_ms: Date.now() - t0, entity_type: meta.entityType ?? null, entity_id: meta.entityId ?? null, request_id: meta.requestId ?? null })
       .execute();
     const failures = updated.rows[0]?.consecutive_failures ?? 0;
     const threshold = await integrationAlertThreshold(db);
-    if (failures === threshold) {
+    if (failures >= threshold) {
+      // Mientras siga caída se re-alerta como máximo una vez por hora (dedupe por hora UTC).
       await db
         .insertInto("domain_events")
         .values({
@@ -137,7 +195,7 @@ export async function callIntegration<T>(
           aggregate_type: "integration",
           aggregate_id: key,
           payload: JSON.stringify({ key, operation, failures, error: message }),
-          dedupe_key: `integration.failed:${key}:${new Date().toISOString().slice(0, 13)}`,
+          dedupe_key: integrationFailedDedupeKey(key, new Date()),
         })
         .onConflict((oc) => oc.column("dedupe_key").doNothing())
         .execute();
@@ -145,6 +203,10 @@ export async function callIntegration<T>(
     log.warn("integration.call_failed", { integration: key, operation, failures, error: message, status });
     throw e;
   }
+}
+
+export function integrationFailedDedupeKey(key: string, now: Date): string {
+  return `integration.failed:${key}:${now.toISOString().slice(0, 13)}`;
 }
 
 async function integrationAlertThreshold(db: Database): Promise<number> {
