@@ -8,6 +8,7 @@ import { requireOwner, type Actor, type OwnerActor } from "../auth/actor";
 import { AppError, notFound } from "../errors";
 import { isEnabled } from "../flags";
 import { addMonths, firstOfMonth, todayInSalta } from "../rentals/dates";
+import { OWNER_VISIBLE_REPORT_STATUSES } from "./visibility";
 
 export async function requirePortalEnabled(db: Executor): Promise<void> {
   if (!(await isEnabled(db, "owner_portal"))) throw new AppError("unavailable", "El portal de propietarios no está disponible en este momento");
@@ -278,8 +279,8 @@ export async function listOwnerReports(db: Database, actor: Actor, limit = 60) {
     .leftJoin("properties as p", "p.id", "r.property_id")
     .select(["r.id", "r.period_start", "r.period_end", "r.generated_at", "r.status", "p.title as property_title"])
     .where("r.owner_contact_id", "=", me.contactId)
-    // Un informe recién generado lo revisa el equipo; el propietario lo ve cuando se le envía.
-    .where("r.status", "<>", "generated")
+    // Un informe recién generado lo revisa el equipo; el propietario lo ve cuando se le envió.
+    .where("r.status", "in", [...OWNER_VISIBLE_REPORT_STATUSES])
     .orderBy("r.period_start", "desc")
     .limit(limit)
     .execute();
@@ -293,7 +294,7 @@ export async function getOwnerReport(db: Database, actor: Actor, reportId: strin
     .select(["id", "period_start", "period_end", "generated_at", "status", "data"])
     .where("id", "=", reportId)
     .where("owner_contact_id", "=", me.contactId)
-    .where("status", "<>", "generated")
+    .where("status", "in", [...OWNER_VISIBLE_REPORT_STATUSES])
     .executeTakeFirst();
   if (!r) throw notFound("Informe");
   return r;

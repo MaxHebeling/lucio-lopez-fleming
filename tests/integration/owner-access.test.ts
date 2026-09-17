@@ -2,8 +2,12 @@
 import { describe, expect, it } from "vitest";
 import { login, resolveSession } from "@/server/auth/session";
 import { changeOwnerEmail, inviteOwner, isResetTokenValid, requestOwnerPasswordReset, setOwnerAccessActive } from "@/server/owners/access";
+import { getOwnerReport, listOwnerReports } from "@/server/owners/portal";
+import { authorizeFileAccess } from "@/server/files/access";
+import { generateOwnerReport } from "@/server/reports/service";
+import { todayInSalta } from "@/server/rentals/dates";
 import { createOwner, createStaff, testDb, TEST_PASSWORD } from "../helpers/db";
-import { createTestContact, createTestProperty } from "../helpers/rentals";
+import { createTestContact, createTestProperty, monthStart } from "../helpers/rentals";
 
 async function ownerSession(email: string) {
   const r = await login(testDb(), { email, password: TEST_PASSWORD, area: "owner" });
@@ -105,5 +109,38 @@ describe("cambiar el email de un propietario", () => {
     expect(audit.before).toMatchObject({ email: owner.email });
     expect(audit.after).toMatchObject({ email: "julia.nueva@test.local" });
     expect(await changeOwnerEmail(db, admin, { userId: owner.userId, email: "julia.nueva@test.local", confirmEmail: "julia.nueva@test.local" })).toMatchObject({ changed: false });
+  });
+});
+
+describe("PDF de informe para el propietario", () => {
+  it("solo se descarga cuando el informe se le envió (mismo criterio que el portal)", async () => {
+    const db = testDb();
+    const staff = await createStaff(db, ["alquileres"]);
+    const owner = await createOwner(db, "Laura Archivo");
+    const intruder = await createOwner(db, "Mario Ajeno");
+    const property = await createTestProperty(db, { ownerContactIds: [{ id: owner.contactId }] });
+    const report = await generateOwnerReport(db, staff, { ownerContactId: owner.contactId, propertyId: property.id, periodStart: monthStart(0), periodEnd: todayInSalta() });
+    const file = await db
+      .insertInto("files")
+      .values({ storage_driver: "local", bucket: "private", storage_key: `test/${crypto.randomUUID()}.pdf`, content_type: "application/pdf", size_bytes: 10, visibility: "private" })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await db.updateTable("owner_reports").set({ file_id: file.id }).where("id", "=", report.id).execute();
+
+    for (const status of ["generated", "queued", "failed", "awaiting_credentials"]) {
+      await db.updateTable("owner_reports").set({ status }).where("id", "=", report.id).execute();
+      expect(await authorizeFileAccess(db, owner, file.id), status).toEqual({ ok: false, reason: "forbidden" });
+      expect((await listOwnerReports(db, owner)).map((r) => r.id), status).not.toContain(report.id);
+      await expect(getOwnerReport(db, owner, report.id), status).rejects.toMatchObject({ code: "not_found" });
+    }
+    for (const status of ["sent", "delivered"]) {
+      await db.updateTable("owner_reports").set({ status }).where("id", "=", report.id).execute();
+      expect((await authorizeFileAccess(db, owner, file.id)).ok, status).toBe(true);
+      expect((await listOwnerReports(db, owner)).map((r) => r.id), status).toContain(report.id);
+      expect(await authorizeFileAccess(db, intruder, file.id)).toEqual({ ok: false, reason: "forbidden" });
+    }
+    // El equipo con reports.read lo ve siempre
+    await db.updateTable("owner_reports").set({ status: "generated" }).where("id", "=", report.id).execute();
+    expect((await authorizeFileAccess(db, staff, file.id)).ok).toBe(true);
   });
 });

@@ -50,7 +50,10 @@ async function ownerWorld(name: string) {
   const hiddenDoc = await db.insertInto("rental_contract_documents").values({ contract_id: c.id, file_id: orgFile.id, kind: "guarantee", title: "Garantía (interna)", visible_to_owner: false }).returning("id").executeTakeFirstOrThrow();
   const propDoc = await db.insertInto("property_documents").values({ property_id: property.id, file_id: orgFile.id, kind: "deed", title: "Escritura", visible_to_owner: true }).returning("id").executeTakeFirstOrThrow();
   const report = await generateOwnerReport(db, staff, { ownerContactId: owner.contactId, periodStart: monthStart(0), periodEnd: todayInSalta() });
-  await sendOwnerReport(db, staff, report.id);
+  const sent = await sendOwnerReport(db, staff, report.id);
+  // El propietario ve el informe cuando el email salió
+  await sql`update outbound_messages set status = 'sent', sent_at = now() where id = ${sent.messageId}`.execute(db);
+  await syncReportDeliveryStatus(db);
   return { db, staff, owner, property, contractId: c.id, settlementId: s!.settlementId!, visibleDoc: visibleDoc.id, hiddenDoc: hiddenDoc.id, propDoc: propDoc.id, reportId: report.id };
 }
 
