@@ -41,6 +41,8 @@ export type ConciergeResponse =
       chips: IntentChip[];
       unparsed: string[];
       ambiguousAmount: SearchIntent["ambiguousAmount"];
+      /** Monto sin moneda: el mismo listado interpretándolo en dólares o en pesos (la persona elige). */
+      ambiguousLinks: { usd: string; ars: string } | null;
       /** Parece un propietario que quiere vender/tasar (no una búsqueda). */
       ownerHint: boolean;
       hasFilters: boolean;
@@ -143,7 +145,10 @@ export function mergeIntents(det: SearchIntent, ai: SearchIntent): SearchIntent 
 
 function response(intent: SearchIntent, catalog: SalesCatalog, layer: "deterministic" | "ai", ownerHint: boolean): ConciergeResponse {
   const filters = intentToFilters(intent);
+  const amount = intent.ambiguousAmount;
+  const withCurrency = (moneda: "USD" | "ARS") => listingHref({ ...filters, moneda, ...(amount?.min ? { precio_min: amount.min } : {}), ...(amount?.max ? { precio_max: amount.max } : {}) });
   return {
+    ambiguousLinks: amount ? { usd: withCurrency("USD"), ars: withCurrency("ARS") } : null,
     status: "ok",
     layer,
     intent,
