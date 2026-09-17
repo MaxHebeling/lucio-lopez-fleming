@@ -12,13 +12,15 @@ export type GroundingFacts = {
   urls: Set<string>;
   /** Teléfonos/emails aportados por herramientas o por el cliente */
   contacts: Set<string>;
+  /** Rutas del CRM (/crm/...) que aparecen en la guía o en los resultados del turno (con [id] en lugar de ids). */
+  routes: Set<string>;
 };
 
-export type ViolationKind = "property_code" | "amount" | "area" | "percentage" | "url" | "phone" | "email";
+export type ViolationKind = "property_code" | "amount" | "area" | "percentage" | "url" | "phone" | "email" | "crm_route";
 export type Violation = { kind: ViolationKind; value: string };
 
 export function emptyFacts(): GroundingFacts {
-  return { propertyCodes: new Set(), amounts: new Set(), areas: new Set(), urls: new Set(), contacts: new Set() };
+  return { propertyCodes: new Set(), amounts: new Set(), areas: new Set(), urls: new Set(), contacts: new Set(), routes: new Set() };
 }
 
 const MULTIPLIERS: Record<string, number> = { mil: 1_000, k: 1_000, millon: 1_000_000, millón: 1_000_000, millones: 1_000_000 };
@@ -54,6 +56,18 @@ const CODE = /(?:c[oó]digo|c[oó]d\.|ref(?:erencia)?\.?|n[°º]|nro\.?|#)\s*:?\
 const URL_RE = /https?:\/\/[^\s<>()"'\]]+/gi;
 const PATH_RE = /(?<![\w/.])\/propiedades\/[a-z0-9-]+/gi;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+const CRM_ROUTE_RE = /(?<![\w/.])\/crm(?:\/[A-Za-z0-9_\[\]-]+)*/g;
+const UUID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi;
+
+/** /crm/propiedades/<uuid>/tour → /crm/propiedades/[id]/tour (sin barra final ni puntuación). */
+export function normalizeCrmRoute(path: string): string {
+  return path.replace(/[.,;:!?)]+$/, "").replace(UUID_SEGMENT, "/[id]").replace(/\/+$/, "") || "/crm";
+}
+
+/** Registra las rutas del CRM mencionadas en un texto verificado (guía, resultados de herramientas). */
+export function addGroundedRoutes(facts: GroundingFacts, text: string): void {
+  for (const m of text.match(CRM_ROUTE_RE) ?? []) facts.routes.add(normalizeCrmRoute(m));
+}
 const PHONE_RE = /(?<![\w])\+?\d[\d\s-]{6,}\d(?![\w])/g;
 
 export function normalizeUrl(u: string): string {
@@ -109,6 +123,13 @@ export function findViolations(reply: string, facts: GroundingFacts): Violation[
 
   // URLs primero: se quitan del texto para no confundir sus números con montos o teléfonos
   let rest = reply;
+  // Rutas del CRM: tienen que existir en la guía/resultados del turno (o ser una sección padre de una que exista)
+  for (const m of reply.match(CRM_ROUTE_RE) ?? []) {
+    const route = normalizeCrmRoute(m);
+    const known = [...facts.routes].some((r) => r === route || r.startsWith(`${route}/`));
+    if (!known) add("crm_route", route);
+  }
+  rest = rest.replace(CRM_ROUTE_RE, " ");
   for (const m of reply.match(URL_RE) ?? []) {
     if (!facts.urls.has(normalizeUrl(m))) add("url", m);
     rest = rest.replace(m, " ");

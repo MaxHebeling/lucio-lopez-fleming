@@ -41,6 +41,8 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "16mb",
   },
   serverExternalPackages: ["@node-rs/argon2", "pg", "sharp"],
+  // El job diario ai.knowledge_ingest (corre dentro del cron) lee la guía del CRM desde el filesystem del deploy.
+  outputFileTracingIncludes: { "/api/cron/jobs": ["./knowledge/**/*.md"] },
   images: {
     formats: ["image/avif", "image/webp"],
     // 75 por defecto; 65 solo para la foto de la portada (LCP): cielo y texturas suaves, sin pérdida visible y ~30 % menos bytes.

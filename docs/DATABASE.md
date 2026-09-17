@@ -20,6 +20,7 @@ PostgreSQL ≥ 15 (probado en 17). Migraciones SQL en `db/migrations/NNNN_nombre
 | Tours virtuales 360° | virtual_tours, virtual_tour_scenes, virtual_tour_hotspots; `properties.is_demo` | un tour por propiedad; externo exige proveedor + https; escena inicial y destino de cada punto del mismo tour (FK compuesta + trigger); 2:1 y ángulos en rango (checks); URLs de assets seguras (`is_tour_asset_url`); **una demo nunca se publica** (`properties_demo_never_published`). Ver docs/VIRTUAL_TOURS.md |
 | Analítica del sitio | site_events | append-only sin FK; allowlist de eventos (check); **sin IP, user agent ni datos personales**; `props` ≤ 1 KB; retención 13 meses (`site.events_purge`) |
 | Migración | migration_runs, migration_records, migration_warnings, external_refs | `unique(source, external_id)`; advertencias no se duplican entre corridas |
+| IA (0500–0501) | ai_interactions (extendida), ai_conversations, ai_messages, ai_feedback, ai_knowledge_documents, ai_knowledge_chunks | `ai_interactions` sin prompts ni respuestas (solo metadatos, `fallback_reason` con check); sesiones con `expires_at` (purga diaria); feedback único por (mensaje, usuario) y sobrevive a la purga; guías `unique nulls not distinct (organization_id, path)`, secciones `unique(document_id, anchor)` con hash, `tsvector` generado en español sin acentos (GIN) y permisos por sección. Ver docs/ai/AI_CORE.md |
 
 ## Convenciones
 
@@ -46,4 +47,5 @@ solo IPv6: desde runners sin IPv6 (GitHub Actions) usar el pooler en modo sesió
 
 1. Crear `db/migrations/NNNN_descripcion.sql` (nunca editar uno aplicado).
 2. `pnpm db:migrate && pnpm db:codegen` y versionar `src/server/db/generated.ts` (CI verifica que coincidan).
+   Si cambió `knowledge/`, además `pnpm ai:knowledge:ingest` (idempotente).
 3. Migraciones destructivas: backup verificado antes (ver BACKUP_RESTORE.md) y plan de reversión escrito en el PR.

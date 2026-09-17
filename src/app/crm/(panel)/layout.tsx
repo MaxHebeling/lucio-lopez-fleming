@@ -6,6 +6,7 @@ import { isEnabled } from "@/server/flags";
 import { CRM_NAV, NAV_PERMISSION_ALIASES } from "../nav";
 import { NavLinks } from "@/components/crm/nav-links";
 import { MobileNav } from "@/components/crm/mobile-nav";
+import { CopilotLauncher } from "@/components/crm/copilot/copilot-launcher";
 
 export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
   const actor = await requireStaffPage();
@@ -14,6 +15,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
   const items = CRM_NAV.filter((i) => (!i.flag || flags.get(i.flag)) && (can(actor, i.permission) || (NAV_PERMISSION_ALIASES[i.permission] ?? []).some((p) => can(actor, p)))).map(
     ({ href, label, icon, group }) => ({ href, label, icon, group }),
   );
+  // «✦ Asistente IA»: visible con el permiso y el flag encendido. Sin clave del proveedor igual aparece y lo dice.
+  const copilot = can(actor, "ai.copilot") && (await isEnabled(db, "ai_copilot"));
   const unread = await db
     .selectFrom("notifications")
     .select((eb) => eb.fn.countAll<string>().as("n"))
@@ -49,6 +52,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
             <span className="hidden truncate text-sm text-stone xl:inline">{actor.fullName}</span>
           </div>
           <div className="flex items-center gap-2">
+            {copilot ? <CopilotLauncher /> : null}
             <Link href="/crm/buscar" className="rounded-[var(--radius-md)] px-3 py-1.5 text-sm font-semibold hover:bg-paper-2 md:hidden">
               Buscar
             </Link>
@@ -70,7 +74,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
             </form>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6">{children}</main>
+        {/* Con el Asistente IA, en celular queda lugar abajo para su botón flotante sin tapar el final de la página. */}
+        <main className={`mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6 ${copilot ? "pb-24 sm:pb-6" : ""}`}>{children}</main>
       </div>
     </div>
   );

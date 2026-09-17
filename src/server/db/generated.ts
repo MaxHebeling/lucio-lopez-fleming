@@ -45,13 +45,41 @@ export interface AdjustmentIndices {
   source: string;
 }
 
+export interface AiConversations {
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  last_message_at: Generated<Timestamp>;
+  mode: string;
+  module: string | null;
+  organization_id: string;
+  user_id: string;
+}
+
+export interface AiFeedback {
+  comment: string | null;
+  created_at: Generated<Timestamp>;
+  feature: string | null;
+  id: Generated<string>;
+  interaction_id: string | null;
+  message_id: string | null;
+  organization_id: string;
+  prompt_ref: string | null;
+  rating: number;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
 export interface AiInteractions {
+  ai_conversation_id: string | null;
   cache_creation_input_tokens: number | null;
   cache_read_input_tokens: number | null;
   conversation_id: string | null;
   cost_usd_micros: Int8 | null;
   created_at: Generated<Timestamp>;
   error: string | null;
+  fallback_reason: string | null;
+  feature: string | null;
   guard_violations: Generated<Json>;
   handoff_reason: string | null;
   id: Generated<string>;
@@ -59,13 +87,60 @@ export interface AiInteractions {
   latency_ms: number | null;
   message_id: string | null;
   model: string;
+  organization_id: string | null;
   output_tokens: number | null;
   prompt_version: string;
+  provider: string | null;
   purpose: string;
+  request_id: string | null;
+  retrieval_count: number | null;
+  retrieval_failed: Generated<boolean>;
   rounds: number | null;
   status: string;
   stop_reason: string | null;
+  task: string | null;
   tool_calls: Generated<Json>;
+  tool_failures: Generated<number>;
+  user_id: string | null;
+}
+
+export interface AiKnowledgeChunks {
+  anchor: string;
+  body: string;
+  content_hash: string;
+  created_at: Generated<Timestamp>;
+  document_id: string;
+  heading: string;
+  id: Generated<string>;
+  ordinal: number;
+  permissions: Generated<string[]>;
+  route: string | null;
+  search: Generated<string | null>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface AiKnowledgeDocuments {
+  chunk_count: Generated<number>;
+  content_hash: string;
+  created_at: Generated<Timestamp>;
+  domain: string;
+  id: Generated<string>;
+  organization_id: string | null;
+  path: string;
+  summary: string | null;
+  title: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface AiMessages {
+  content: string;
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  interaction_id: string | null;
+  payload: Generated<Json>;
+  prompt_ref: string | null;
+  role: string;
 }
 
 export interface AppointmentCheckins {
@@ -1313,7 +1388,12 @@ export interface WebhookEvents {
 export interface DB {
   activities: Activities;
   adjustment_indices: AdjustmentIndices;
+  ai_conversations: AiConversations;
+  ai_feedback: AiFeedback;
   ai_interactions: AiInteractions;
+  ai_knowledge_chunks: AiKnowledgeChunks;
+  ai_knowledge_documents: AiKnowledgeDocuments;
+  ai_messages: AiMessages;
   appointment_checkins: AppointmentCheckins;
   appointment_events: AppointmentEvents;
   appointment_public_links: AppointmentPublicLinks;

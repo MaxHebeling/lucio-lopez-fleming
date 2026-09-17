@@ -64,6 +64,26 @@ Si hiciera falta más (p. ej. obras sin anunciar), la alternativa es subir a pri
   por pestaña; allowlist y tamaño acotado; rate limit por IP con hash (la IP en claro no se guarda) y por sesión; respeta
   Do Not Track / Global Privacy Control; retención 13 meses.
 
+## AI Core y «✦ Asistente IA» (2026-09, Fase 1)
+
+Detalle y tests en `docs/ai/GOVERNANCE.md`. Resumen:
+
+- **Autorización antes de la IA**: `staff` + `ai.copilot` + flag; el contexto de pantalla se re-valida con los loaders y
+  alcance del CRM más la organización (registro ajeno = ignorado, sin revelar existencia); la guía se filtra por
+  permisos; las herramientas declaran permiso y capability y se re-verifican en cada invocación. Sin herramientas de
+  escritura (`execute` prohibido por código).
+- **Multi-tenant**: todas las consultas de la IA filtran por `organization_id` (tareas y citas, por la organización del
+  usuario). Test con datos de otra organización, incluso asignados al mismo agente.
+- **Prompt injection**: contenido de usuarios/clientes/descripciones y contexto de pantalla viajan como datos
+  delimitados no escapables; lo que pida el modelo fuera de su lista no se ejecuta; cifras y rutas no verificadas se
+  descartan (guardas). El texto libre no cuenta como evidencia.
+- **PII**: emails, teléfonos, DNI/CUIT/CUIL, CBU y coordenadas se enmascaran antes del proveedor y en la sesión; las
+  herramientas no devuelven datos de contacto, documentos ni direcciones ocultas.
+- **Registro**: `ai_interactions` guarda metadatos (sin prompts ni respuestas); `ai_messages` con retención de 30 días.
+- **Abuso y costos**: límite por usuario, presupuesto diario, timeouts, reintentos acotados y circuit breaker.
+- **Riesgo aceptado**: con la clave cargada, el texto de la pregunta (minimizado) y los fragmentos de la guía/resultados
+  permitidos al rol se envían al proveedor externo (Anthropic) para responder.
+
 ## Núcleo operativo de visitas (2026-09)
 
 - **Alcance**: `visits.operate` ve y opera solo las visitas asignadas (crearla no alcanza); `visits.monitor` /
