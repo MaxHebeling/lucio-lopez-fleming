@@ -267,6 +267,15 @@ function mapCard(idx: LocationIndex, r: CardRow): PublicPropertyCard {
 
 export type SearchResult = { items: PublicPropertyCard[]; total: number; page: number; pageCount: number; pageSize: number };
 
+/**
+ * Búsqueda de texto pública. Con dirección oculta la calle no participa (la altura suele venir embebida en
+ * `address_street`): solo título y descripción. Misma expresión que el índice trigram properties_public_search_trgm
+ * (migración 0160): si cambia una, cambia la otra.
+ */
+export function publicTextSearchCondition(q: string) {
+  return sql<boolean>`f_unaccent(lower(p.title || ' ' || case when p.hide_exact_address then '' else coalesce(p.address_street, '') end || ' ' || coalesce(p.description, ''))) like ('%' || f_unaccent(lower(${q})) || '%')`;
+}
+
 function buildWhere(idx: LocationIndex, f: SearchFilters) {
   const conds = [publishedWhere];
   const op = f.operacion ? OPERATION_SLUGS[f.operacion] : null;
@@ -297,8 +306,7 @@ function buildWhere(idx: LocationIndex, f: SearchFilters) {
   if (f.q) {
     const q = f.q.replace(/[%_\\]/g, " ").trim();
     const code = /^\d{1,7}$/.test(q) ? Number(q) : null;
-    // Misma expresión que el índice trigram properties_search_trgm.
-    const textCond = sql`f_unaccent(lower(p.title || ' ' || coalesce(p.address_street, '') || ' ' || coalesce(p.description, ''))) like ('%' || f_unaccent(lower(${q})) || '%')`;
+    const textCond = publicTextSearchCondition(q);
     conds.push(code ? sql`(p.code = ${code} or ${textCond})` : textCond);
   }
   return { where: sql.join(conds, sql` and `), op };
