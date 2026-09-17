@@ -9,7 +9,7 @@ import type { ToolRegistry, ToolResult } from "../core/registry";
 import type { Criterion, Finding } from "../property/quality-rules";
 import { plural } from "./shared";
 
-const QA_FLAG = "ai_property_qa";
+const QA_FLAG = "ai_property_quality";
 const SEVERITY_BADGE: Record<Finding["severity"], string> = { error: "Importante", warning: "A revisar", info: "Sugerencia" };
 
 const empty = (summary: string): ToolResult => ({ title: "Calidad de la publicación", summary, items: [], total: 0, truncated: false, source: { label: "Propiedades", href: "/crm/propiedades" }, scope: "all" });

@@ -204,12 +204,12 @@ describe("informe de calidad", () => {
   it("flag apagado: no calcula y la ficha no muestra informe", async () => {
     const db = testDb();
     const p = await newProperty("Casa sin flag");
-    await setFlag(db, "ai_property_qa", false);
+    await setFlag(db, "ai_property_quality", false);
     try {
       expect(await computePropertyQuality(db, system, p.id)).toEqual({ status: "skipped", reason: "flag apagado" });
       expect(await getPropertyQuality(db, admin, p.id)).toEqual({ enabled: false, report: null });
     } finally {
-      await setFlag(db, "ai_property_qa", true);
+      await setFlag(db, "ai_property_quality", true);
     }
   });
 

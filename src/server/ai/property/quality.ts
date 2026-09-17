@@ -42,7 +42,7 @@ import {
   type RoomKey,
 } from "./quality-rules";
 
-export const PROPERTY_QA_FLAG = "ai_property_qa";
+export const PROPERTY_QA_FLAG = "ai_property_quality";
 export const QUALITY_JOB = "ai.property_quality";
 const ACTIVE_STATUSES = ["draft", "available", "reserved", "paused"];
 const OP_LABEL: Record<string, string> = { sale: "venta", rent: "alquiler", temporary_rent: "alquiler temporario" };
@@ -307,7 +307,7 @@ addScheduledTask({ type: "ai.property_quality_nightly", every: "daily", timeoutM
 
 registerAction("enqueue_property_quality", async (_raw, ctx) => {
   if (ctx.event.aggregateType !== "property") return { skipped: "el evento no es de una propiedad" };
-  if (!(await isEnabled(ctx.db, PROPERTY_QA_FLAG))) return { skipped: "flag ai_property_qa apagado" };
+  if (!(await isEnabled(ctx.db, PROPERTY_QA_FLAG))) return { skipped: "flag ai_property_quality apagado" };
   const id = await enqueuePropertyQuality(ctx.db, ctx.event.aggregateId, `event:${ctx.event.id}`);
   return { enqueued: Boolean(id) };
 });

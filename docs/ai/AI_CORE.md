@@ -85,8 +85,8 @@ CRM) y alcance aplicado; el texto libre va aparte (`untrusted`) para enviarse de
 
 | Dominio | Herramienta | Permisos | Consulta rápida | Alcance |
 | --- | --- | --- | --- | --- |
-| property | `property_quality` | `properties.read` | «Calidad de esta publicación» (en una ficha, flag `ai_property_qa`) | informe determinista de la organización, sin demo |
-| property | `low_quality_properties` | `properties.read` | «Publicaciones con peor calidad» (flag `ai_property_qa`) | organización, activas |
+| property | `property_quality` | `properties.read` | «Calidad de esta publicación» (en una ficha, flag `ai_property_quality`) | informe determinista de la organización, sin demo |
+| property | `low_quality_properties` | `properties.read` | «Publicaciones con peor calidad» (flag `ai_property_quality`) | organización, activas |
 
 Registradas en `domains/property-quality.ts` (una línea en `domains/index.ts`). `property_completeness` sigue igual.
 
@@ -219,8 +219,8 @@ Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a
 | `ai.copilot.session_retention_days` | 30 | retención de sesiones |
 | `ai.analyst.stale_opportunity_days` | 14 | umbral de oportunidades estancadas |
 | flag `ai_copilot` | encendido | muestra el copiloto |
-| flags `ai_concierge`, `ai_matching`, `ai_executive`, `ai_automations` | apagados | fases 2 y 5 |
-| flags `ai_property_qa`, `ai_visit_brief`, `ai_followup`, `ai_photo_director`, `ai_marketing_director`, `ai_tour_guide`, `owner_capture_steps` | encendidos (capa determinista completa) | fases 3 y 4b, ver docs/ai/PROPERTY.md |
+| flags `ai_concierge`, `ai_matching`, `ai_property_qa`, `ai_executive`, `ai_automations` | apagados | fases 2 y 5 |
+| flags `ai_property_quality`, `ai_visit_brief`, `ai_followup`, `ai_photo_director`, `ai_marketing_director`, `ai_tour_guide`, `owner_capture_steps` | encendidos (capa determinista completa) | fases 3 y 4b, ver docs/ai/PROPERTY.md |
 | flag `owner_capture_photos` | apagado | requiere storage S3 |
 
 ## Activar con la clave del proveedor

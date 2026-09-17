@@ -162,7 +162,7 @@ Ver docs/ai/VISITS_AI.md.
 
 | Flag | Estado | Qué |
 | --- | --- | --- |
-| `ai_property_qa` | encendido (0521, una vez) | calidad, filtro, copiloto, inventario |
+| `ai_property_quality` | encendido (nuevo en 0521; `ai_property_qa` es de la Fase 2) | calidad, filtro, copiloto, inventario |
 | `ai_photo_director` | encendido | etiquetas, sugerencias (con clave), orden sugerido |
 | `ai_marketing_director` | encendido | borradores y ficha imprimible |
 | `ai_tour_guide` | encendido | «Preguntá» en el tour |

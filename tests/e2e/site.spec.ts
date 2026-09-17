@@ -362,7 +362,7 @@ test("captación: «Quiero vender mi propiedad» crea un único lead sell_my_pro
     await expect(form.getByText("Contanos dónde está la propiedad")).toBeVisible();
     await form.getByLabel("Barrio o localidad").fill("Villa San Lorenzo");
     await next.click();
-    await form.getByRole("radiogroup", { name: "Tipo de propiedad" }).locator("label").nth(1).click();
+    await form.getByRole("radiogroup", { name: "Tipo de propiedad" }).getByRole("radio").nth(1).check();
     for (let i = 0; i < 4; i++) await next.click();
     const submit = form.getByRole("button", { name: "Quiero vender mi propiedad" });
     await form.getByLabel("Nombre y apellido").fill("Propietaria E2E");

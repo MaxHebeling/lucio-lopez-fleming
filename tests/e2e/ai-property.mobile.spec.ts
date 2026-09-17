@@ -51,14 +51,14 @@ test("home 390: «Quiero vender mi propiedad» paso a paso crea un único lead s
     await form.getByLabel("Barrio o localidad").fill("Villa San Lorenzo");
     await form.getByRole("button", { name: "Siguiente" }).click();
     await expect(form.getByRole("group", { name: "¿Qué tipo de propiedad es?" })).toBeVisible();
-    await form.getByRole("radiogroup", { name: "Tipo de propiedad" }).locator("label").first().click();
+    await form.getByRole("radiogroup", { name: "Tipo de propiedad" }).getByRole("radio").first().check();
     await shot(page, "ai-08-captacion-paso2-390");
     await form.getByRole("button", { name: "Siguiente" }).click();
     await form.getByLabel(/Superficie aproximada/).fill("210");
     await form.getByRole("button", { name: "Siguiente" }).click();
     await form.getByLabel(/Dormitorios/).fill("3");
     await form.getByRole("button", { name: "Siguiente" }).click();
-    await form.getByText("Muy bueno", { exact: true }).click();
+    await form.getByRole("radio", { name: "Muy bueno" }).check();
     await form.getByRole("button", { name: "Siguiente" }).click();
     await expect(form.getByText("Paso 6 de 6")).toBeVisible();
     await expect(form.getByText("No damos valores automáticos: un asesor te va a contactar para una tasación profesional.")).toBeVisible();

@@ -47,7 +47,7 @@ async function settings(db: Database): Promise<InventorySettings> {
 
 export async function getInventoryAnalysis(db: Database, actor: Actor, opts: { onlyOpportunities?: boolean; now?: Date } = {}) {
   requirePermission(actor, "properties.read");
-  const enabled = await isEnabled(db, "ai_property_qa");
+  const enabled = await isEnabled(db, "ai_property_quality");
   const canLeads = can(actor, "leads.read_all");
   const s = await settings(db);
   const now = opts.now ?? new Date();

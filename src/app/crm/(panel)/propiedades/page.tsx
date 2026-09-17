@@ -73,7 +73,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
     listProperties(db, actor, filters),
     propertyFormOptions(db, actor),
     can(actor, "properties.update") ? listAddressLeaks(db, actor) : Promise.resolve([]),
-    isEnabled(db, "ai_property_qa"),
+    isEnabled(db, "ai_property_quality"),
   ]);
   const params = Object.fromEntries(FILTER_KEYS.map((k) => [k, filters[k] === undefined ? undefined : String(filters[k])]));
   const advancedActive = ["published", "operation", "currency", "priceMin", "priceMax", "branchId", "agentId", "quality"].some((k) => params[k] !== undefined);

@@ -3,6 +3,8 @@
 -- ───────────── Flags ─────────────
 -- Nuevos: encendidos los que tienen su capa determinista completa y testeada (docs/ai/PROPERTY.md › Flags).
 insert into feature_flags(key, enabled, description) values
+  -- Flag propio: `ai_property_qa` (0501) lo usa la Fase 2 para «Preguntale a esta propiedad» en el sitio público.
+  ('ai_property_quality', true, 'Fase 3 · Calidad de la publicación (completitud ampliada, inconsistencias, fotos duplicadas/oscuras/borrosas) y análisis de inventario. Nunca modifica datos'),
   ('ai_photo_director', true, 'Fase 3 · Ambiente por foto (manual; con clave, sugerencias de visión a aceptar) y orden/portada sugeridos por reglas'),
   ('ai_marketing_director', true, 'Fase 3 · Borradores de marketing por propiedad (SEO, Instagram, Facebook, WhatsApp, email, Reel) y ficha imprimible. Sin publicación automática'),
   ('ai_tour_guide', true, 'Fase 3 · «Preguntá por esta casa» dentro del tour 360°: caminos entre ambientes y datos registrados (determinista; con clave, interpretación de la pregunta)'),
@@ -12,9 +14,6 @@ on conflict (key) do nothing;
 
 -- Registrados en 0501 como «no construido todavía»: se encienden UNA vez (la descripción cambia y el guard ya no aplica,
 -- así un administrador puede apagarlos después sin que una migración los vuelva a prender).
-update feature_flags set enabled = true,
-  description = 'Fase 3 · Calidad de la publicación (completitud ampliada, inconsistencias, fotos duplicadas/oscuras/borrosas) y análisis de inventario. Nunca modifica datos'
- where key = 'ai_property_qa' and description like '%no construido todavía%';
 update feature_flags set enabled = true,
   description = 'Fase 4b · Brief previo a la visita (determinista con «NO REGISTRADO»; con clave, redacción separando hechos de interpretación)'
  where key = 'ai_visit_brief' and description like '%no construido todavía%';
