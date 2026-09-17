@@ -20,8 +20,10 @@ export async function withTimeout<T>(ms: number, fn: (signal: AbortSignal) => Pr
       fn(ctrl.signal),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          ctrl.abort();
+          // Primero se rechaza con TimeoutError y después se aborta: si no, el rechazo por abort de `fn` gana la carrera
+          // y el timeout se reporta como un error genérico.
           reject(new TimeoutError(ms));
+          ctrl.abort();
         }, ms);
       }),
     ]);

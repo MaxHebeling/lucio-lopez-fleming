@@ -17,6 +17,7 @@ import { notifyUser } from "../../notifications";
 import { captureLead } from "../../leads/capture";
 import { resolveContactForCapture } from "../../contacts/service";
 import { handoffConversation } from "../../conversations/service";
+import { AI_REPLY_JOB_TIMEOUT_MS } from "../../ai/whatsapp/agent";
 import { markAwaitingCredentials } from "../credentials";
 import { WHATSAPP_INTEGRATION_KEY, WHATSAPP_PROVIDER } from "./config";
 import { parseWebhook, type InboundMessageEvent, type StatusEvent, type WebhookEvent } from "./payload";
@@ -212,7 +213,7 @@ export async function processInboundMessage(db: Database, actor: SystemActor, ev
         payload: { conversationId: stored.conversationId, messageId: stored.messageId },
         dedupeKey: `${AI_REPLY_JOB}:${stored.messageId}`,
         maxAttempts: 3,
-        timeoutMs: 150_000,
+        timeoutMs: AI_REPLY_JOB_TIMEOUT_MS,
         priority: 40,
       });
       routed = "bot";
