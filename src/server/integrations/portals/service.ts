@@ -1,11 +1,15 @@
-/** Acciones del panel de portales: reintento manual y habilitar/deshabilitar canal (auditadas). */
+/**
+ * Acciones del panel de portales: reintento manual y habilitar/deshabilitar canal (auditadas).
+ * El reintento manual de un resultado incierto conserva `remote_write_started_at`: el job busca el aviso por
+ * referencia propia y lo adopta antes de crear otro.
+ */
 import { z } from "zod";
-import type { Database } from "../../db";
+import { sql, type Database } from "../../db";
 import { audit } from "../../audit";
 import { requirePermission, type Actor } from "../../auth/actor";
 import { conflict, invalid, notFound } from "../../errors";
 import { isEnabled } from "../../flags";
-import { enqueuePortalSync } from "./sync";
+import { enqueuePortalSync, SYNC_LEASE_MINUTES } from "./sync";
 
 export const retrySchema = z.object({ publicationId: z.uuid() });
 
@@ -18,13 +22,15 @@ export async function retryPublication(db: Database, actor: Actor, raw: unknown)
       .selectFrom("property_publications as pp")
       .innerJoin("publication_channels as c", "c.key", "pp.channel_key")
       .select(["pp.id", "pp.property_id", "pp.channel_key", "pp.sync_status", "pp.last_error", "c.kind", "c.is_enabled"])
+      .select(sql<boolean>`coalesce(pp.sync_locked_until > now(), false) or (pp.sync_status = 'syncing' and coalesce(pp.last_attempt_at > now() - make_interval(mins => ${SYNC_LEASE_MINUTES}), false))`.as("in_progress"))
       .where("pp.id", "=", input.publicationId)
       .forUpdate("pp")
       .executeTakeFirst();
     if (!pub) throw notFound("Publicación");
     if (pub.kind !== "portal") throw invalid("Solo se reintentan publicaciones en portales");
     if (!pub.is_enabled) throw invalid("El canal está deshabilitado: habilitalo antes de reintentar");
-    if (pub.sync_status === "syncing") throw conflict("Ya se está sincronizando");
+    // Un `syncing` de hace más de SYNC_LEASE_MINUTES es un worker que murió: se puede reintentar.
+    if (pub.in_progress) throw conflict("Ya se está sincronizando");
     await trx.updateTable("property_publications").set({ sync_status: "pending", last_error: null }).where("id", "=", pub.id).execute();
     const jobId = await enqueuePortalSync(trx, pub.property_id, pub.channel_key, "manual");
     await audit(trx, actor, {

@@ -7,7 +7,8 @@ import { runJobs } from "@/server/jobs/runner";
 import { PermanentJobError } from "@/server/jobs/registry";
 import { syncPublication, resumePortalSync } from "@/server/integrations/portals/sync";
 import { retryPublication, setPortalChannelEnabled } from "@/server/integrations/portals/service";
-import { clearMercadoLibreCacheForTests } from "@/server/integrations/portals/mercadolibre/adapter";
+import { clearMercadoLibreCacheForTests, mercadoLibreAccessToken } from "@/server/integrations/portals/mercadolibre/adapter";
+import { encryptionKey, readCredentials } from "@/server/integrations/secrets";
 import { updateProperty, unpublishProperty } from "@/server/properties/service";
 import type { StaffActor } from "@/server/auth/actor";
 import { createStaff, testDb } from "../helpers/db";
@@ -285,5 +286,199 @@ describe("sincronización con portales", () => {
     } finally {
       http.restore();
     }
+  });
+
+  describe("resultados inciertos, carreras y credenciales", () => {
+    type Extra = { createStatus?: number; searchResults?: string[]; getItem404?: boolean; unauthorized?: boolean; onCreate?: () => Promise<void>; createdId?: string };
+    function extraRoutes(x: Extra) {
+      return [
+        async (c: RecordedCall) => {
+          if (!c.url.startsWith("https://api.mercadolibre.com/")) return undefined;
+          const path = c.url.replace("https://api.mercadolibre.com", "");
+          if (x.unauthorized && path.startsWith("/items")) return json({ message: "invalid access token", status: 401 }, 401);
+          if (path.startsWith("/users/99/items/search")) return json({ seller_id: "99", paging: { total: (x.searchResults ?? []).length }, results: x.searchResults ?? [] });
+          if (path === "/items" && c.method === "POST") {
+            if (x.onCreate) await x.onCreate();
+            if (x.createStatus) return json({ message: "internal error" }, x.createStatus);
+            if (x.createdId) return json({ id: x.createdId, permalink: `https://casa.mercadolibre.com.ar/${x.createdId}`, status: "active" }, 201);
+          }
+          if (x.getItem404 && path === "/items/MLA3879350706" && c.method === "GET") return json({ message: "Item with id MLA3879350706 not found", status: 404 }, 404);
+          if (x.createdId && path === `/items/${x.createdId}` && c.method !== "POST") return json({ id: x.createdId, status: "active", permalink: `https://casa.mercadolibre.com.ar/${x.createdId}` });
+          if (x.createdId && path === `/items/${x.createdId}/description`) return json({ plain_text: "ok" });
+          return undefined;
+        },
+        ...mercadoLibreRoutes({ itemsPut503: false, requiredExtra: false, tokenSeq: 0 }),
+      ];
+    }
+    /** POST /items de una propiedad (otras propiedades de tests anteriores pueden sincronizarse en la misma corrida). */
+    const posts = (calls: RecordedCall[], code?: number) =>
+      calls.filter((c) => c.method === "POST" && c.url === "https://api.mercadolibre.com/items" && (code === undefined || (JSON.parse(c.body) as { seller_custom_field?: string }).seller_custom_field === `LLF-${code}`));
+
+    it("despublicar mientras se crea el aviso: la carrera no deja el aviso activo (se pausa lo recién creado)", async () => {
+      const db = testDb();
+      await enableMercadoLibre();
+      const p = await publishedProperty(db, admin);
+      await linkLocation(p.locationId);
+      let concurrent: unknown = null;
+      const http = mockHttp(
+        extraRoutes({
+          onCreate: async () => {
+            // Mientras Mercado Libre procesa la creación, una persona despublica y otro worker intenta sincronizar.
+            await unpublishProperty(db, admin, p.id, "Se vendió");
+            concurrent = await syncPublication(db, p.id, "mercadolibre").catch((e: unknown) => e);
+          },
+        }),
+      );
+      try {
+        await drain();
+        expect((concurrent as Error).message).toMatch(/otro proceso/);
+        const pauses = http.calls.filter((c) => c.method === "PUT" && c.url.endsWith("/items/MLA3879350706") && c.body.includes('"paused"'));
+        expect(pauses).toHaveLength(1);
+        expect(await pub(p.id)).toMatchObject({ desired_state: "unpublished", sync_status: "synced", external_id: "MLA3879350706", sync_locked_until: null, remote_write_started_at: null });
+        expect(posts(http.calls)).toHaveLength(1);
+      } finally {
+        http.restore();
+      }
+    });
+
+    it("POST /items con 5xx: no se reintenta, queda failed 'incierto'; el reintento manual adopta el aviso existente sin crear otro", async () => {
+      const db = testDb();
+      await enableMercadoLibre();
+      const x: Extra = { createStatus: 503 };
+      const http = mockHttp(extraRoutes(x));
+      try {
+        const p = await publishedProperty(db, admin);
+        await linkLocation(p.locationId);
+        await drain();
+        expect(posts(http.calls, p.code)).toHaveLength(1);
+        const row = await pub(p.id);
+        expect(row).toMatchObject({ sync_status: "failed", external_id: null });
+        expect(row.last_error).toMatch(/Resultado incierto.*Verificá en Mercado Libre/);
+        expect(row.remote_write_started_at).not.toBeNull();
+        const job = await db.selectFrom("jobs").select(["status", "attempts"]).where("type", "=", "portals.sync").where("status", "in", ["dead", "failed", "queued"]).executeTakeFirstOrThrow();
+        expect(job).toMatchObject({ status: "dead", attempts: 1 });
+        // La corrida horaria no lo retoma sola
+        await resumePortalSync(db);
+        await drain();
+        expect(posts(http.calls, p.code)).toHaveLength(1);
+
+        // Una persona verificó y reintenta: el aviso SÍ se había creado → se encuentra por referencia y se adopta
+        const created = JSON.parse(posts(http.calls, p.code)[0]!.body);
+        expect(created.seller_custom_field).toBe(`LLF-${p.code}`);
+        x.createStatus = undefined;
+        x.searchResults = ["MLA3879350706"];
+        await sql`delete from jobs where type = 'portals.sync'`.execute(db);
+        const mark = http.calls.length;
+        await retryPublication(db, admin, { publicationId: row.id });
+        await syncPublication(db, p.id, "mercadolibre");
+        const search = http.calls.find((c) => c.url.includes("/users/99/items/search"));
+        expect(search?.url).toBe(`https://api.mercadolibre.com/users/99/items/search?sku=LLF-${p.code}`);
+        expect(posts(http.calls, p.code)).toHaveLength(1);
+        expect(await pub(p.id)).toMatchObject({ sync_status: "synced", external_id: "MLA3879350706", remote_write_started_at: null });
+        expect(http.calls.slice(mark).filter((c) => c.method === "PUT" && c.url.endsWith("/items/MLA3879350706"))).toHaveLength(1);
+      } finally {
+        http.restore();
+      }
+    });
+
+    it("aviso borrado en Mercado Libre (404): si debe estar publicado se recrea buscando antes por referencia; al despublicar, 404 no es error", async () => {
+      const db = testDb();
+      await enableMercadoLibre();
+      const x: Extra = { getItem404: true, searchResults: [], createdId: "MLA5550001" };
+      const http = mockHttp(extraRoutes(x));
+      try {
+        const p = await publishedProperty(db, admin);
+        await linkLocation(p.locationId);
+        await sql`update property_publications set sync_status = 'synced', external_id = 'MLA3879350706', last_payload_hash = 'viejo' where property_id = ${p.id} and channel_key = 'mercadolibre'`.execute(db);
+        const r = await syncPublication(db, p.id, "mercadolibre");
+        expect(r).toMatchObject({ status: "synced", externalId: "MLA5550001" });
+        const order = http.calls.map((c) => `${c.method} ${c.url.replace("https://api.mercadolibre.com", "")}`).filter((c) => !c.includes("/categories") && !c.includes("oauth"));
+        expect(order.indexOf(`GET /users/99/items/search?sku=LLF-${p.code}`)).toBeLessThan(order.indexOf("POST /items"));
+        expect(posts(http.calls)).toHaveLength(1);
+
+        await sql`update property_publications set external_id = 'MLA3879350706' where property_id = ${p.id} and channel_key = 'mercadolibre'`.execute(db);
+        await unpublishProperty(db, admin, p.id);
+        expect((await syncPublication(db, p.id, "mercadolibre")).status).toBe("synced");
+        expect((await pub(p.id)).sync_status).toBe("synced");
+      } finally {
+        http.restore();
+      }
+    });
+
+    it("401 de la API → awaiting_credentials con instrucción de reautorizar (no 'dato inválido')", async () => {
+      const db = testDb();
+      await enableMercadoLibre();
+      const http = mockHttp(extraRoutes({ unauthorized: true }));
+      try {
+        const p = await publishedProperty(db, admin);
+        await linkLocation(p.locationId);
+        await sql`update property_publications set sync_status = 'synced', external_id = 'MLA3879350706', last_payload_hash = 'viejo' where property_id = ${p.id} and channel_key = 'mercadolibre'`.execute(db);
+        const r = await syncPublication(db, p.id, "mercadolibre");
+        expect(r.status).toBe("awaiting_credentials");
+        const row = await pub(p.id);
+        expect(row.sync_status).toBe("awaiting_credentials");
+        expect(row.last_error).toMatch(/Volvé a autorizar/);
+        const i = await db.selectFrom("integrations").select(["status", "last_error"]).where("key", "=", "mercadolibre").executeTakeFirstOrThrow();
+        expect(i.status).toBe("awaiting_credentials");
+        // El access token guardado deja de usarse: la próxima llamada lo renueva
+        const cred = await db.selectFrom("integration_credentials").select("access_expires_at").where("integration_key", "=", "mercadolibre").executeTakeFirstOrThrow();
+        expect(new Date(cred.access_expires_at!).getTime()).toBeLessThan(Date.now());
+      } finally {
+        http.restore();
+        await db.updateTable("integrations").set({ status: "active", last_error: null }).where("key", "=", "mercadolibre").execute();
+      }
+    });
+
+    it("refresh token rotativo: el nuevo queda guardado aunque falle lo que sigue a la respuesta; el POST de token no se reintenta", async () => {
+      const db = testDb();
+      const http = mockHttp(mercadoLibreRoutes({ itemsPut503: false, requiredExtra: false, tokenSeq: 0 }));
+      // Falla el registro del éxito en integration_logs (p. ej. pool agotado / base lenta) justo después de la respuesta
+      await sql.raw(`create or replace function test_fail_oauth_log() returns trigger language plpgsql as $$
+        begin if new.operation = 'oauth.refresh' and new.status = 'ok' then raise exception 'falla simulada de registro'; end if; return new; end $$`).execute(db);
+      await sql`create trigger test_fail_oauth_log before insert on integration_logs for each row execute function test_fail_oauth_log()`.execute(db);
+      try {
+        await expect(mercadoLibreAccessToken(db)).rejects.toThrow(/falla simulada/);
+        expect(http.calls.filter((c) => c.url.endsWith("/oauth/token"))).toHaveLength(1);
+        const stored = await readCredentials<{ refreshToken: string; accessToken: string }>(db, "mercadolibre", encryptionKey()!);
+        expect(stored?.value).toMatchObject({ refreshToken: "TG-rotado-1", accessToken: "APP_USR-1" });
+      } finally {
+        await sql`drop trigger if exists test_fail_oauth_log on integration_logs`.execute(db);
+        await sql`drop function if exists test_fail_oauth_log()`.execute(db);
+        http.restore();
+      }
+      // Con el token ya guardado, la siguiente llamada lo reutiliza sin volver a consumir el refresh token
+      const again = mockHttp(mercadoLibreRoutes({ itemsPut503: false, requiredExtra: false, tokenSeq: 5 }));
+      try {
+        expect(await mercadoLibreAccessToken(db)).toBe("APP_USR-1");
+        expect(again.calls).toHaveLength(0);
+      } finally {
+        again.restore();
+      }
+    });
+
+    it("publicación trabada en syncing (worker muerto > 15 min): la reanudación horaria y el reintento manual la retoman", async () => {
+      const db = testDb();
+      await enableMercadoLibre();
+      const http = mockHttp([]);
+      try {
+        await setFlag(db, "portal_sync", false);
+        const p = await publishedProperty(db, admin);
+        await setFlag(db, "portal_sync", true);
+        await sql`delete from jobs where type = 'portals.sync'`.execute(db);
+        const row = await pub(p.id);
+        // Recién tomada por un worker: no se reintenta encima
+        await sql`update property_publications set sync_status = 'syncing', last_attempt_at = now(), sync_locked_until = now() + interval '15 minutes' where id = ${row.id}`.execute(db);
+        await expect(retryPublication(db, admin, { publicationId: row.id })).rejects.toThrow(/sincronizando/);
+        // Worker muerto hace 20 minutos
+        await sql`update property_publications set sync_status = 'syncing', last_attempt_at = now() - interval '20 minutes', sync_locked_until = now() - interval '5 minutes' where id = ${row.id}`.execute(db);
+        await sql`update integrations set status = 'active' where key = 'mercadolibre'`.execute(db);
+        const resumed = await resumePortalSync(db);
+        expect(resumed.queued).toBeGreaterThanOrEqual(1);
+        await sql`delete from jobs where type = 'portals.sync'`.execute(db);
+        expect((await retryPublication(db, admin, { publicationId: row.id })).queued).toBe(true);
+      } finally {
+        http.restore();
+      }
+    });
   });
 });
