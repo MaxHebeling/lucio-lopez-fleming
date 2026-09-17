@@ -51,8 +51,9 @@ create table property_media_analysis (
   luminance_mean numeric(6, 2) not null check (luminance_mean between 0 and 255),
   luminance_p95 numeric(6, 2) not null check (luminance_p95 between 0 and 255),
   dark_pixel_ratio numeric(5, 4) not null check (dark_pixel_ratio between 0 and 1),
-  -- Varianza del Laplaciano sobre la imagen normalizada (nitidez)
+  -- Nitidez: varianza del Laplaciano y varianza de luminancia a 512 px (su cociente no depende de la exposición)
   laplacian_variance numeric(12, 2) not null check (laplacian_variance >= 0),
+  luminance_variance numeric(12, 2) not null check (luminance_variance >= 0),
   analyzed_at timestamptz not null default now()
 );
 create index property_media_analysis_property on property_media_analysis(property_id);

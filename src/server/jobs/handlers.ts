@@ -20,3 +20,5 @@ import "../tours/service";
 import "../site/events";
 import "../visits/jobs";
 import "../ai/jobs";
+import "../ai/property/quality";
+import "../ai/property/photo-director";

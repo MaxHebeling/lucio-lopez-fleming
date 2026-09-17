@@ -1003,6 +1003,7 @@ export interface PropertyMediaAnalysis {
   laplacian_variance: Numeric;
   luminance_mean: Numeric;
   luminance_p95: Numeric;
+  luminance_variance: Numeric;
   media_id: string;
   property_id: string;
   width: number | null;
