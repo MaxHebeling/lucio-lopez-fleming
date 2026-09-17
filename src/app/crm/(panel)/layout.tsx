@@ -73,7 +73,8 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
             </form>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6">{children}</main>
+        {/* Con el Asistente IA, en celular queda lugar abajo para su botón flotante sin tapar el final de la página. */}
+        <main className={`mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-6 ${copilot ? "pb-24 sm:pb-6" : ""}`}>{children}</main>
       </div>
     </div>
   );
