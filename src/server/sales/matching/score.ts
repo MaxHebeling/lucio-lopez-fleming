@@ -67,9 +67,14 @@ export type MatchResult = {
 const nf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
 const money = (n: number, c: "USD" | "ARS") => `${c === "USD" ? "USD" : "$"} ${nf.format(n)}`;
 
-/** Un perfil sirve para buscar coincidencias si dice QUÉ (operación o tipo) y DÓNDE o CUÁNTO (zona o presupuesto). */
+/**
+ * Un perfil sirve para buscar coincidencias si dice QUÉ (operación o tipo) y DÓNDE o CUÁNTO (zona o presupuesto).
+ * Un presupuesto solo se compara con la operación conocida: sin operación, USD 260.000 «alcanzaría» cualquier alquiler.
+ */
 export function profileIsMatchable(p: MatchProfile): boolean {
-  return Boolean((p.transactionType || p.propertyTypes) && (p.budget || p.locations));
+  const what = Boolean(p.transactionType || p.propertyTypes);
+  const where = Boolean(p.locations || (p.budget && p.transactionType));
+  return what && where;
 }
 
 export type FeatureNames = Map<string, string>;

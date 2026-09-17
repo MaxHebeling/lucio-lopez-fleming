@@ -70,6 +70,9 @@ describe("coincidencias · filtros obligatorios", () => {
     expect(scoreMatch({}, casa()).eligible).toBe(false);
     expect(profileIsMatchable({ propertyTypes: ok(["casa"]) })).toBe(false);
     expect(profileIsMatchable({ propertyTypes: ok(["casa"]), locations: perfil.locations })).toBe(true);
+    // Un presupuesto sin operación no se compara (USD 260.000 no «alcanza» para un alquiler de USD 1.300)
+    expect(profileIsMatchable({ propertyTypes: ok(["casa"]), budget: perfil.budget })).toBe(false);
+    expect(profileIsMatchable({ propertyTypes: ok(["casa"]), budget: perfil.budget, transactionType: perfil.transactionType })).toBe(true);
   });
 
   it("datos sin confirmar se marcan; vio la propiedad en el sitio suma y se explica", () => {

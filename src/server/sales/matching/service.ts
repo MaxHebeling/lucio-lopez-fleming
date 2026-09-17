@@ -73,6 +73,7 @@ export function missingForMatching(p: MatchProfile): string[] {
   const out: string[] = [];
   if (!p.transactionType && !p.propertyTypes) out.push(`${FIELD_LABEL.transaction_type} o ${FIELD_LABEL.property_types.toLowerCase()}`);
   if (!p.budget && !p.locations) out.push(`${FIELD_LABEL.budget} o ${FIELD_LABEL.locations.toLowerCase()}`);
+  else if (p.budget && !p.locations && !p.transactionType) out.push(`${FIELD_LABEL.transaction_type} (para comparar el presupuesto)`);
   return out;
 }
 

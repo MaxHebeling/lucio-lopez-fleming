@@ -54,7 +54,7 @@ export function recommendNextActions(f: NbaFacts, max = 3): Recommendation[] {
 
   // 1 · Contactar hoy: consulta sin responder + señales fuertes de interés
   if (openLead && !openLead.firstResponseAt && strong.length) {
-    const what = strong.map((s) => s.label.charAt(0).toLowerCase() + s.label.slice(1));
+    const what = strong.map((s) => (s.label.charAt(0).toLowerCase() + s.label.slice(1)).replace(/^solicitó visitar/, "pidió visitar"));
     out.push({
       ruleKey: "contact_today",
       priority: "high",
