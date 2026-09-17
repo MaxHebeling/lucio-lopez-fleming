@@ -725,6 +725,7 @@ export interface Properties {
   hide_exact_address: Generated<boolean>;
   id: Generated<string>;
   imported_at: Timestamp | null;
+  is_demo: Generated<boolean>;
   is_published: Generated<boolean>;
   land_area_m2: Numeric | null;
   last_synced_at: Timestamp | null;
@@ -1043,6 +1044,19 @@ export interface SettlementLines {
   settlement_id: string;
 }
 
+export interface SiteEvents {
+  hotspot_id: string | null;
+  id: Generated<Int8>;
+  name: string;
+  occurred_at: Generated<Timestamp>;
+  property_id: string | null;
+  props: Generated<Json>;
+  scene_id: string | null;
+  scene_slug: string | null;
+  session_key: string;
+  tour_id: string | null;
+}
+
 export interface SocialAssets {
   file_id: string | null;
   id: Generated<string>;
@@ -1130,6 +1144,67 @@ export interface Users {
   public_profile: Generated<boolean>;
   updated_at: Generated<Timestamp>;
   whatsapp_e164: string | null;
+}
+
+export interface VirtualTourHotspots {
+  content: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  kind: string;
+  label: string;
+  pitch: number;
+  scene_id: string;
+  sort_order: Generated<number>;
+  target_scene_id: string | null;
+  updated_at: Generated<Timestamp>;
+  yaw: number;
+}
+
+export interface VirtualTours {
+  cover_file_id: string | null;
+  cover_url: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  embed_url: string | null;
+  external_url: string | null;
+  floor_plan_file_id: string | null;
+  floor_plan_height: number | null;
+  floor_plan_url: string | null;
+  floor_plan_width: number | null;
+  guided_scene_ids: Generated<string[]>;
+  id: Generated<string>;
+  is_demo: Generated<boolean>;
+  kind: string;
+  property_id: string;
+  provider: string | null;
+  published_at: Timestamp | null;
+  start_scene_id: string | null;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+}
+
+export interface VirtualTourScenes {
+  created_at: Generated<Timestamp>;
+  height: number;
+  id: Generated<string>;
+  initial_pitch: Generated<number>;
+  initial_yaw: Generated<number>;
+  is_published: Generated<boolean>;
+  name: string;
+  panorama_file_id: string | null;
+  panorama_url: string | null;
+  plan_x: number | null;
+  plan_y: number | null;
+  preview_file_id: string | null;
+  preview_url: string | null;
+  slug: string;
+  sort_order: Generated<number>;
+  thumbnail_file_id: string | null;
+  thumbnail_url: string | null;
+  tour_id: string;
+  updated_at: Generated<Timestamp>;
+  width: number;
 }
 
 export interface WebhookEvents {
@@ -1220,6 +1295,7 @@ export interface DB {
   sessions: Sessions;
   settings: Settings;
   settlement_lines: SettlementLines;
+  site_events: SiteEvents;
   social_assets: SocialAssets;
   social_posts: SocialPosts;
   tags: Tags;
@@ -1227,5 +1303,8 @@ export interface DB {
   user_branches: UserBranches;
   user_roles: UserRoles;
   users: Users;
+  virtual_tour_hotspots: VirtualTourHotspots;
+  virtual_tour_scenes: VirtualTourScenes;
+  virtual_tours: VirtualTours;
   webhook_events: WebhookEvents;
 }
