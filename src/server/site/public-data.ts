@@ -28,6 +28,7 @@ import {
 import { getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "../properties/public-home";
 import type { PublicOperation } from "../properties/public-helpers";
 import { SITE_CACHE_TAGS, SITE_REVALIDATE_SECONDS } from "./revalidate";
+import { loadSiteDemoShowcase, loadSitePropertyMediaExtras } from "../tours/queries";
 
 const PROPERTIES = { tags: [SITE_CACHE_TAGS.properties], revalidate: SITE_REVALIDATE_SECONDS };
 
@@ -98,6 +99,16 @@ const similarCached = unstable_cache(
 );
 export const getSiteSimilar = (p: PublicPropertyDetail, limit: number) =>
   readPublic(() => similarCached({ code: p.code, typeKey: p.typeKey, typeCategory: p.typeCategory, zone: p.zone, prices: p.prices.slice(0, 1) }, limit));
+
+// ───────── Tours virtuales, planos y videos de la ficha ─────────
+// El flag `virtual_tours` se evalúa dentro de la caché: cambiarlo desde Integraciones invalida el sitio (ver la acción).
+
+const mediaExtrasCached = unstable_cache(async (code: number) => loadSitePropertyMediaExtras(getDb(), code), ["site", "property-media-extras", "v1"], PROPERTIES);
+export const getSitePropertyMediaExtras = cache((code: number) => readPublic(() => mediaExtrasCached(code)));
+
+const demoCached = unstable_cache(async () => loadSiteDemoShowcase(getDb()), ["site", "demo-tour", "v1"], PROPERTIES);
+/** Demo pública del tour. null con el flag apagado o sin demo sembrada (la ruta responde 404). */
+export const getSiteDemoShowcase = cache(() => readPublic(demoCached));
 
 // ───────── Listados (títulos) ─────────
 // Sin caché de datos: las claves salen de la URL (cualquier slug) y ambas son lecturas chicas (tipo por PK, árbol de

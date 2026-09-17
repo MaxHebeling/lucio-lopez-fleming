@@ -58,7 +58,7 @@ export async function captureLead(db: Database, actor: Actor, raw: CaptureLeadIn
     let propertyId = input.propertyId ?? null;
     let branchId: string | null = null;
     if (!propertyId && input.propertyCode) {
-      const p = await trx.selectFrom("properties").select("id").where("code", "=", input.propertyCode).where("deleted_at", "is", null).executeTakeFirst();
+      const p = await trx.selectFrom("properties").select("id").where("code", "=", input.propertyCode).where("is_demo", "=", false).where("deleted_at", "is", null).executeTakeFirst();
       propertyId = p?.id ?? null;
     }
     let assignedUserId = input.assignedUserId ?? null;

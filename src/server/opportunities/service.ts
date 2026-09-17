@@ -107,7 +107,7 @@ export async function createOpportunity(db: Database, actor: Actor, raw: SchemaI
     let property: { code: number; title: string } | undefined;
     if (propertyId) {
       requirePermission(actor, "properties.read");
-      property = await trx.selectFrom("properties").select(["code", "title"]).where("id", "=", propertyId).where("deleted_at", "is", null).executeTakeFirst();
+      property = await trx.selectFrom("properties").select(["code", "title"]).where("id", "=", propertyId).where("deleted_at", "is", null).where("is_demo", "=", false).executeTakeFirst();
       if (!property) throw invalid("Propiedad inválida", { propertyId: ["Propiedad inexistente"] });
     }
     const contact = await trx.selectFrom("contacts").select("display_name").where("id", "=", contactId!).executeTakeFirstOrThrow();
@@ -295,7 +295,7 @@ export async function updateOpportunity(db: Database, actor: Actor, raw: SchemaI
     if (input.propertyId !== undefined) {
       if (input.propertyId) {
         requirePermission(actor, "properties.read");
-        const p = await trx.selectFrom("properties").select("id").where("id", "=", input.propertyId).where("deleted_at", "is", null).executeTakeFirst();
+        const p = await trx.selectFrom("properties").select("id").where("id", "=", input.propertyId).where("deleted_at", "is", null).where("is_demo", "=", false).executeTakeFirst();
         if (!p) throw invalid("Propiedad inválida", { propertyId: ["Propiedad inexistente"] });
       }
       next.property_id = input.propertyId;

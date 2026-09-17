@@ -129,6 +129,7 @@ export async function createContract(db: Database, actor: Actor, raw: unknown): 
         .select(["id", "code", "status"])
         .where("id", "=", input.propertyId)
         .where("deleted_at", "is", null)
+        .where("is_demo", "=", false)
         .executeTakeFirst();
       if (!property) throw invalid("La propiedad no existe", { propertyId: ["Propiedad inexistente"] });
       if (property.status === "archived") throw invalid("La propiedad está archivada", { propertyId: ["Propiedad archivada"] });

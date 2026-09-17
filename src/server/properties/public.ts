@@ -213,7 +213,8 @@ const cardSelect = sql`
   (select count(*)::int from property_media m
     where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed') as photo_count`;
 
-const publishedWhere = sql`p.is_published and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')`;
+/** Publicadas y visibles. `not p.is_demo` es redundante con la base (una demo no puede publicarse) y se deja como defensa. */
+const publishedWhere = sql`p.is_published and not p.is_demo and p.deleted_at is null and p.status in ('available', 'reserved', 'sold', 'rented')`;
 
 function toNum(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined || v === "") return null;
