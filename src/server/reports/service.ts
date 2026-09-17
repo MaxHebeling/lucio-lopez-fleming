@@ -120,7 +120,7 @@ export async function buildReportData(db: Executor, ownerContactId: string, prop
       isPublished: p.is_published,
       publicPath: p.is_published ? `/propiedades/${p.slug}` : null,
       inquiries: { total: channels.reduce((a, c) => a + c.count, 0), byChannel: channels.map((c) => ({ channel: c.channel, count: c.count })) },
-      visits: { completed: v("completed"), scheduled: v("scheduled") + v("confirmed"), cancelled: v("cancelled"), noShow: v("no_show") },
+      visits: { completed: v("completed"), scheduled: v("scheduled") + v("confirmed") + v("en_route") + v("checked_in") + v("in_progress"), cancelled: v("cancelled"), noShow: v("no_show") },
       priceChanges: prices.map((x) => ({
         date: x.changed_at.toISOString(),
         operation: x.operation,

@@ -2,16 +2,19 @@ import Link from "next/link";
 import { requireStaffPage } from "@/server/next/context";
 import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
+import { isEnabled } from "@/server/flags";
 import { CRM_NAV, NAV_PERMISSION_ALIASES } from "../nav";
 import { NavLinks } from "@/components/crm/nav-links";
 import { MobileNav } from "@/components/crm/mobile-nav";
 
 export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
   const actor = await requireStaffPage();
-  const items = CRM_NAV.filter((i) => can(actor, i.permission) || (NAV_PERMISSION_ALIASES[i.permission] ?? []).some((p) => can(actor, p))).map(
+  const db = getDb();
+  const flags = new Map(await Promise.all([...new Set(CRM_NAV.flatMap((i) => (i.flag ? [i.flag] : [])))].map(async (f) => [f, await isEnabled(db, f)] as const)));
+  const items = CRM_NAV.filter((i) => (!i.flag || flags.get(i.flag)) && (can(actor, i.permission) || (NAV_PERMISSION_ALIASES[i.permission] ?? []).some((p) => can(actor, p)))).map(
     ({ href, label, icon, group }) => ({ href, label, icon, group }),
   );
-  const unread = await getDb()
+  const unread = await db
     .selectFrom("notifications")
     .select((eb) => eb.fn.countAll<string>().as("n"))
     .where("user_id", "=", actor.userId)

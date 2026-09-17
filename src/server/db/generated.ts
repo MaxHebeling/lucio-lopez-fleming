@@ -68,13 +68,80 @@ export interface AiInteractions {
   tool_calls: Generated<Json>;
 }
 
+export interface AppointmentCheckins {
+  accuracy_m: Numeric | null;
+  appointment_id: string;
+  attempt: number;
+  coords_purged_at: Timestamp | null;
+  device_at: Timestamp | null;
+  distance_m: number | null;
+  id: Generated<string>;
+  idempotency_key: string;
+  latitude: Numeric | null;
+  longitude: Numeric | null;
+  max_accuracy_m: number;
+  radius_m: number;
+  reason: string;
+  reason_detail: string | null;
+  server_at: Generated<Timestamp>;
+  user_id: string;
+  verification_status: string;
+}
+
+export interface AppointmentEvents {
+  actor_kind: string;
+  actor_user_id: string | null;
+  appointment_id: string;
+  data: Generated<Json>;
+  dedupe_key: string | null;
+  id: Generated<Int8>;
+  kind: string;
+  occurred_at: Generated<Timestamp>;
+}
+
+export interface AppointmentPublicLinks {
+  appointment_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  expired_recorded_at: Timestamp | null;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  last_opened_at: Timestamp | null;
+  open_count: Generated<number>;
+  revoke_reason: string | null;
+  revoked_at: Timestamp | null;
+  revoked_by: string | null;
+  token_hash: string;
+}
+
+export interface AppointmentReports {
+  appointment_id: string;
+  author_user_id: string;
+  body: string;
+  confirmed_at: Timestamp | null;
+  confirmed_by: string | null;
+  created_at: Generated<Timestamp>;
+  dictated: Generated<boolean>;
+  follow_up_at: Timestamp | null;
+  interest: string | null;
+  next_step: string | null;
+  objections: string | null;
+  positives: string | null;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+}
+
 export interface Appointments {
   assigned_user_id: string;
   cancel_reason: string | null;
+  checked_in_at: Timestamp | null;
   contact_id: string | null;
   created_at: Generated<Timestamp>;
   created_by: string | null;
+  en_route_at: Timestamp | null;
   ends_at: Timestamp;
+  finished_at: Timestamp | null;
   follow_up_task_id: string | null;
   id: Generated<string>;
   idempotency_key: string | null;
@@ -85,10 +152,22 @@ export interface Appointments {
   opportunity_id: string | null;
   property_id: string | null;
   result: string | null;
+  started_at: Timestamp | null;
   starts_at: Timestamp;
   status: Generated<string>;
   title: string;
   updated_at: Generated<Timestamp>;
+}
+
+export interface AppointmentThanks {
+  appointment_id: string;
+  created_at: Generated<Timestamp>;
+  marked_sent_at: Timestamp | null;
+  marked_sent_by: string | null;
+  message: string;
+  sent_channel: string | null;
+  updated_at: Generated<Timestamp>;
+  updated_by: string;
 }
 
 export interface AuditLogs {
@@ -1207,6 +1286,17 @@ export interface VirtualTourScenes {
   width: number;
 }
 
+export interface VisitAlerts {
+  appointment_id: string;
+  detail: Generated<Json>;
+  detected_at: Generated<Timestamp>;
+  id: Generated<string>;
+  kind: string;
+  notified_at: Timestamp | null;
+  resolved_at: Timestamp | null;
+  severity: string;
+}
+
 export interface WebhookEvents {
   attempts: Generated<number>;
   external_event_id: string;
@@ -1224,6 +1314,11 @@ export interface DB {
   activities: Activities;
   adjustment_indices: AdjustmentIndices;
   ai_interactions: AiInteractions;
+  appointment_checkins: AppointmentCheckins;
+  appointment_events: AppointmentEvents;
+  appointment_public_links: AppointmentPublicLinks;
+  appointment_reports: AppointmentReports;
+  appointment_thanks: AppointmentThanks;
   appointments: Appointments;
   audit_logs: AuditLogs;
   automation_definitions: AutomationDefinitions;
@@ -1306,5 +1401,6 @@ export interface DB {
   virtual_tour_hotspots: VirtualTourHotspots;
   virtual_tour_scenes: VirtualTourScenes;
   virtual_tours: VirtualTours;
+  visit_alerts: VisitAlerts;
   webhook_events: WebhookEvents;
 }
