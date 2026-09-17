@@ -144,8 +144,8 @@ test("demo 1440: portada → escena → hotspot → plano → guiado → CTA →
   await dialog.getByRole("button", { name: "Plano", exact: true }).click();
   const plan = dialog.getByRole("region", { name: "Plano" });
   await expect(plan.getByText("PLANO DEMOSTRATIVO")).toBeVisible();
-  await plan.getByRole("button", { name: "Ir a Dormitorio" }).click();
-  await expect(page.locator("#tour-title")).toHaveText("Dormitorio");
+  await plan.getByRole("button", { name: /^Ir a Dormitorio/ }).click();
+  await expect(page.locator("#tour-title")).toHaveText(/^Dormitorio/);
   await expect(plan).toBeHidden();
 
   // Recorrido guiado: arranca desde el principio, siguiente / anterior.

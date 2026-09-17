@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -275,12 +276,14 @@ describe("propiedad demo", () => {
     expect(second.propertyId).toBe(first.propertyId);
     expect(second.tourId).toBe(first.tourId);
     expect(second.created).toBe(false);
-    expect([second.scenes, second.hotspots]).toEqual([9, 24]);
+    // Los conteos salen del manifiesto versionado: reemplazar los assets demo no rompe el test.
+    const manifest = JSON.parse(readFileSync(resolve(dir, "manifest.json"), "utf8")) as { scenes: Array<{ hotspots: unknown[] }> };
+    expect([second.scenes, second.hotspots]).toEqual([manifest.scenes.length, manifest.scenes.reduce((n, sc) => n + sc.hotspots.length, 0)]);
     demoId = first.propertyId;
     demoCode = first.code;
     const counts = await sql<{ scenes: number; hotspots: number }>`select (select count(*)::int from virtual_tour_scenes where tour_id = ${first.tourId}) as scenes,
       (select count(*)::int from virtual_tour_hotspots h join virtual_tour_scenes s on s.id = h.scene_id where s.tour_id = ${first.tourId}) as hotspots`.execute(db);
-    expect(counts.rows[0]).toEqual({ scenes: 9, hotspots: 24 });
+    expect(counts.rows[0]).toEqual({ scenes: second.scenes, hotspots: second.hotspots });
     const demo = await getDemoShowcase(db);
     expect(demo?.property.title).toBe("RESIDENCIA DEMO 360°");
     expect(demo?.tour.isDemo).toBe(true);
