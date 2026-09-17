@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+!.env.example
+
+# storage local de desarrollo
+/.storage
+
+# backups locales
+/backups
+# storage local de desarrollo (driver local)
+/.storage
+# playwright
+/test-results/
+/playwright-report/

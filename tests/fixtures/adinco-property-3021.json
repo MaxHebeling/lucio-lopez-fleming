@@ -1,0 +1,303 @@
+{
+ "id": 6530875,
+ "realEstateId": 3414,
+ "code": 3021,
+ "thumbnail": null,
+ "multimedia": [
+  {
+   "src": "5780356_p/6aa81cca50e67.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca4d239.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cc9bd6df.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cc9daff6.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccac0509.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca89a92.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca20518.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca5d797.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccaf2816.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb5fa4e.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca14520.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb3522e.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cc9e2248.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb2dd6f.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb03837.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb2c201.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccb8e3db.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81ccbd224c.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca2a0df.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cc9f390c.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca95b31.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cc9c9dd5.jpg",
+   "multimediaTypeId": 1
+  },
+  {
+   "src": "5780356_p/6aa81cca92b45.jpg",
+   "multimediaTypeId": 1
+  }
+ ],
+ "title": "casa en venta",
+ "description": "INMOBILIARIA LUCIO LOPEZ FLEMING\n\nCasa en venta con una cómoda y funcional distribución, que cuenta con cinco dormitorios y tres baños. Dispone de un amplio living comedor, cocina, estar y escritorio, ofreciendo diferentes espacios para la vida diaria y el trabajo o estudio. \n\nEn el exterior cuenta con galería, asador y quincho para cuatro vehiculos, ideales para disfrutar de reuniones y momentos al aire libre. \n\nUna propiedad con ambientes amplios y variados, pensada para brindar comodidad y funcionalidad a toda la familia.",
+ "address": {
+  "street": "San Lorenzo, Nicolás Ibarguren",
+  "number": null,
+  "floor": null,
+  "apartment": null,
+  "neighborhood": "Salta",
+  "river": null
+ },
+ "typeId": 1,
+ "type": "Casa",
+ "operationId": 1,
+ "operation": "Venta",
+ "currencyId": "usd",
+ "price": 250000,
+ "normalized_price": "250000.00",
+ "zp_1": {
+  "id": 2360,
+  "name": "Salta",
+  "parent_id": 1,
+  "category": "Zona Geográfica"
+ },
+ "zp_2": {
+  "id": 2578,
+  "name": "Salta",
+  "parent_id": 2360,
+  "category": "Localidad"
+ },
+ "zp_3": {
+  "id": 198047,
+  "name": "Salta",
+  "parent_id": 2578,
+  "category": "Barrio"
+ },
+ "noteSellerId": 9587,
+ "sellerId": 9587,
+ "officeId": 3600,
+ "services": [
+  {
+   "id": 7,
+   "name": "Agua Corriente"
+  },
+  {
+   "id": 3,
+   "name": "Cloacas"
+  },
+  {
+   "id": 1,
+   "name": "Electricidad"
+  },
+  {
+   "id": 4,
+   "name": "Gas"
+  },
+  {
+   "id": 11,
+   "name": "Internet"
+  }
+ ],
+ "others": [
+  {
+   "id": 63,
+   "name": "Calefacción"
+  },
+  {
+   "id": 53,
+   "name": "Jardín"
+  },
+  {
+   "id": 8,
+   "name": "Pileta"
+  }
+ ],
+ "ambients": [],
+ "buildingServices": [],
+ "buildingOthers": [],
+ "flats": 2,
+ "buildingFloors": null,
+ "buildingApartmentByFloor": null,
+ "buildingMainElevators": null,
+ "buildingServiceElevator": null,
+ "availability": null,
+ "totalArea": 2000,
+ "totalAreaUnit": null,
+ "landArea": 2000,
+ "landAreaUnit": null,
+ "coveredArea": 400,
+ "rooms": 0,
+ "bedrooms": 5,
+ "bathrooms": 3,
+ "old": null,
+ "professional": 0,
+ "allowsPets": null,
+ "buildableArea": null,
+ "width": null,
+ "length": null,
+ "fot": null,
+ "zoning": null,
+ "floorsNumber": null,
+ "finalDestination": null,
+ "highInput": null,
+ "garages": null,
+ "coveredGarages": 4,
+ "semiCoveredGarages": null,
+ "garageId": null,
+ "distancePavement": null,
+ "tradeFund": null,
+ "expenses": null,
+ "stars": null,
+ "square": null,
+ "etapaContenedorId": null,
+ "possessionDate": null,
+ "totalApartments": null,
+ "totalGarages": null,
+ "totalOffices": null,
+ "totalStores": null,
+ "oneBedroom": null,
+ "statusId": 1,
+ "aptoCredito": false,
+ "permuta": false,
+ "aspectId": 4,
+ "dispositionId": null,
+ "orientationId": null,
+ "hotWaterId": 3,
+ "heatingId": 10,
+ "typeFieldId": null,
+ "typeCountryId": null,
+ "garageAccessId": null,
+ "garageVehicleSizeId": null,
+ "gasTypeId": null,
+ "locatedId": null,
+ "airConditioningId": null,
+ "hotelTypeId": null,
+ "specialBusinessTypeId": null,
+ "buildingTypeId": null,
+ "buildingCategoryId": null,
+ "latitude": -24.78212738,
+ "longitude": -65.42319489,
+ "apartmentsByFloors": null,
+ "direct": null,
+ "trader": null,
+ "administeredBy": null,
+ "fundingSponsor": null,
+ "duesConstruction": null,
+ "downPayment": null,
+ "fundingDescription": null,
+ "constructionCompany": null,
+ "freeBack": 0,
+ "hiddenPrice": false,
+ "hiddenAddress": false,
+ "fos": null,
+ "periodTemporalRent": null,
+ "unitPriceCurrencyId": null,
+ "unitPriceFrom": null,
+ "unitPriceTo": null,
+ "publishRealestateInfo": 0,
+ "permutaData": {
+  "propertyType": [],
+  "bedrooms": [],
+  "locations": [],
+  "priceRanges": {
+   "currency": null,
+   "from": null,
+   "to": null
+  }
+ },
+ "units": [],
+ "website": null,
+ "redirectToWeb": 0,
+ "edificationId": 1,
+ "expensesTypeId": null,
+ "propertyOccupied": false,
+ "optionalGarage": false,
+ "luminosityId": 1,
+ "securityTypeId": null,
+ "floorTypeId": null,
+ "roofTypeId": null,
+ "coastTypeId": null,
+ "viewTypeId": null,
+ "slopeTypeId": null,
+ "balconyTypeId": null,
+ "landTypeId": null,
+ "elevatorTypeId": null,
+ "bathroomTypeId": null,
+ "gateTypeId": null,
+ "industrialRoofTypeId": null,
+ "warehouseTypeId": null,
+ "possessionStatusId": null,
+ "columnCount": null,
+ "warehouseBays": null,
+ "widthInput": null,
+ "hotelBeds": null,
+ "restaurantCovers": null,
+ "roomsPerFloor": null,
+ "staffCount": null,
+ "annualProfitability": null,
+ "ceilingsOf": null,
+ "floorsOf": null,
+ "wallsOf": null,
+ "afforestation": null,
+ "accessDetail": null,
+ "priceHectare": null
+}

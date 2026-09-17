@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/llf_ci
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/llf_test
+      DATABASE_SSL: disable
+      APP_ENV: test
+      APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar (lockfile congelado)
+        run: pnpm install --frozen-lockfile
+      - name: Secretos en el repo
+        run: bash scripts/check-secrets.sh
+      - name: Lint
+        run: pnpm lint
+      - name: Migraciones desde cero
+        run: |
+          psql postgres://postgres:postgres@localhost:5432/postgres -c "create database llf_ci"
+          pnpm db:migrate
+          pnpm db:migrate # segunda corrida: debe ser no-op
+      - name: Tipos generados al día con las migraciones
+        run: pnpm db:codegen:verify
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Tests (unit + integración contra Postgres)
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Auditoría de dependencias (producción, severidad alta)
+        run: pnpm audit --prod --audit-level high
