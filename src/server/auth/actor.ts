@@ -47,6 +47,19 @@ export function requirePermission(actor: Actor, permission: string): void {
   if (!can(actor, permission)) throw forbidden();
 }
 
+/** Operaciones permitidas mientras un usuario del equipo tiene pendiente el cambio obligatorio de contraseña. */
+export const ALLOWED_WHILE_PASSWORD_CHANGE_PENDING: ReadonlySet<string> = new Set(["account.change_password", "auth.logout"]);
+
+/**
+ * `must_change_password` no es solo navegación: mientras esté pendiente, un usuario del equipo no ejecuta
+ * ninguna acción ni mutación por API salvo cambiar la contraseña o cerrar sesión.
+ */
+export function assertPasswordChangeNotPending(actor: Actor, operation: string): void {
+  if (actor.kind === "staff" && actor.mustChangePassword && !ALLOWED_WHILE_PASSWORD_CHANGE_PENDING.has(operation)) {
+    throw new AppError("forbidden", "Antes de continuar tenés que cambiar tu contraseña (Mi cuenta).");
+  }
+}
+
 export function requireStaff(actor: Actor): asserts actor is StaffActor {
   if (actor.kind === "anonymous") throw new AppError("unauthenticated", "Iniciá sesión para continuar");
   if (actor.kind !== "staff") throw forbidden();

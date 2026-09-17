@@ -6,7 +6,7 @@ import "server-only";
 import { z } from "zod";
 import { AppError, toPublicError } from "../errors";
 import { errorFields, log } from "../log";
-import type { Actor } from "../auth/actor";
+import { assertPasswordChangeNotPending, type Actor } from "../auth/actor";
 import { getActor } from "./context";
 
 export type ActionResult<T> =
@@ -31,6 +31,7 @@ export async function runAction<S extends z.ZodType, T>(
   let actor: Actor | undefined;
   try {
     actor = await getActor();
+    assertPasswordChangeNotPending(actor, name);
     const parsed = schema.safeParse(input);
     if (!parsed.success) {
       return { ok: false, error: "Revisá los datos marcados", fieldErrors: zodFieldErrors(parsed.error) };
