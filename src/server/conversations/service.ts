@@ -1,6 +1,6 @@
 /**
  * Conversaciones (WhatsApp): derivación a humano, tomar/devolver/cerrar y respuestas humanas.
- * Reglas: permiso en servidor, transacción con bloqueo de fila, auditoría y evento en la misma transacción.
+ * Reglas: permiso y alcance (./scope) en servidor, transacción con bloqueo de fila, auditoría y evento en la misma transacción.
  * Los envíos nunca ocurren acá: se encola `whatsapp.send_reply` y el estado real se ve en la UI.
  */
 import { randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ import { enqueue } from "../jobs/queue";
 import { notifyRole, notifyUser } from "../notifications";
 import { reengagementTemplate } from "../integrations/whatsapp/config";
 import { HANDOFF_REASONS, handoffLabel, type HandoffReason } from "./labels";
+import { assertConversationInScope } from "./scope";
 
 export const SEND_REPLY_JOB = "whatsapp.send_reply";
 
@@ -27,7 +28,8 @@ type ConversationRow = {
   last_inbound_at: Date | null;
 };
 
-async function lockConversation(trx: Tx, id: string): Promise<ConversationRow> {
+/** Bloquea la conversación y verifica que esté en el alcance del actor (fuera de alcance = 404). */
+async function lockConversation(trx: Tx, actor: Actor, id: string): Promise<ConversationRow> {
   const c = await trx
     .selectFrom("conversations")
     .select(["id", "mode", "channel", "contact_id", "assigned_user_id", "external_thread_id", "last_inbound_at"])
@@ -35,6 +37,7 @@ async function lockConversation(trx: Tx, id: string): Promise<ConversationRow> {
     .forUpdate()
     .executeTakeFirst();
   if (!c) throw notFound("Conversación");
+  await assertConversationInScope(trx, actor, id);
   return c;
 }
 
@@ -152,7 +155,7 @@ export async function handoffConversation(
   requirePermission(actor, "conversations.reply");
   const input = handoffSchema.parse(raw);
   return db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, input.conversationId);
+    const conv = await lockConversation(trx, actor, input.conversationId);
     if (conv.mode !== "bot") return { handedOff: false };
     const now = new Date();
     await trx
@@ -198,7 +201,7 @@ export async function takeConversation(db: Database, actor: Actor, conversationI
   requireStaff(actor);
   const id = z.uuid().parse(conversationId);
   await db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, id);
+    const conv = await lockConversation(trx, actor, id);
     if (conv.mode === "human" && conv.assigned_user_id === actor.userId) return;
     const now = new Date();
     await trx
@@ -234,7 +237,7 @@ export async function returnToBot(db: Database, actor: Actor, conversationId: st
   requirePermission(actor, "conversations.reply");
   const id = z.uuid().parse(conversationId);
   await db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, id);
+    const conv = await lockConversation(trx, actor, id);
     if (conv.mode === "bot") return;
     await trx
       .updateTable("conversations")
@@ -249,7 +252,7 @@ export async function closeConversation(db: Database, actor: Actor, conversation
   requirePermission(actor, "conversations.reply");
   const id = z.uuid().parse(conversationId);
   await db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, id);
+    const conv = await lockConversation(trx, actor, id);
     if (conv.mode === "closed") return;
     await trx.updateTable("conversations").set({ mode: "closed", closed_at: new Date() }).where("id", "=", id).execute();
     await audit(trx, actor, { action: "CONVERSATION_CLOSED", entityType: "conversation", entityId: id, before: { mode: conv.mode }, after: { mode: "closed" } });
@@ -268,7 +271,7 @@ export async function replyAsHuman(db: Database, actor: Actor, raw: z.input<type
   requireStaff(actor);
   const input = replySchema.parse(raw);
   return db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, input.conversationId);
+    const conv = await lockConversation(trx, actor, input.conversationId);
     if (conv.mode === "closed") throw conflict("La conversación está cerrada. Tomala para reabrirla y responder.");
     if (conv.channel !== "whatsapp") throw invalid("Solo se puede responder conversaciones de WhatsApp");
     const idempotencyKey = `human:${actor.userId}:${input.idempotencyKey}`;
@@ -320,6 +323,7 @@ export async function retryOutboundMessage(db: Database, actor: Actor, messageId
       .forUpdate()
       .executeTakeFirst();
     if (!m || m.direction !== "outbound") throw notFound("Mensaje");
+    await assertConversationInScope(trx, actor, m.conversation_id);
     if (!["failed", "awaiting_credentials", "queued"].includes(m.status)) throw conflict("Ese mensaje ya fue enviado o se está enviando");
     await trx
       .updateTable("conversation_messages")
@@ -340,7 +344,7 @@ export async function sendReengagementTemplate(db: Database, actor: Actor, conve
   const id = z.uuid().parse(conversationId);
   const key = z.string().min(8).max(100).parse(requestKey);
   return db.transaction().execute(async (trx) => {
-    const conv = await lockConversation(trx, id);
+    const conv = await lockConversation(trx, actor, id);
     if (conv.mode === "closed") throw conflict("La conversación está cerrada. Tomala para reabrirla.");
     const result = await queueOutboundMessage(trx, {
       conversationId: id,
