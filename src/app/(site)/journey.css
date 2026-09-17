@@ -1,0 +1,544 @@
+/*
+ * Home · recorrido arquitectónico de la portada (docs/WEB_EXPERIENCE.md §4.1). Markup: components/experience/hero.
+ *
+ * Un mismo HTML, tres presentaciones:
+ *  1. Estable (base: sin JS o con movimiento reducido): portada + fila editorial de las escenas `data-static`.
+ *  2. Flujo (html[data-motion="on"] sin motor: mobile, tablet, touch, o desktop mientras GSAP no cargó): láminas que
+ *     se apilan (sticky) y se abren con animaciones CSS ligadas al scroll (`animation-timeline: view()`; sin soporte
+ *     quedan quietas y completas). Mobile (≤ 767 px) muestra solo las escenas `data-mobile`.
+ *  3. Fijado (`.jr[data-pinned]`, lo pone motion/journey.ts solo en desktop con puntero fino): escenario sticky de
+ *     100svh; la línea de tiempo mueve transform, opacity y clip-path. Sin animaciones CSS que le ganen.
+ * Nunca se oculta la portada (LCP) ni el buscador en el primer paint.
+ */
+@layer components {
+  .jr {
+    position: relative;
+    isolation: isolate;
+    background: var(--surface-ink);
+    color: var(--paper);
+  }
+  .jr-stage {
+    position: relative;
+    background: var(--surface-ink);
+  }
+  .jr-paper,
+  .jr-progress,
+  .jr-num,
+  .jr-slab {
+    display: none;
+  }
+  .jr-end {
+    display: block;
+    height: 0;
+    outline: none;
+  }
+  .jr-skip {
+    position: absolute;
+    left: var(--gutter);
+    top: -100px;
+    z-index: 6;
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius-md);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .jr-skip:focus {
+    top: calc(var(--header-h) + 0.75rem);
+  }
+
+  /* ── 1 · Estable: fila editorial ── */
+  .jr-scenes {
+    list-style: none;
+    margin: 0 auto;
+    width: 100%;
+    max-width: var(--container);
+    padding: 1rem var(--gutter) 5rem;
+    display: grid;
+    gap: 3rem;
+  }
+  .jr-scene {
+    display: none;
+  }
+  .jr-scene[data-static] {
+    display: block;
+  }
+  .jr-frame {
+    position: relative;
+    margin: 0;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #24211e;
+  }
+  .jr-reel,
+  .jr-media,
+  .jr-media-inner {
+    position: absolute;
+    inset: 0;
+  }
+  .jr-media + .jr-media {
+    display: none;
+  }
+  .jr-img {
+    object-fit: cover;
+  }
+  .jr-frame-shade,
+  .cover-plate-shade {
+    position: absolute;
+    inset: 0;
+    background: var(--surface-ink);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .jr-caption {
+    margin-top: 1.15rem;
+  }
+  .jr-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgb(244 240 234 / 0.8);
+  }
+  /* Fuera del recorrido completo (fila estable, mobile) se muestran subconjuntos: sin numeración que saltee números. */
+  .jr:not([data-pinned]) .jr-label > .tabular {
+    display: none;
+  }
+  .jr-rule {
+    display: block;
+    width: 2rem;
+    height: 1px;
+    background: var(--brick);
+    transform-origin: left center;
+  }
+  .jr-title {
+    margin-top: 0.7rem;
+    font-size: clamp(1.9rem, 6.5vw, 2.5rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .jr-phrase {
+    margin-top: 0.65rem;
+    max-width: 30rem;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: rgb(244 240 234 / 0.8);
+  }
+  .jr-levels {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .jr-level {
+    display: inline-flex;
+    gap: 0.5rem;
+  }
+  .jr-close {
+    margin-top: 1rem;
+  }
+  .jr-close-meta {
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: rgb(244 240 234 / 0.8);
+  }
+  .jr-close-cta {
+    margin-top: 1.1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.9rem 1.5rem;
+  }
+  .jr-close-btn {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .jr-close-btn:hover {
+    background: var(--white);
+  }
+  /* La primera sección del home cubre el recorrido como una hoja (estable y flujo). */
+  .jr + .scene {
+    margin-top: -1.75rem;
+    border-radius: 28px 28px 0 0;
+  }
+  @media (min-width: 768px) {
+    .jr-scenes {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 3.5rem 2rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .jr-scenes {
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 2rem;
+      padding-top: 2.5rem;
+      padding-bottom: 6rem;
+    }
+    .jr-title {
+      font-size: clamp(1.75rem, 2.4vw, 2.4rem);
+    }
+  }
+
+  /* ── 2 · Flujo: láminas apiladas con transiciones CSS (sin GSAP ni Lenis) ── */
+  html[data-motion="on"] .jr:not([data-pinned]) .jr-scenes {
+    display: block;
+    padding-top: 0.5rem;
+    padding-bottom: 3.5rem;
+  }
+  html[data-motion="on"] .jr:not([data-pinned]) .jr-scene {
+    display: none;
+    position: sticky;
+    top: calc(var(--header-h) + 0.5rem);
+    padding: 1.25rem 0 2.25rem;
+    background: var(--surface-ink);
+    border-top: 1px solid rgb(244 240 234 / 0.14);
+    box-shadow: 0 -18px 36px rgb(0 0 0 / 0.32);
+  }
+  @media (max-width: 767.98px) {
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-scene[data-mobile] {
+      display: block;
+    }
+  }
+  @media (min-width: 768px) {
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-scene {
+      display: block;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-scene + .jr-scene {
+      margin-top: 2rem;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-frame {
+      aspect-ratio: 16 / 10;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-caption {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 2rem;
+      align-items: end;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-caption > :not(.jr-label, .jr-title) {
+      grid-column: 2;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-caption > .jr-label,
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-caption > .jr-title {
+      grid-column: 1;
+    }
+  }
+  @media (min-width: 1024px) {
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-frame {
+      aspect-ratio: 21 / 10;
+    }
+  }
+  @supports (animation-timeline: view()) {
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-clip {
+      animation: jr-open linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 40%;
+    }
+    html[data-motion="on"] .jr:not([data-pinned]) .jr-media-inner {
+      animation: jr-settle linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 55%;
+    }
+  }
+  @keyframes jr-open {
+    from {
+      clip-path: inset(10% 9% 0% 9% round 22px);
+    }
+    to {
+      clip-path: inset(0% 0% 0% 0% round 3px);
+    }
+  }
+  @keyframes jr-settle {
+    from {
+      transform: scale(1.14);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* ── 3 · Fijado (desktop con el motor): escenario sticky ── */
+  @media (min-width: 1024px) {
+    .jr[data-pinned] {
+      height: calc(100svh + var(--jr-track, 400svh));
+    }
+    .jr[data-pinned] + .scene {
+      margin-top: 0;
+      border-radius: 0;
+    }
+    .jr[data-pinned] .jr-stage {
+      position: sticky;
+      top: 0;
+      height: 100svh;
+      overflow: hidden;
+    }
+    .jr[data-pinned] .jr-paper {
+      display: block;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: var(--paper);
+      opacity: 0;
+    }
+    .jr[data-pinned] .cover {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      min-height: 0;
+      height: 100%;
+    }
+    .jr[data-pinned] .jr-scenes {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: block;
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      pointer-events: none;
+    }
+    .jr[data-pinned] .jr-scene {
+      display: block;
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .jr[data-pinned] .jr-clip,
+    .jr[data-pinned] .jr-media-inner {
+      animation: none;
+    }
+    .jr[data-pinned] .jr-clip {
+      position: absolute;
+      inset: 0;
+    }
+    /* Carga progresiva: la foto de una escena se descarga recién cuando el motor la habilita. */
+    .jr[data-pinned] .jr-scene:not([data-armed]) .jr-img {
+      display: none;
+    }
+    .jr[data-pinned] .jr-frame {
+      position: absolute;
+      aspect-ratio: auto;
+      border-radius: 2px;
+      box-shadow: 0 40px 90px rgb(0 0 0 / 0.35);
+    }
+    .jr[data-pinned] [data-frame="stage"] .jr-frame {
+      --w: min(58vw, calc(72svh * var(--ar)));
+      width: var(--w);
+      height: calc(var(--w) / var(--ar));
+      right: calc(var(--gutter) + 4.5rem);
+      top: calc((100svh - var(--w) / var(--ar)) / 2 + 2svh);
+    }
+    .jr[data-pinned] [data-frame="column"] .jr-frame {
+      --h: min(78svh, calc(34vw / var(--ar)));
+      height: var(--h);
+      width: calc(var(--h) * var(--ar));
+      left: calc(58vw - var(--h) * var(--ar) / 2);
+      top: calc((100svh - var(--h)) / 2 + 2svh);
+    }
+    .jr[data-pinned] [data-frame="close"] .jr-frame {
+      --w: min(46vw, calc(62svh * var(--ar)));
+      width: var(--w);
+      height: calc(var(--w) / var(--ar));
+      right: calc(var(--gutter) + 4.5rem);
+      top: calc((100svh - var(--w) / var(--ar)) / 2 + 3svh);
+      box-shadow: 0 30px 70px rgb(20 19 18 / 0.28);
+    }
+    /* Columna vertical: las fotos se apilan (una por nivel) con una losa del 12 % entre ellas. */
+    .jr[data-pinned] .jr-media + .jr-media {
+      display: block;
+    }
+    .jr[data-pinned] .jr-media {
+      top: calc(var(--i, 0) * 112%);
+      bottom: auto;
+      height: 100%;
+    }
+    .jr[data-pinned] .jr-num {
+      display: block;
+      position: absolute;
+      left: calc(var(--gutter) - 0.04em);
+      top: calc(var(--header-h) + 4svh);
+      font-size: min(30svh, 22vw);
+      line-height: 0.8;
+      color: rgb(244 240 234 / 0.045);
+      pointer-events: none;
+      user-select: none;
+    }
+    .jr[data-pinned] [data-frame="close"] .jr-num {
+      color: rgb(20 19 18 / 0.05);
+    }
+    .jr[data-pinned] .jr-slab {
+      display: flex;
+      position: absolute;
+      left: calc(58vw - 20vw);
+      width: 40vw;
+      top: 50%;
+      align-items: center;
+      gap: 0.75rem;
+      z-index: 3;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--paper);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .jr-slab-line {
+      flex: 1;
+      height: 1px;
+      background: var(--brick);
+    }
+    .jr[data-pinned] .jr-caption {
+      position: absolute;
+      left: var(--gutter);
+      bottom: 13svh;
+      z-index: 3;
+      width: min(27vw, 24rem);
+      margin: 0;
+      pointer-events: none;
+    }
+    .jr[data-pinned] .jr-scene[data-active] .jr-caption {
+      pointer-events: auto;
+    }
+    .jr[data-pinned] .jr-title {
+      font-size: min(4.6vw, 7.4svh, 4.75rem);
+      line-height: 0.95;
+    }
+    .jr[data-pinned] .jr-phrase {
+      font-size: 1rem;
+    }
+    .jr[data-pinned] .jr-level {
+      opacity: 0.4;
+    }
+    .jr[data-pinned] .jr-level[data-on] {
+      opacity: 1;
+    }
+    /* Cierre sobre papel: se convierte en la primera hoja del home. */
+    .jr[data-pinned] [data-frame="close"] .jr-caption {
+      bottom: auto;
+      top: calc(50svh - 9rem);
+      width: min(38vw, 36rem);
+      color: var(--ink);
+    }
+    .jr[data-pinned] [data-frame="close"] .jr-title {
+      font-size: min(5.6vw, 9svh, 6rem);
+    }
+    .jr[data-pinned] [data-frame="close"] .jr-label,
+    .jr[data-pinned] [data-frame="close"] .jr-close-meta {
+      color: var(--ink-2);
+    }
+    .jr[data-pinned] .jr-close-btn {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .jr[data-pinned] .jr-close-btn:hover {
+      background: var(--ink-2);
+    }
+    .jr[data-pinned] .cover-copy,
+    .jr[data-pinned] .cover-search {
+      pointer-events: none;
+    }
+    .jr[data-pinned][data-active-index="0"] .cover-copy,
+    .jr[data-pinned][data-active-index="0"] .cover-search {
+      pointer-events: auto;
+    }
+
+    /* Progreso: contador, barra fina y nombre de la escena (derecha, centrado en alto) */
+    .jr[data-pinned] .jr-progress {
+      display: grid;
+      justify-items: end;
+      gap: 0.8rem;
+      position: absolute;
+      right: var(--gutter);
+      top: 50%;
+      translate: 0 -50%;
+      z-index: 4;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgb(244 240 234 / 0.85);
+      transition: color var(--motion-ui) var(--ease-out);
+    }
+    .jr-progress-bar {
+      position: relative;
+      display: block;
+      width: 1px;
+      height: 22svh;
+      background: rgb(244 240 234 / 0.28);
+    }
+    .jr-progress-fill {
+      position: absolute;
+      inset: 0;
+      background: var(--brick);
+      transform: scaleY(var(--jr-progress, 0));
+      transform-origin: top center;
+    }
+    .jr-progress-name {
+      writing-mode: vertical-rl;
+      rotate: 180deg;
+      white-space: nowrap;
+    }
+    .jr[data-pinned] .jr-skip {
+      top: auto;
+      left: auto;
+      right: var(--gutter);
+      bottom: 1.6rem;
+      padding: 0.35rem 0;
+      background: none;
+      color: rgb(244 240 234 / 0.78);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .jr[data-pinned] .jr-skip:hover {
+      color: var(--paper);
+      text-decoration: underline;
+    }
+    /* En la portada el indicador espera: aparece al empezar el recorrido (el link de salto sigue accesible con foco). */
+    .jr[data-pinned][data-active-index="0"] .jr-progress,
+    .jr[data-pinned][data-active-index="0"] .jr-skip:not(:focus-visible) {
+      opacity: 0;
+    }
+    .jr[data-pinned] .jr-progress,
+    .jr[data-pinned] .jr-skip {
+      transition:
+        opacity var(--motion-ui) var(--ease-out),
+        color var(--motion-ui) var(--ease-out);
+    }
+    .jr[data-pinned][data-tone="paper"] .jr-progress,
+    .jr[data-pinned][data-tone="paper"] .jr-skip {
+      color: var(--ink-2);
+    }
+    .jr[data-pinned][data-tone="paper"] .jr-progress-bar {
+      background: rgb(20 19 18 / 0.2);
+    }
+  }
+}
+
+/* Fuera de la capa (como en site.css): mientras el recorrido está oscuro, la cabecera sigue transparente sobre él. */
+html[data-jr-header="dark"] .site-header[data-tone="hero"]:not([data-menu-open="true"]) {
+  background: linear-gradient(180deg, rgb(15 14 13 / 0.78) 0%, rgb(15 14 13 / 0) 100%);
+  border-color: transparent;
+  color: var(--paper);
+  backdrop-filter: none;
+}
+html[data-jr-header="dark"] .site-header[data-tone="hero"]:not([data-menu-open="true"]) .logo-mono,
+html[data-jr-header="dark"] .site-header[data-tone="hero"]:not([data-menu-open="true"]) .logo-tag {
+  color: var(--paper);
+}

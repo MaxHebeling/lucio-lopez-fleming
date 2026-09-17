@@ -59,18 +59,3 @@ export function pauseSmoothScroll(): void {
 export function resumeSmoothScroll(): void {
   engine?.lenis.start();
 }
-
-/**
- * Portada fija (sticky) cubierta por la escena siguiente: si el foco de teclado vuelve a un control de la portada
- * (Shift+Tab desde el manifiesto, por ejemplo) se sube hasta arriba para que el foco nunca quede tapado (WCAG 2.4.11).
- */
-export function initCoverFocus(cover: HTMLElement): () => void {
-  const onFocusIn = (e: FocusEvent) => {
-    if (window.scrollY <= 0 || getComputedStyle(cover).position !== "sticky") return;
-    if (e.target instanceof Element && !e.target.matches(":focus-visible")) return;
-    if (engine) engine.lenis.scrollTo(0, { immediate: true, force: true });
-    else window.scrollTo(0, 0);
-  };
-  cover.addEventListener("focusin", onFocusIn);
-  return () => cover.removeEventListener("focusin", onFocusIn);
-}

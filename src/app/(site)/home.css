@@ -1,5 +1,6 @@
 /*
- * Home · portada de revista y escenas editoriales (docs/WEB_EXPERIENCE.md §4 y §5).
+ * Home · portada de revista y escenas editoriales (docs/WEB_EXPERIENCE.md §4 y §5). El recorrido que sigue a la
+ * portada (escenas, modos fijado/flujo/estable) vive en journey.css.
  * Ritmo: IMPACTO (portada) → PAUSA (manifiesto) → PROPIEDAD (destacadas) → TERRITORIO (Salta) → SERVICIOS →
  * PROCESO → CONVERSIÓN (propietarios) → CONFIANZA → catálogo → CIERRE.
  * Reglas: solo transform/opacity/clip-path; lo que se oculta para animar cuelga de html[data-motion="on"]; la foto de la
@@ -105,10 +106,9 @@
     padding-top: 2rem;
     padding-bottom: 2.5rem;
   }
-  .cover-shade {
+  .cover-plate-shade {
     position: absolute;
     inset: 0;
-    z-index: 4;
     background: var(--cover-ink);
     opacity: 0;
     pointer-events: none;
@@ -171,8 +171,8 @@
       bottom: 0;
       height: auto;
       min-height: 0;
-      /* Lámina vertical: nunca más ancha que ~1 vez su alto (la foto es 1200 × 1600: no se estira de más). */
-      width: min(56vw, 104svh);
+      /* Lámina vertical protagonista: nunca más ancha que ~1 vez su alto (la foto es 1200 × 1600). */
+      width: min(60vw, 104svh);
     }
     .cover-img {
       object-position: 50% 64%;
@@ -223,20 +223,6 @@
       display: none;
     }
   }
-  /* La portada queda fija debajo y la escena siguiente la cubre como una hoja (solo con JS y movimiento). */
-  @media (min-width: 1024px) and (min-height: 720px) {
-    html[data-motion="on"] .cover {
-      position: sticky;
-      top: 0;
-      height: 100svh;
-    }
-    html[data-motion="on"] .cover + .scene {
-      margin-top: -1.75rem;
-      border-radius: 28px 28px 0 0;
-      box-shadow: 0 -24px 60px rgb(0 0 0 / 0.28);
-    }
-  }
-
   /* Buscador de la portada: una barra editorial (no un formulario blanco gigante) */
   .search-bar {
     display: grid;

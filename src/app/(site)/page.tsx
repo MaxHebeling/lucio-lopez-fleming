@@ -3,7 +3,7 @@ import { cache } from "react";
 import { plural, telHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
 import { getSiteFacets, getSiteOwnerCapture, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
-import { CoverHero } from "@/components/experience/CoverHero";
+import { ArchitecturalHero } from "@/components/experience/hero/ArchitecturalHero";
 import { EditorialManifesto } from "@/components/experience/EditorialManifesto";
 import { FeaturedEditorial } from "@/components/experience/FeaturedEditorial";
 import { TerritorySalta, pickTerritoryFeature } from "@/components/experience/TerritorySalta";
@@ -22,6 +22,7 @@ import trabajoPlanos from "../../../public/brand/photos/trabajo-planos.jpg";
 import escritorio from "../../../public/brand/photos/oficina-escritorio.jpg";
 import equipo from "../../../public/brand/photos/equipo-planos.jpg";
 import "./home.css";
+import "./journey.css";
 
 /** ISR: el home se sirve desde caché y se regenera al invalidar (revalidatePublicSite) o cada 5 minutos como respaldo. */
 export const revalidate = 300;
@@ -101,10 +102,8 @@ export default async function HomePage() {
 
   return (
     <>
-      <CoverHero
-        photo={coverPhoto}
-        photoAlt="Oficina modular de Lucio López Fleming, con su cartel y estructura roja, al atardecer"
-        caption="Nuestra oficina modular, al atardecer"
+      <ArchitecturalHero
+        coverPhoto={coverPhoto}
         kicker="Inmobiliaria en Salta"
         titleLines={["Buenos", "negocios,", <em key="y">{year ? `desde ${year}.` : "en Salta."}</em>]}
         lede="Comercialización de inmuebles y lotes, alquileres, administración y tasación de propiedades en la provincia de Salta y el país."
