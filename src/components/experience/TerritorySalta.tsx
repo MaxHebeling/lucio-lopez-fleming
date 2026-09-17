@@ -13,7 +13,7 @@ export { pickTerritoryFeature, type TerritoryFeature } from "./territory";
  * Territorio. «SALTA» es la protagonista: letras gigantes que recortan la foto real de una propiedad con paisaje
  * (la portada de la zona con más propiedades fuera de la ciudad de la casa central; ver pickTerritoryFeature). La
  * figura es decorativa (aria-hidden): el contenido real es el titular y el índice de zonas con conteos en vivo, que
- * enlazan al buscador. La foto dentro del SVG se carga diferida (data-lazy-href) y se desplaza con el scroll en desktop.
+ * enlazan al buscador. La foto se asigna recién cerca del viewport (data-lazy-bg).
  */
 export function TerritorySalta({ zones, feature, localities, total }: { zones: ZoneShowcase[]; feature: TerritoryFeature | null; localities: number; total: number }) {
   if (!zones.length) return null;
@@ -22,24 +22,11 @@ export function TerritorySalta({ zones, feature, localities, total }: { zones: Z
     <section className="scene territory on-dark" aria-labelledby="territorio-title">
       <div className="container-site">
         <p className="eyebrow text-paper/75">Territorio</p>
-        <svg className="territory-word" viewBox="0 0 1000 292" aria-hidden focusable="false" data-reveal="fade">
-          <defs>
-            <clipPath id="salta-letters">
-              <text x="0" y="276" textLength="1000" lengthAdjust="spacingAndGlyphs" className="territory-glyphs">
-                SALTA
-              </text>
-            </clipPath>
-          </defs>
-          <g clipPath="url(#salta-letters)">
-            <rect width="1000" height="292" className="territory-fill" />
-            {photo ? (
-              <g data-parallax-y="26">
-                <image data-lazy-href={photo} x="0" y="-150" width="1000" height="590" preserveAspectRatio="xMidYMid slice" />
-              </g>
-            ) : null}
-            <rect width="1000" height="292" className="territory-tint" />
-          </g>
-        </svg>
+        {/* Letras con la foto recortada (background-clip: text). Texto HTML y no SVG: un <text> dentro de <clipPath> Chrome
+            lo mide como candidato a LCP en la parte alta de la página. La foto se asigna cerca del viewport (data-lazy-bg). */}
+        <p className="territory-word display" aria-hidden data-lazy-bg={photo ?? undefined} data-reveal="fade">
+          SALTA
+        </p>
 
         <div className="territory-grid">
           <div className="territory-intro">

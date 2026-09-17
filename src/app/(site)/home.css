@@ -113,6 +113,15 @@
     opacity: 0;
     pointer-events: none;
   }
+  /* Tablet vertical: la lámina no ocupa toda la pantalla; el titular entra en el primer viewport. */
+  @media (min-width: 640px) and (max-width: 1023.98px) {
+    .cover-plate {
+      height: min(60svh, 84vw);
+    }
+    .cover-title {
+      font-size: clamp(5rem, 13vw, 7.5rem);
+    }
+  }
   @media (min-width: 480px) {
     .cover-cta {
       display: flex;
@@ -333,6 +342,7 @@
     padding-block: var(--section-y);
   }
   .manifesto-grid {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 2rem;
   }
@@ -452,6 +462,7 @@
 
   /* 01 · foto protagonista + número grande */
   .feat-a-grid {
+    grid-template-columns: minmax(0, 1fr);
     position: relative;
     display: grid;
     gap: 1.5rem;
@@ -499,6 +510,7 @@
 
   /* 02 · split editorial */
   .feat-b-grid {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 2rem;
   }
@@ -600,24 +612,27 @@
     color: var(--paper);
   }
   .territory-word {
-    display: block;
-    width: 100%;
-    height: auto;
+    /* Ancho útil del contenedor; «SALTA» en Instrument Serif mide ≈ 2 em: la palabra ocupa todo el ancho. */
+    --word-w: calc(min(100vw, var(--container)) - 2 * var(--gutter));
     margin-top: clamp(1.5rem, 4vw, 3rem);
-    overflow: visible;
+    font-size: calc(var(--word-w) / 2.04);
+    line-height: 0.78;
+    letter-spacing: -0.02em;
+    text-align: center;
+    white-space: nowrap;
+    color: rgb(244 240 234 / 0.14);
+    user-select: none;
   }
-  .territory-glyphs {
-    font-family: var(--font-display), "Times New Roman", serif;
-    font-size: 372px;
-    letter-spacing: -6px;
-  }
-  .territory-fill {
-    fill: rgb(244 240 234 / 0.14);
-  }
-  .territory-tint {
-    fill: rgb(15 14 13 / 0.1);
+  .territory-word[data-bg-ready] {
+    background-image: linear-gradient(rgb(15 14 13 / 0.08), rgb(15 14 13 / 0.08)), var(--lazy-bg);
+    background-size: cover;
+    background-position: 50% 62%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .territory-grid {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 3rem;
     margin-top: clamp(3rem, 7vw, 6rem);
@@ -838,6 +853,7 @@
     background: var(--paper-2);
   }
   .process-grid {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 3rem;
   }
@@ -1052,6 +1068,7 @@
     scroll-margin-top: var(--header-h);
   }
   .owners-grid {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     gap: 2.5rem;
   }
@@ -1124,6 +1141,7 @@
     letter-spacing: -0.03em;
   }
   .trust-grid {
+    grid-template-columns: minmax(0, 1fr);
     margin-top: clamp(3rem, 7vw, 6rem);
     display: grid;
     gap: 2.5rem;

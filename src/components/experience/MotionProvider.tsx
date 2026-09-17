@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { isCalmRoute, onIdle, scenesApply, syncMotionAttribute } from "./motion/config";
 import { initHeroDepth, initMagnetic } from "./motion/pointer";
 import { initReveal } from "./motion/reveal";
-import { initLazySvgImages, initSteps } from "./motion/steps";
+import { initLazyBackgrounds, initSteps } from "./motion/steps";
 import { destroySmoothScroll, initCoverFocus, initSmoothScroll } from "./motion/smooth-scroll";
 
 /**
@@ -21,7 +21,7 @@ export function MotionProvider() {
 
   useEffect(() => {
     const calm = isCalmRoute(pathname);
-    const cleanups: Array<() => void> = [initReveal(), initSteps(), initLazySvgImages()];
+    const cleanups: Array<() => void> = [initReveal(), initSteps(), initLazyBackgrounds()];
     const cover = document.querySelector<HTMLElement>("[data-hero]");
     if (cover) cleanups.push(initCoverFocus(cover));
     if (!calm) {

@@ -38,35 +38,33 @@ export function initSteps(): () => void {
 }
 
 /**
- * Imágenes diferidas dentro de SVG (`<image data-lazy-href>`), que no admiten `loading="lazy"`: el href se asigna
- * cuando la figura se acerca al viewport. Sin JS la figura conserva su relleno de respaldo.
+ * Fondos diferidos (`[data-lazy-bg="url"]`): un background-image se descarga apenas el elemento se pinta, esté o no en
+ * pantalla. Se asigna como `--lazy-bg` y se marca `data-bg-ready` cuando el elemento se acerca al viewport.
+ * Sin JS el elemento conserva su estilo de respaldo.
  */
-export function initLazySvgImages(): () => void {
-  const imgs = Array.from(document.querySelectorAll<SVGImageElement>("image[data-lazy-href]"));
-  if (!imgs.length) return noop;
-  const load = (img: SVGImageElement) => {
-    const href = img.getAttribute("data-lazy-href");
-    if (href) img.setAttribute("href", href);
-    img.removeAttribute("data-lazy-href");
+export function initLazyBackgrounds(): () => void {
+  const els = Array.from(document.querySelectorAll<HTMLElement>("[data-lazy-bg]:not([data-bg-ready])"));
+  if (!els.length) return noop;
+  const load = (el: HTMLElement) => {
+    const url = el.dataset.lazyBg;
+    if (!url) return;
+    el.style.setProperty("--lazy-bg", `url("${url.replace(/"/g, "%22")}")`);
+    el.setAttribute("data-bg-ready", "");
   };
   if (!("IntersectionObserver" in window)) {
-    imgs.forEach(load);
+    els.forEach(load);
     return noop;
   }
   const io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
-        const svg = e.target;
-        svg.querySelectorAll<SVGImageElement>("image[data-lazy-href]").forEach(load);
-        io.unobserve(svg);
+        load(e.target as HTMLElement);
+        io.unobserve(e.target);
       }
     },
     { rootMargin: "800px 0px" },
   );
-  for (const img of imgs) {
-    const svg = img.ownerSVGElement ?? img;
-    io.observe(svg);
-  }
+  els.forEach((el) => io.observe(el));
   return () => io.disconnect();
 }

@@ -42,12 +42,15 @@ export function CoverHero({
       <div className="cover-plate" data-cover-plate>
         <div className="cover-depth" data-depth="-1">
           <div className="cover-zoom">
-            {/* Única imagen con preload: es el LCP en todas las anchos. `sizes` = ancho real de la lámina. */}
+            {/* LCP en todos los anchos: carga inmediata con prioridad alta desde que se descubre (el HTML la trae temprano).
+                `sizes` = ancho real de la lámina. */}
             <Image
               src={photo}
               alt={photoAlt}
               fill
-              preload
+              loading="eager"
+              fetchPriority="high"
+              quality={65}
               sizes="(min-width: 1024px) 56vw, 100vw"
               placeholder="blur"
               className="cover-img"
