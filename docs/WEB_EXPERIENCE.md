@@ -120,7 +120,9 @@ leyendo solo el marcado (`data-transition`, `data-aperture`).
   `01 / 07` + barra + nombre de escena; cabecera transparente mientras el recorrido está oscuro. `gsap.matchMedia`
   revierte todo al salir de desktop o pasar a movimiento reducido; `invalidateOnRefresh` recalcula aberturas al
   cambiar el tamaño; refresh tras cargar fotos; foco con teclado en una escena → se lleva el scroll a esa escena;
-  recarga a mitad de página → se compensa el cambio de alto.
+  recarga a mitad de página → se compensa el cambio de alto; un scroll suave a un ancla en curso («Quiero vender mi
+  propiedad») se vuelve a apuntar si el recorrido cambia de alto (`smooth-scroll.ts` → `reaimAnchor`). La propiedad del
+  recorrido no se repite en destacadas ni recientes.
 - **Tablet y touch** (sin motor): las escenas como láminas que se apilan (sticky) y se abren con
   `animation-timeline: view()` (sin soporte: quietas y completas).
 - **Mobile** (≤ 767 px): lo mismo, solo las escenas `mobile` (portada → acceso → planta baja → exterior → cierre). Sin

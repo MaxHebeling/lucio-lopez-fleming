@@ -492,6 +492,8 @@ test("recorrido desktop: avanza con el scroll, el indicador cambia y el cierre l
   await expect(count).toHaveText("07", { timeout: 5000 });
   const cta = journey.getByRole("link", { name: /Ver la propiedad/ });
   await expect(cta).toHaveAttribute("href", `/propiedades/${property!.slug}`);
+  // La propiedad del recorrido no se repite en destacadas ni recientes: un único link a su ficha en el home.
+  await expect(page.locator(`a[href="/propiedades/${property!.slug}"]`)).toHaveCount(1);
   await expect.poll(() => cta.evaluate((el) => Number(getComputedStyle(el.closest(".jr-caption")!).opacity))).toBeGreaterThan(0.95);
   expect((await page.request.get(`/propiedades/${property!.slug}`)).status()).toBe(200);
 
