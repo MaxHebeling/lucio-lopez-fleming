@@ -27,7 +27,17 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/crm
 
   return (
     <>
-      <PageHeader title="Integraciones" description="Estado real de cada conexión externa. Sin credenciales, una integración queda en espera: nunca simula respuestas." />
+      <PageHeader
+        title="Integraciones"
+        description="Estado real de cada conexión externa. Sin credenciales, una integración queda en espera: nunca simula respuestas."
+        actions={
+          can(actor, "ai.read_usage") ? (
+            <Link href="/crm/integraciones/ia" className={buttonClass("secondary", "md")}>
+              Uso de IA
+            </Link>
+          ) : undefined
+        }
+      />
       <div className="flex flex-col gap-5">
         <Card title="Estado">
           <Table label="Estado de integraciones">

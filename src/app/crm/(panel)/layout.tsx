@@ -5,13 +5,18 @@ import { getDb } from "@/server/db";
 import { CRM_NAV, NAV_PERMISSION_ALIASES } from "../nav";
 import { NavLinks } from "@/components/crm/nav-links";
 import { MobileNav } from "@/components/crm/mobile-nav";
+import { CopilotLauncher } from "@/components/crm/copilot/copilot-launcher";
+import { isEnabled } from "@/server/flags";
 
 export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
   const actor = await requireStaffPage();
   const items = CRM_NAV.filter((i) => can(actor, i.permission) || (NAV_PERMISSION_ALIASES[i.permission] ?? []).some((p) => can(actor, p))).map(
     ({ href, label, icon, group }) => ({ href, label, icon, group }),
   );
-  const unread = await getDb()
+  const db = getDb();
+  // «✦ Asistente IA»: visible con el permiso y el flag encendido. Sin clave del proveedor igual aparece y lo dice.
+  const copilot = can(actor, "ai.copilot") && (await isEnabled(db, "ai_copilot"));
+  const unread = await db
     .selectFrom("notifications")
     .select((eb) => eb.fn.countAll<string>().as("n"))
     .where("user_id", "=", actor.userId)
@@ -46,6 +51,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
             <span className="hidden truncate text-sm text-stone xl:inline">{actor.fullName}</span>
           </div>
           <div className="flex items-center gap-2">
+            {copilot ? <CopilotLauncher /> : null}
             <Link href="/crm/buscar" className="rounded-[var(--radius-md)] px-3 py-1.5 text-sm font-semibold hover:bg-paper-2 md:hidden">
               Buscar
             </Link>
