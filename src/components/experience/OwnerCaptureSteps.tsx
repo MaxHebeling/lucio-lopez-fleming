@@ -84,7 +84,7 @@ export function OwnerCaptureSteps({ types, photosEnabled, stepByStep = true }: {
       const firstField = Object.keys(state.fieldErrors ?? {})[0];
       const target = firstField ? steps.indexOf(FIELD_STEP[firstField] ?? "contacto") : -1;
       if (target >= 0) setStep(target);
-      requestAnimationFrame(() => (formRef.current?.querySelector<HTMLElement>("fieldset:not([hidden]) [aria-invalid='true']") ?? statusRef.current)?.focus());
+      focusLater(() => formRef.current?.querySelector<HTMLElement>("fieldset:not([hidden]) [aria-invalid='true']") ?? statusRef.current);
     }
     // Solo cuando cambia el resultado del envío.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,9 +101,18 @@ export function OwnerCaptureSteps({ types, photosEnabled, stepByStep = true }: {
       </p>
     ) : null;
 
+  /** Enfoca en el próximo frame SOLO si nadie movió el foco mientras tanto (no pisa lo que la persona ya está escribiendo). */
+  const focusLater = (target: () => HTMLElement | null | undefined) => {
+    const before = document.activeElement;
+    requestAnimationFrame(() => {
+      if (document.activeElement !== before && document.activeElement !== document.body) return;
+      target()?.focus();
+    });
+  };
+
   const goTo = (i: number) => {
     setStep(i);
-    requestAnimationFrame(() => headingRefs.current[steps[i]!]?.focus());
+    focusLater(() => headingRefs.current[steps[i]!]);
   };
 
   const next = () => {
@@ -111,7 +120,7 @@ export function OwnerCaptureSteps({ types, photosEnabled, stepByStep = true }: {
       const zone = formRef.current?.elements.namedItem("appraisalZone");
       if (zone instanceof HTMLInputElement && !zone.value.trim()) {
         setClientErrors({ appraisalZone: ["Contanos dónde está la propiedad"] });
-        requestAnimationFrame(() => zone.focus());
+        focusLater(() => zone);
         return;
       }
     }
@@ -133,7 +142,7 @@ export function OwnerCaptureSteps({ types, photosEnabled, stepByStep = true }: {
     if (invalid) {
       const target = steps.indexOf(FIELD_STEP[Object.keys(invalid)[0]!] ?? "contacto");
       if (target >= 0 && target !== step) setStep(target);
-      requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>("fieldset:not([hidden]) [aria-invalid='true']")?.focus());
+      focusLater(() => formRef.current?.querySelector<HTMLElement>("fieldset:not([hidden]) [aria-invalid='true']"));
       return;
     }
     inFlight.current = true;
