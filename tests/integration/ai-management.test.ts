@@ -228,8 +228,10 @@ describe("Tareas sugeridas", () => {
     expect(team.items.some((i) => i.title === "Ajena")).toBe(false);
     // Orden: «alta» (visita de hace 29 h) antes que «media».
     const reports = team.items.filter((i) => i.ruleKey === "visit_report");
-    expect(reports[0]!.link).toBe(`/crm/mis-visitas/${visitB}`);
-    expect(reports[0]!.priority).toBe("high");
+    expect(reports.find((r) => r.link === `/crm/mis-visitas/${visitB}`)!.priority).toBe("high");
+    expect(reports.find((r) => r.link === `/crm/mis-visitas/${visitA}`)!.priority).toBe("medium");
+    const firstMedium = reports.findIndex((r) => r.priority === "medium");
+    expect(reports.slice(firstMedium).every((r) => r.priority !== "high")).toBe(true);
     expect((await listSuggestions(db, admin, {})).items).toEqual([]);
 
     const otherRow = team.items.find((i) => i.link === `/crm/mis-visitas/${visitB}` && i.ruleKey === "visit_report")!;
