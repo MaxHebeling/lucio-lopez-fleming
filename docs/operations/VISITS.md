@@ -208,3 +208,15 @@ Resend (requiere credenciales y siempre confirmación humana).
   retención, compatibilidad de la Agenda con el flag apagado.
 - E2E `tests/e2e/visits.mobile.spec.ts` (390) y `tests/e2e/visits.spec.ts` (1440): ver `scripts/e2e.sh`. Capturas
   opcionales con `VISITS_SHOTS_DIR=/ruta`.
+
+## 13. Verificación final (2026-09-17)
+
+| Verificación | Resultado |
+| --- | --- |
+| `pnpm lint` | OK (0 errores, 0 avisos) |
+| `pnpm typecheck` | OK |
+| `pnpm db:codegen:verify` | OK |
+| `pnpm test` | 52 archivos, 472 tests, 472 OK (línea base: 50 / 437) |
+| `pnpm build` | OK |
+| `scripts/e2e.sh` (`E2E_PORT=3113 E2E_DB=llf_e2e_ops E2E_TEMPLATE_DB=llf_dev_ops`) | 35/35 (4 nuevos de visitas), axe sin violaciones serias en portal, link del cliente, tarjeta y centro operativo; consola y CSP limpias |
+| Lighthouse mobile `/visita/[token]` (`pnpm start` en 3112, 3 corridas) | Performance 96/96/96 · Accesibilidad 100 · Buenas prácticas 100 · SEO 66 (esperado: `noindex` a propósito); LCP ≈ 2,7 s, TBT ≤ 29 ms, CLS 0 |
