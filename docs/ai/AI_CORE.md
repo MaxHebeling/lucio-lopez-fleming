@@ -196,9 +196,11 @@ Server Actions en `src/app/crm/(panel)/_copilot/actions.ts` (todas por `runActio
 | `ai.answer.generated` | cada respuesta del copiloto | ids de interacción/mensaje, modo, origen (ai/guide/data), estado, motivo de respaldo |
 | `ai.feedback.recorded` | cada 👍/👎 | id del mensaje, rating, si hay comentario |
 | `property.quality_computed`, `media.tags_suggested`, `marketing.draft_created`, `visit.brief_prepared`, `visit.report_structured` | Fases 3 y 4b (docs/ai/PROPERTY.md) | ids, contadores y versiones; dedupe por hash |
-| `ai.recommendation.*` | **reservado para la Fase 5** (recomendaciones dentro de automatizaciones): `ai.recommendation.proposed`, `.accepted`, `.dismissed` | — |
+| `ai.recommendation.created/accepted/dismissed/snoozed`, `ai.anomaly.detected` | Fase 5 (Tareas sugeridas y anomalías, docs/ai/MANAGEMENT.md) | origen, regla, prioridad, taskId; sin PII |
 
-Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a eventos: no hay loops.
+Ninguna automatización del sistema escucha eventos `ai.*`. Desde la Fase 6 la IA sí reacciona a eventos de negocio
+(`appointment.finished`, `property.published`, `lead.created`, `visit.report_confirmed`) con protección contra loops por
+causalidad (docs/ai/AUTOMATION.md).
 
 ## Costos y observabilidad
 
@@ -219,7 +221,8 @@ Ninguna automatización del sistema escucha estos eventos y la IA no reacciona a
 | `ai.copilot.session_retention_days` | 30 | retención de sesiones |
 | `ai.analyst.stale_opportunity_days` | 14 | umbral de oportunidades estancadas |
 | flag `ai_copilot` | encendido | muestra el copiloto |
-| flags `ai_concierge`, `ai_matching`, `ai_property_qa`, `ai_executive`, `ai_automations` | apagados | fases 2 y 5 |
+| flags `ai_concierge`, `ai_matching`, `ai_property_qa` | encendidos desde 0511 | fase 2 |
+| flags `ai_executive`, `ai_automations`, `ai_daily_brief`, `ai_task_center` | encendidos desde 0531 | fases 5 y 6 (docs/ai/MANAGEMENT.md, docs/ai/AUTOMATION.md) |
 | flags `ai_property_quality`, `ai_visit_brief`, `ai_followup`, `ai_photo_director`, `ai_marketing_director`, `ai_tour_guide`, `owner_capture_steps` | encendidos (capa determinista completa) | fases 3 y 4b, ver docs/ai/PROPERTY.md |
 | flag `owner_capture_photos` | apagado | requiere storage S3 |
 
@@ -247,3 +250,19 @@ Detalle: [SALES.md](./SALES.md). Qué se sumó sin crear otro núcleo:
 - **Eventos**: `lead.qualified`, `match.candidates_computed`, `recommendation.created|accepted|dismissed`.
 - **Flags** `ai_concierge`, `ai_matching`, `ai_property_qa` encendidos (capa determinista completa) + `site_compare`.
 - **Guías**: `knowledge/sales-profile.md`, `sales-matching.md`, `sales-next-action.md`, `sales-site.md` (17 guías).
+
+## Fases 5 y 6 · Gestión y automatización (sobre este núcleo)
+
+Detalle: [MANAGEMENT.md](./MANAGEMENT.md), [AUTOMATION.md](./AUTOMATION.md), [EVENTS.md](./EVENTS.md). Índice: [README.md](./README.md).
+
+- **Herramientas** (dominio executive, `read`, permiso `ai.executive`, flag verificado al ejecutar):
+  `executive_week_review` («¿Cómo estuvo la semana?»), `executive_leads_by_source` («Leads del mes»),
+  `executive_overdue_by_agent` («Seguimientos atrasados»), `executive_bottlenecks` («Cuellos de botella»),
+  `executive_first_contact`, `executive_visits`, `executive_funnel`, `executive_property_interest` (estas cuatro sin chip:
+  `QuickQuery.chip = false`, se reconocen por palabras clave). `ToolItem.definition` y `ToolResult.period`: el panel muestra
+  «Definición:» y «Período:».
+- **Prompts**: `management.daily_brief@2026-09-17.1` (extract → Haiku) y `copilot.analyst@2026-09-17.2` (reglas de
+  dirección). Nuevos `purpose`: `daily_brief`, `visit_report_profile`.
+- **Guardas**: `findUngroundedCounts` (cifras sueltas en respuestas con herramientas de dirección) y
+  `narrativeViolations` (Resumen de hoy).
+- **Eventos con causa**: `withEventCause` / `currentEventCause` en `events.ts`; `enqueue` y el runner propagan la causa.
