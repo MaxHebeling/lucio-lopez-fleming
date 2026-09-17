@@ -144,3 +144,20 @@ describe("PDF de informe para el propietario", () => {
     expect((await authorizeFileAccess(db, staff, file.id)).ok).toBe(true);
   });
 });
+
+describe("recuperación de contraseña de propietarios", () => {
+  it("una invitación pendiente (sin contraseña) no se activa por 'olvidé mi contraseña' y todos los caminos tardan lo mismo", async () => {
+    const db = testDb();
+    const owner = await createOwner(db, "Lara Pendiente");
+    await db.updateTable("users").set({ password_hash: null }).where("id", "=", owner.userId).execute();
+    const t0 = performance.now();
+    await requestOwnerPasswordReset(db, owner.email);
+    const tPending = performance.now() - t0;
+    const t1 = performance.now();
+    await requestOwnerPasswordReset(db, "nadie@test.local");
+    const tMissing = performance.now() - t1;
+    expect(await db.selectFrom("password_reset_tokens").select("id").where("user_id", "=", owner.userId).execute()).toHaveLength(0);
+    expect(tPending).toBeGreaterThanOrEqual(240);
+    expect(tMissing).toBeGreaterThanOrEqual(240);
+  });
+});

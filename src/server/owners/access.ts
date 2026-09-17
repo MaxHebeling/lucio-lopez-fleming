@@ -7,7 +7,6 @@ import { sql, pgCode, type Database, type Tx } from "../db";
 import { audit } from "../audit";
 import { canAny, requirePermission, requireStaff, type Actor } from "../auth/actor";
 import { revokeAllSessions } from "../auth/session";
-import { dummyHash } from "../auth/password";
 import { hashToken, newToken } from "../auth/tokens";
 import { conflict, forbidden, invalid, notFound } from "../errors";
 import { queueMessage } from "../messaging/outbound";
@@ -224,7 +223,20 @@ export async function changeOwnerEmail(db: Database, actor: Actor, raw: unknown)
  * Pedido de recuperación desde el portal. Siempre responde igual (no revela si el email existe) y solo aplica
  * a usuarios propietarios activos. El caller aplica rate limit por IP y por email.
  */
+/** Todos los caminos tardan al menos esto: el tiempo no revela si existe un propietario con ese email. */
+export const OWNER_RESET_MIN_RESPONSE_MS = 250;
+
 export async function requestOwnerPasswordReset(db: Database, emailRaw: string): Promise<void> {
+  const started = performance.now();
+  try {
+    await requestOwnerPasswordResetInner(db, emailRaw);
+  } finally {
+    const wait = OWNER_RESET_MIN_RESPONSE_MS - (performance.now() - started);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  }
+}
+
+async function requestOwnerPasswordResetInner(db: Database, emailRaw: string): Promise<void> {
   const email = emailRaw.trim().toLowerCase().slice(0, 254);
   const user = await db
     .selectFrom("users")
@@ -232,12 +244,11 @@ export async function requestOwnerPasswordReset(db: Database, emailRaw: string):
     .where("email", "=", email)
     .where("kind", "=", "owner")
     .where("is_active", "=", true)
+    // Sin contraseña = invitación pendiente: solo se activa con el link de invitación, no con "olvidé mi contraseña".
+    .where("password_hash", "is not", null)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
-  if (!user) {
-    await dummyHash();
-    return;
-  }
+  if (!user) return;
   const token = newToken(24);
   await db.transaction().execute(async (trx) => {
     await trx
