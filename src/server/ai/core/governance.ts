@@ -54,9 +54,27 @@ function strip(node: unknown): unknown {
   return out;
 }
 
-/** JSON Schema para `output_config` (subconjunto seguro). */
+/**
+ * La salida estructurada de Anthropic exige `additionalProperties: false` explícito en cada objeto y no admite mapas
+ * (`z.record`): sin esto la API responde 400 («For 'object' type, 'additionalProperties' must be explicitly set to false»).
+ */
+function closeObjects(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(closeObjects);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) out[k] = closeObjects(v);
+  if (out.type === "object" || "properties" in out) {
+    if (out.additionalProperties !== undefined && out.additionalProperties !== false) {
+      throw new Error("La salida estructurada no admite mapas (z.record): usá un objeto con claves fijas");
+    }
+    out.additionalProperties = false;
+  }
+  return out;
+}
+
+/** JSON Schema para `output_config` (subconjunto seguro y aceptado por la API). */
 export function responseJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  return strip(z.toJSONSchema(schema, { target: "draft-7", io: "input" })) as Record<string, unknown>;
+  return closeObjects(strip(z.toJSONSchema(schema, { target: "draft-7", io: "input" }))) as Record<string, unknown>;
 }
 
 /** JSON Schema de entrada de una herramienta (completo, sin `$schema`). */

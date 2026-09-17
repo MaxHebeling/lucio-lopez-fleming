@@ -172,6 +172,25 @@ describe("gobernanza: datos no confiables y PII", () => {
     expect(JSON.stringify(js)).not.toMatch(/maxLength|maxItems|\$schema/);
     expect(js).toMatchObject({ type: "object", required: ["a", "b"] });
   });
+  it("cierra cada objeto con additionalProperties: false (lo exige la API; sin esto responde 400) y rechaza mapas", () => {
+    const js = responseJsonSchema(z.object({ a: z.object({ b: z.array(z.object({ c: z.string() })) }), d: z.string().nullable() }));
+    const objects: Array<Record<string, unknown>> = [];
+    const walk = (n: unknown) => {
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (!n || typeof n !== "object") return;
+      const o = n as Record<string, unknown>;
+      if (o.type === "object") objects.push(o);
+      Object.values(o).forEach(walk);
+    };
+    walk(js);
+    expect(objects.length).toBe(3);
+    for (const o of objects) expect(o.additionalProperties).toBe(false);
+    expect(() => responseJsonSchema(z.object({ m: z.record(z.string(), z.string()) }))).toThrow(/mapas/);
+  });
+  it("el esquema del modo Analista es aceptable para la API (objetos cerrados)", async () => {
+    const { analystOutputSchema } = await import("@/server/ai/prompts/copilot-analyst");
+    expect(responseJsonSchema(analystOutputSchema)).toMatchObject({ type: "object", additionalProperties: false });
+  });
 });
 
 describe("registro de herramientas: capability y permisos", () => {
