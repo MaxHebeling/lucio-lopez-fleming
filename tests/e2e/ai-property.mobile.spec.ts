@@ -64,7 +64,10 @@ test("home 390: «Quiero vender mi propiedad» paso a paso crea un único lead s
     await expect(form.getByText("No damos valores automáticos: un asesor te va a contactar para una tasación profesional.")).toBeVisible();
     await form.getByLabel("Nombre y apellido").fill("Propietaria Pasos E2E");
     await form.getByLabel("Email").fill(email);
-    expect(await axeSerious(page, "captación paso a paso")).toEqual([]);
+    // Axe acotado a la sección bajo prueba: la portada completa ya la revisa mobile.spec.ts (en reposo, sin las
+    // animaciones de entrada que al hacer scroll dan falsos positivos de contraste a mitad del fundido).
+    const axe = await new AxeBuilder({ page }).include("#vender").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
     expect(await noOverflow(page)).toBeLessThanOrEqual(0);
     await shot(page, "ai-09-captacion-contacto-390");
     await form.getByRole("button", { name: "Quiero vender mi propiedad" }).dblclick();
