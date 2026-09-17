@@ -21,7 +21,10 @@ export type WhatsAppTemplateResult =
   | { status: "sent"; providerMessageId: string }
   | { status: "awaiting_credentials"; reason: string };
 
-/** Debe lanzar RetryableError/TimeoutError para fallas transitorias y otro Error para rechazos definitivos. */
+/**
+ * Contrato de errores: transitorias → RetryableError; rechazos definitivos → PermanentIntegrationError;
+ * resultado incierto (timeout/corte tras enviar) → subclase de PermanentIntegrationError: nunca se reintenta solo.
+ */
 export type WhatsAppTemplateSender = (db: Database, message: WhatsAppTemplateMessage) => Promise<WhatsAppTemplateResult>;
 
 let sender: WhatsAppTemplateSender | undefined;

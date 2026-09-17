@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sql } from "@/server/db";
 import { runAdincoImport } from "@/server/migration/adinco/importer";
-import { updateProperty, changePrice, unpublishProperty, assignAgents, changeStatus } from "@/server/properties/service";
+import { updateProperty, changePrice, unpublishProperty, publishProperty, assignAgents, changeStatus } from "@/server/properties/service";
+import { reviewMigrationWarning } from "@/server/migration/review";
 import { createStaff, resetBusinessData, testDb } from "../helpers/db";
 
 const base = JSON.parse(readFileSync(resolve(import.meta.dirname, "../fixtures/adinco-property-3021.json"), "utf8"));
@@ -176,5 +177,103 @@ describe("importador Adinco", () => {
     expect(agents.map((x) => x.user_id)).toEqual([admin.userId]);
     const pb = await db.selectFrom("properties").select("status").where("id", "=", b.id).executeTakeFirstOrThrow();
     expect(pb.status).toBe("reserved");
+  });
+
+  describe("despublicación por advertencias bloqueantes", () => {
+    it("una advertencia bloqueante nueva despublica con el servicio: evento property.unpublished y portales a dar de baja", async () => {
+      const db = testDb();
+      const src = fakeSource([base]);
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      const p = await db.selectFrom("properties").select(["id", "is_published"]).where("code", "=", 3021).executeTakeFirstOrThrow();
+      expect(p.is_published).toBe(true);
+      // Canal de portal con aviso publicado
+      await db.insertInto("property_publications").values({ property_id: p.id, channel_key: "mercadolibre", desired_state: "published", sync_status: "synced", external_id: "MLA1" }).execute();
+
+      src.state.props = [{ ...base, price: 150 }];
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      expect((await db.selectFrom("properties").select("is_published").where("id", "=", p.id).executeTakeFirstOrThrow()).is_published).toBe(false);
+      const events = await db.selectFrom("domain_events").select("event_type").where("aggregate_id", "=", p.id).where("event_type", "=", "property.unpublished").execute();
+      expect(events).toHaveLength(1);
+      const ml = await db.selectFrom("property_publications").select(["desired_state", "sync_status"]).where("property_id", "=", p.id).where("channel_key", "=", "mercadolibre").executeTakeFirstOrThrow();
+      expect(ml.desired_state).toBe("unpublished");
+      const audit = await db.selectFrom("audit_logs").select("action").where("entity_id", "=", p.id).where("action", "=", "PROPERTY_UNPUBLISHED").execute();
+      expect(audit).toHaveLength(1);
+    });
+
+    it("publicación decidida por una persona (is_published protegido) o ficha verificada: no se despublica", async () => {
+      const db = testDb();
+      const admin = await createStaff(db, ["administrador"]);
+      const src = fakeSource([base, { ...base, id: 88, code: 3088 }]);
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      const a = await db.selectFrom("properties").select("id").where("code", "=", 3021).executeTakeFirstOrThrow();
+      const b = await db.selectFrom("properties").select("id").where("code", "=", 3088).executeTakeFirstOrThrow();
+      await unpublishProperty(db, admin, a.id, "revisión");
+      await publishProperty(db, admin, a.id);
+      await sql`update properties set manually_verified_at = now() where id = ${b.id}`.execute(db);
+
+      src.state.props = [{ ...base, price: 150 }, { ...base, id: 88, code: 3088, price: 150 }];
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      const rows = await db.selectFrom("properties").select(["code", "is_published"]).where("id", "in", [a.id, b.id]).orderBy("code").execute();
+      expect(rows).toEqual([
+        { code: 3021, is_published: true },
+        { code: 3088, is_published: true },
+      ]);
+    });
+
+    it("advertencia descartada por una persona con el mismo valor no vuelve a bloquear (se republica si nadie la despublicó a mano)", async () => {
+      const db = testDb();
+      const admin = await createStaff(db, ["administrador"]);
+      const src = fakeSource([{ ...base, price: 150 }]);
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      const p = await db.selectFrom("properties").select(["id", "is_published"]).where("code", "=", 3021).executeTakeFirstOrThrow();
+      expect(p.is_published).toBe(false);
+      const w = await db.selectFrom("migration_warnings").select("id").where("code", "=", "implausible_price").executeTakeFirstOrThrow();
+      await reviewMigrationWarning(db, admin, w.id, "dismissed");
+
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0, force: true });
+      expect((await db.selectFrom("properties").select("is_published").where("id", "=", p.id).executeTakeFirstOrThrow()).is_published).toBe(true);
+      expect((await db.selectFrom("migration_warnings").select("status").where("id", "=", w.id).executeTakeFirstOrThrow()).status).toBe("dismissed");
+
+      // Con otro valor sí vuelve a bloquear
+      src.state.props = [{ ...base, price: 120 }];
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      expect((await db.selectFrom("properties").select("is_published").where("id", "=", p.id).executeTakeFirstOrThrow()).is_published).toBe(false);
+    });
+
+    it("verificación de fotos: todas rotas no despublica una ficha con publicación protegida, verificada o advertencia descartada", async () => {
+      const db = testDb();
+      const admin = await createStaff(db, ["administrador"]);
+      const broken = [{ src: "x/roto-1.jpg", multimediaTypeId: 1 }];
+      const src = fakeSource([base, { ...base, id: 61, code: 3061 }, { ...base, id: 62, code: 3062 }]);
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0 });
+      const ids = Object.fromEntries((await db.selectFrom("properties").select(["id", "code"]).execute()).map((r) => [r.code, r.id]));
+      await unpublishProperty(db, admin, ids[3021]!, "revisión");
+      await publishProperty(db, admin, ids[3021]!);
+      await sql`update properties set manually_verified_at = now() where id = ${ids[3061]!}`.execute(db);
+
+      src.state.props = [
+        { ...base, bedrooms: 4, multimedia: broken },
+        { ...base, id: 61, code: 3061, bedrooms: 4, multimedia: broken },
+        { ...base, id: 62, code: 3062, bedrooms: 4, multimedia: broken },
+      ];
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0, verifyMedia: true, force: true });
+      const rows = await db.selectFrom("properties").select(["code", "is_published"]).orderBy("code").execute();
+      // 3061 verificada a mano: no se toca; 3021 publicación protegida: no se despublica; 3062 sin decisión humana: se despublica
+      expect(rows).toEqual([
+        { code: 3021, is_published: true },
+        { code: 3061, is_published: true },
+        { code: 3062, is_published: false },
+      ]);
+      expect(await db.selectFrom("domain_events").select("id").where("aggregate_id", "=", ids[3062]!).where("event_type", "=", "property.unpublished").execute()).toHaveLength(1);
+
+      // Una persona descarta la advertencia y publica de nuevo: la próxima verificación no la vuelve a bajar
+      const w = await db.selectFrom("migration_warnings").select("id").where("code", "=", "media_unreachable").where("property_id", "=", ids[3062]!).executeTakeFirstOrThrow();
+      await reviewMigrationWarning(db, admin, w.id, "dismissed");
+      await sql`update properties set is_published = true where id = ${ids[3062]!}`.execute(db);
+      await sql`update property_media set status = 'source_only' where property_id = ${ids[3062]!}`.execute(db);
+      src.state.props = src.state.props.map((x) => ({ ...x, bedrooms: 3 }));
+      await runAdincoImport(db, { fetchImpl: src.fetchImpl, delayMs: 0, verifyMedia: true, force: true });
+      expect((await db.selectFrom("properties").select("is_published").where("id", "=", ids[3062]!).executeTakeFirstOrThrow()).is_published).toBe(true);
+    });
   });
 });

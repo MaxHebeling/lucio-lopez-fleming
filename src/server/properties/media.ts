@@ -5,6 +5,8 @@
  * filas `files` + `property_media` con auditoría y evento `property.updated` en la misma transacción.
  * Si la transacción falla, los objetos subidos se borran (best effort, con log).
  */
+import { registerJobHandler } from "../jobs/registry";
+import { addScheduledTask } from "../jobs/scheduled";
 import sharp from "sharp";
 import { protectImportedFields } from "./service";
 import { z } from "zod";
@@ -310,3 +312,7 @@ export async function removeDeletedPublicMedia(db: Database, limit = PUBLIC_MEDI
   }
   return { removed, failed };
 }
+
+// Reintento periódico de bajas de objetos públicos que fallaron en el momento del borrado.
+registerJobHandler("properties.purge_public_media", async (_p, { db }) => removeDeletedPublicMedia(db));
+addScheduledTask({ type: "properties.purge_public_media", every: "hourly", timeoutMs: 60_000 });

@@ -323,7 +323,14 @@ async function markPublications(trx: Tx, propertyId: string, desired: "published
     await trx
       .insertInto("property_publications")
       .values({ property_id: propertyId, channel_key: c.key, desired_state: desired, sync_status: syncStatus, last_synced_at: c.kind === "web" ? new Date() : null })
-      .onConflict((oc) => oc.columns(["property_id", "channel_key"]).doUpdateSet({ desired_state: desired, sync_status: syncStatus, last_error: null }))
+      // Si un job está hablando con el portal (lock vigente) no se pisa su estado visible; el job relee desired_state al terminar.
+      .onConflict((oc) =>
+        oc.columns(["property_id", "channel_key"]).doUpdateSet({
+          desired_state: desired,
+          sync_status: sql`case when property_publications.sync_locked_until > now() then property_publications.sync_status else ${syncStatus} end`,
+          last_error: sql`case when property_publications.sync_locked_until > now() then property_publications.last_error else null end`,
+        }),
+      )
       .execute();
   }
 }

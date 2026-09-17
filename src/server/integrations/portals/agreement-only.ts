@@ -9,6 +9,7 @@
  * (mapeo puro y testeado de los datos que todo portal pide) y deja la publicación en `awaiting_credentials`
  * hasta contar con el acuerdo comercial y la especificación técnica oficial.
  */
+import { publicStreet } from "../../properties/public-helpers";
 import type { PortalAdapter, PortalFailure, PortalPrepared, PortalProperty } from "./types";
 import { orderedPhotos, primaryOperation } from "./types";
 
@@ -53,7 +54,8 @@ export function buildListingSheet(p: PortalProperty, maxPhotos = 30): PortalPrep
       expenses: op.expensesAmount !== null ? { currency: op.expensesCurrency ?? op.currency, amount: op.expensesAmount } : null,
       location: {
         hierarchy: [...p.locationChain].reverse().map((l) => l.name),
-        street: p.address.street,
+        // Misma regla que el sitio: con dirección oculta se quita la altura aunque venga pegada al nombre de la calle.
+        street: publicStreet(p.address.street, null, p.address.hideExact),
         number: p.address.hideExact ? null : p.address.number,
         showExactAddress: !p.address.hideExact,
         latitude: p.address.hideExact ? null : p.address.latitude,

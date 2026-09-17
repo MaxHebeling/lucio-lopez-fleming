@@ -9,6 +9,14 @@
  *  4. Reglas deterministas (pide persona, oferta, reserva, reclamo, documentos, cierre) → derivación.
  *  5. Sin ANTHROPIC_API_KEY → derivación. Presupuesto diario agotado → derivación.
  *  6. Loop con herramientas → salida JSON validada → guardas → respuesta en cola (y derivación si corresponde).
+ *
+ * Tiempo acotado: todo el turno tiene TURN_BUDGET_MS (holgado dentro del timeout del job) y cada llamada al modelo
+ * AI_CALL_TIMEOUT_MS; si se agota el presupuesto cuenta como falla (y a la segunda, deriva). Respeta la cancelación
+ * del job (`signal`). Si el job muere igual, `registerJobDeadHandler` deriva la conversación a una persona.
+ *
+ * Derivación + aviso al cliente son dos pasos (handoffConversation abre su propia transacción): se hacen idempotentes.
+ * Primero se encola el mensaje (aviso o respuesta) con `payload.handoff` y después se deriva; si el proceso se corta
+ * entre ambos, el reintento del job (o el dead handler) ve la derivación pendiente y la completa.
  */
 import type Anthropic from "@anthropic-ai/sdk";
 import { sql, type Database, type Executor } from "../../db";
@@ -27,6 +35,13 @@ import { executeTool, TOOL_DEFINITIONS, type ToolCallLog, type ToolContext } fro
 import { detectHandoff } from "./rules";
 
 export const MAX_TOOL_ROUNDS = 4;
+/** Timeout del job whatsapp.ai_reply (lo usa inbound.ts al encolar). */
+export const AI_REPLY_JOB_TIMEOUT_MS = 150_000;
+/** Timeout de cada llamada al modelo. MAX_TOOL_ROUNDS × AI_CALL_TIMEOUT_MS ≤ TURN_BUDGET_MS. */
+export const AI_CALL_TIMEOUT_MS = 25_000;
+/** Presupuesto total del turno: deja ≥ 45 s del job para registrar, encolar y derivar. */
+export const TURN_BUDGET_MS = 100_000;
+
 export const HISTORY_MESSAGES = 20;
 export const MAX_CONSECUTIVE_AI_FAILURES = 2;
 
@@ -35,7 +50,16 @@ export type TurnOutcome =
   | { outcome: "replied"; messageId: string; interactionId: string; handoff: HandoffReason | null }
   | { outcome: "handoff"; reason: HandoffReason; interactionId?: string };
 
-export type TurnDeps = { client?: MessagesClient | null; env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void> };
+export type TurnDeps = {
+  client?: MessagesClient | null;
+  env?: NodeJS.ProcessEnv;
+  sleep?: (ms: number) => Promise<void>;
+  /** Cancelación del job (ctx.signal). */
+  signal?: AbortSignal;
+  /** Solo tests: presupuestos más cortos. */
+  turnBudgetMs?: number;
+  callTimeoutMs?: number;
+};
 
 type InteractionStatus = "ok" | "error" | "timeout" | "invalid_output" | "budget_exceeded" | "fallback";
 
@@ -83,19 +107,42 @@ async function recordInteraction(
   return row.id;
 }
 
-async function handoffWithAck(db: Database, actor: SystemActor, conversationId: string, messageId: string, reason: HandoffReason, detail?: string | null): Promise<void> {
-  const { handedOff } = await handoffConversation(db, actor, { conversationId, reason, detail: detail ?? null });
-  if (!handedOff) return;
+/**
+ * Avisa al cliente y deriva a una persona. handoffConversation abre su propia transacción, así que el orden hace el
+ * par idempotente: primero se encola el aviso (único por mensaje respondido) marcado con `payload.handoff`; después
+ * se deriva. Si el proceso se corta entre ambos, el reintento del job (o el dead handler) encuentra el aviso con la
+ * derivación pendiente y la completa. Nunca queda un cliente derivado sin aviso ni un aviso sin derivación.
+ */
+export async function handoffWithAck(db: Database, actor: SystemActor, conversationId: string, messageId: string, reason: HandoffReason, detail?: string | null): Promise<void> {
   await db.transaction().execute(async (trx) => {
+    const conv = await trx.selectFrom("conversations").select("mode").where("id", "=", conversationId).forUpdate().executeTakeFirst();
+    if (conv?.mode !== "bot") return; // ya la atiende una persona (o se cerró): no se avisa de nuevo
     const first = await isFirstBotMessage(trx, conversationId);
     await queueOutboundMessage(trx, {
       conversationId,
       senderKind: "bot",
       body: first ? `${ASSISTANT_INTRO} ${HANDOFF_ACK_MESSAGE}` : HANDOFF_ACK_MESSAGE,
       replyToMessageId: messageId,
-      payload: { handoffAck: true, reason },
+      payload: { handoffAck: true, reason, handoff: reason },
     });
   });
+  await handoffConversation(db, actor, { conversationId, reason, detail: detail ?? null });
+}
+
+/** Job muerto (agotó intentos, error permanente o lease vencido): la conversación no puede quedar sin respuesta. */
+export async function handoffAfterDeadJob(db: Database, actor: SystemActor, input: { conversationId: string; messageId: string; error: string }): Promise<{ handedOff: boolean }> {
+  const conv = await db.selectFrom("conversations").select(["mode"]).where("id", "=", input.conversationId).executeTakeFirst();
+  if (conv?.mode !== "bot") return { handedOff: false };
+  const pending = await pendingHandoff(db, input.messageId);
+  await handoffWithAck(db, actor, input.conversationId, input.messageId, pending ?? "ai_error", `el asistente no pudo responder: ${input.error}`.slice(0, 200));
+  return { handedOff: true };
+}
+
+/** Derivación que quedó pendiente en la respuesta/aviso ya encolado para este mensaje (ver handoffWithAck). */
+async function pendingHandoff(db: Database, messageId: string): Promise<HandoffReason | null> {
+  const r = await db.selectFrom("conversation_messages").select("payload").where("reply_to_message_id", "=", messageId).where("sender_kind", "=", "bot").executeTakeFirst();
+  const h = (r?.payload as { handoff?: unknown } | null)?.handoff;
+  return typeof h === "string" ? (h as HandoffReason) : null;
 }
 
 async function isFirstBotMessage(db: Executor, conversationId: string): Promise<boolean> {
@@ -190,11 +237,20 @@ export async function runAssistantTurn(db: Database, actor: SystemActor, input: 
   if (latestInbound?.id !== input.messageId) return { outcome: "skipped", reason: "hay un mensaje más nuevo" };
   const answered = await db
     .selectFrom("conversation_messages")
-    .select("id")
+    .select(["id", "payload"])
     .where("reply_to_message_id", "=", input.messageId)
     .where("sender_kind", "=", "bot")
     .executeTakeFirst();
-  if (answered) return { outcome: "skipped", reason: "ya respondido" };
+  if (answered) {
+    // Corte entre encolar la respuesta (o el aviso) y derivar: el mensaje recuerda la derivación pendiente.
+    const pending = (answered.payload as { handoff?: unknown; handoffAck?: unknown } | null) ?? {};
+    if (typeof pending.handoff === "string") {
+      const reason = pending.handoff as HandoffReason;
+      await handoffConversation(db, actor, { conversationId: conv.id, reason, detail: "derivación completada tras un reintento" });
+      return pending.handoffAck ? { outcome: "handoff", reason } : { outcome: "replied", messageId: answered.id, interactionId: "", handoff: reason };
+    }
+    return { outcome: "skipped", reason: "ya respondido" };
+  }
 
   const rows = await db
     .selectFrom("conversation_messages")
@@ -229,6 +285,8 @@ export async function runAssistantTurn(db: Database, actor: SystemActor, input: 
   const usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
   const toolCalls: ToolCallLog[] = [];
   const t0 = Date.now();
+  const deadline = t0 + (deps.turnBudgetMs ?? TURN_BUDGET_MS);
+  const callTimeoutMs = deps.callTimeoutMs ?? AI_CALL_TIMEOUT_MS;
 
   if ((await budgetStatus(db)).exhausted) {
     const interactionId = await recordInteraction(db, { conversationId: conv.id, messageId: input.messageId, model, status: "budget_exceeded", usage, latencyMs: 0, toolCalls, rounds: 0, handoffReason: "budget_exhausted" });
@@ -276,15 +334,17 @@ export async function runAssistantTurn(db: Database, actor: SystemActor, input: 
       await handoffWithAck(db, actor, conv.id, input.messageId, "budget_exhausted");
       return { outcome: "handoff", reason: "budget_exhausted", interactionId };
     }
+    if (deps.signal?.aborted) throw new Error("Turno del asistente cancelado: el job superó su tiempo (no se encola respuesta)");
     let message: Anthropic.Message;
     try {
       message = await callModel(
         db,
         client,
         { model, max_tokens: 1024, system, messages, tools: TOOL_DEFINITIONS, output_config: { format: { type: "json_schema", schema: OUTPUT_JSON_SCHEMA } } },
-        { entityId: conv.id, sleep: deps.sleep },
+        { entityId: conv.id, sleep: deps.sleep, timeoutMs: callTimeoutMs, deadline, signal: deps.signal },
       );
     } catch (e) {
+      if (deps.signal?.aborted) throw e;
       const status: InteractionStatus = e instanceof TimeoutError ? "timeout" : "error";
       const error = (e as Error).message ?? String(e);
       log.warn("ai.whatsapp_call_failed", { conversationId: conv.id, ...errorFields(e) });
@@ -309,6 +369,7 @@ export async function runAssistantTurn(db: Database, actor: SystemActor, input: 
     messages.push({ role: "user", content: results });
   }
 
+  if (deps.signal?.aborted) throw new Error("Turno del asistente cancelado: el job superó su tiempo (no se encola respuesta)");
   const latencyMs = Date.now() - t0;
   const parsed = final ? parseAssistantOutput(final) : ({ ok: false, error: `sin respuesta final tras ${rounds} rondas de herramientas` } as const);
   if (!parsed.ok) {
@@ -376,19 +437,16 @@ export async function runAssistantTurn(db: Database, actor: SystemActor, input: 
           senderKind: "bot",
           body: reply,
           replyToMessageId: input.messageId,
-          payload: { aiInteractionId: interactionId, promptVersion: PROMPT_VERSION, confidence: output.confidence },
+          // `handoff`: si el proceso se corta antes de derivar, el reintento del job completa la derivación.
+          payload: { aiInteractionId: interactionId, promptVersion: PROMPT_VERSION, confidence: output.confidence, ...(handoffReason ? { handoff: handoffReason } : {}) },
         })
       : null;
     return { interactionId, messageId: queued?.messageId ?? null };
   });
 
   if (handoffReason) {
-    const { handedOff } = await handoffConversation(db, actor, { conversationId: conv.id, reason: handoffReason, detail: ctx.handoff?.note ?? null });
-    if (handedOff && !messageId) {
-      await db.transaction().execute((trx) =>
-        queueOutboundMessage(trx, { conversationId: conv.id, senderKind: "bot", body: HANDOFF_ACK_MESSAGE, replyToMessageId: input.messageId, payload: { handoffAck: true, reason: handoffReason } }),
-      );
-    }
+    if (messageId) await handoffConversation(db, actor, { conversationId: conv.id, reason: handoffReason, detail: ctx.handoff?.note ?? null });
+    else await handoffWithAck(db, actor, conv.id, input.messageId, handoffReason, ctx.handoff?.note ?? null);
   }
   if (!messageId) return { outcome: "handoff", reason: handoffReason ?? "other", interactionId };
   return { outcome: "replied", messageId, interactionId, handoff: handoffReason };

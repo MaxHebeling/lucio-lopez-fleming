@@ -2,12 +2,14 @@
  * Adaptador de envío de WhatsApp Business Cloud API.
  * POST https://graph.facebook.com/{version}/{PHONE_NUMBER_ID}/messages con Authorization: Bearer {token}.
  * - callIntegration: circuit breaker + integration_logs.
- * - withTimeout por intento; reintento solo para errores reintentables (red, timeout, 5xx, límites de throughput).
+ * - withTimeout por intento; reintento en la misma llamada SOLO cuando es seguro que Meta no aceptó el mensaje
+ *   (sin conexión, 5xx/límites devueltos por Meta). Un timeout o una respuesta perdida después de enviar el POST
+ *   NO se reintenta: el mensaje pudo haber salido → UncertainOutcomeError (verificación humana, nunca reenvío automático).
  * - Sin credenciales: la integración queda `awaiting_credentials` y se lanza WhatsAppNotConfiguredError (nunca se simula un envío).
  * Códigos de error: https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes
  */
 import type { Database } from "../../db";
-import { callIntegration, isRetryableStatus, retry, RetryableError, TimeoutError, withTimeout } from "../../resilience";
+import { callIntegration, isNotSentNetworkError, isRetryableStatus, retry, RetryableError, TimeoutError, UncertainOutcomeError, withTimeout } from "../../resilience";
 import { markAwaitingCredentials, markIntegrationActive } from "../credentials";
 import { WHATSAPP_INTEGRATION_KEY, whatsappSendConfig } from "./config";
 
@@ -107,9 +109,17 @@ export async function sendWhatsAppMessage(db: Database, message: OutgoingMessage
               });
             } catch (e) {
               if (e instanceof TimeoutError) throw e;
-              throw new RetryableError(`Error de red con Meta: ${(e as Error).message}`);
+              // Sin conexión: seguro que no salió. Cualquier otro corte pudo ocurrir después de que Meta lo aceptara.
+              if (isNotSentNetworkError(e)) throw new RetryableError(`Error de red con Meta (sin conexión): ${(e as Error).message}`);
+              throw new UncertainOutcomeError(`Conexión con Meta cortada después de enviar: ${(e as Error).message}`, undefined, { cause: e });
             }
-            const text = await res.text();
+            let text: string;
+            try {
+              text = await res.text();
+            } catch (e) {
+              if (!res.ok) throw toApiError(res.status, null);
+              throw new UncertainOutcomeError(`Meta aceptó el envío pero la respuesta se perdió: ${(e as Error).message}`, res.status, { cause: e });
+            }
             let body: unknown = null;
             try {
               body = text ? JSON.parse(text) : null;
@@ -118,15 +128,18 @@ export async function sendWhatsAppMessage(db: Database, message: OutgoingMessage
             }
             if (!res.ok) throw toApiError(res.status, body);
             const wamid = (body as { messages?: Array<{ id?: string }> } | null)?.messages?.[0]?.id;
-            if (!wamid) throw new WhatsAppApiError("Respuesta de Meta sin id de mensaje", res.status, null, false);
+            if (!wamid) throw new UncertainOutcomeError("Meta respondió OK pero sin id de mensaje: no se puede confirmar el envío", res.status);
             const waId = (body as { contacts?: Array<{ wa_id?: string }> }).contacts?.[0]?.wa_id ?? null;
             return { wamid, waId };
+          }).catch((e: unknown) => {
+            if (e instanceof TimeoutError) throw new UncertainOutcomeError(`Meta no respondió a tiempo (${opts.timeoutMs ?? 15_000} ms): el mensaje pudo haber salido`, undefined, { cause: e });
+            throw e;
           }),
         {
           attempts: opts.attempts ?? 3,
           sleep: opts.sleep,
-          shouldRetry: (e) =>
-            e instanceof RetryableError || e instanceof TimeoutError || (e instanceof WhatsAppApiError && e.retryable && (e.code === null || RETRY_NOW_CODES.has(e.code))),
+          // Nunca UncertainOutcomeError: reenviar podría duplicar el mensaje al cliente.
+          shouldRetry: (e) => e instanceof RetryableError || (e instanceof WhatsAppApiError && e.retryable && (e.code === null || RETRY_NOW_CODES.has(e.code))),
         },
       ),
     { entityType: opts.entityType, entityId: opts.entityId, requestId: opts.requestId },

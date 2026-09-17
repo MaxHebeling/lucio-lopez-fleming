@@ -3,7 +3,8 @@
  * - `prepare` es PURO: mapea el modelo interno al formato del portal (o devuelve qué falta). Su salida se hashea
  *   para no reenviar publicaciones sin cambios.
  * - publish/update/remove/getStatus hablan con el portal y devuelven resultados tipados (no lanzan por rechazos
- *   esperables): awaiting_credentials, invalid_data (dato faltante o rechazado: no se reintenta) o transient (se reintenta).
+ *   esperables): awaiting_credentials, invalid_data (dato faltante o rechazado: no se reintenta), transient (se reintenta)
+ *   o uncertain (una creación pudo haberse aplicado: no se reintenta sola; verificación humana).
  * - Un adaptador NUNCA modifica datos del CRM.
  */
 import type { Database } from "../../db";
@@ -51,8 +52,14 @@ export type PortalProperty = {
   contact: { name: string; email: string | null; phone: string | null };
 };
 
-export type PortalFailure = { ok: false; reason: "awaiting_credentials" | "invalid_data" | "transient"; error: string };
-export type PortalOpResult = { ok: true; externalId: string; externalUrl: string | null } | PortalFailure;
+export type PortalFailure = { ok: false; reason: "awaiting_credentials" | "invalid_data" | "transient" | "uncertain"; error: string };
+/** `adopted`: se encontró un aviso propio ya existente (por referencia) y se usó en lugar de crear otro. */
+export type PortalOpResult = { ok: true; externalId: string; externalUrl: string | null; adopted?: boolean } | PortalFailure;
+export type PortalPublishOptions = {
+  /** Hubo un intento anterior de resultado incierto: buscar el aviso por referencia propia antes de crear. */
+  searchExisting?: boolean;
+};
+export type PortalFindResult = { ok: true; item: { externalId: string; externalUrl: string | null; state: PortalRemoteState } | null } | PortalFailure;
 export type PortalRemoveResult = { ok: true } | PortalFailure;
 export type PortalRemoteState = "active" | "paused" | "closed" | "under_review" | "unknown";
 export type PortalStatusResult = { ok: true; state: PortalRemoteState; externalUrl: string | null } | PortalFailure;
@@ -65,10 +72,12 @@ export interface PortalAdapter {
   readonly name: string;
   configuration(db: Database): Promise<PortalConfiguration>;
   prepare(property: PortalProperty): PortalPrepared;
-  publish(db: Database, property: PortalProperty): Promise<PortalOpResult>;
-  update(db: Database, externalId: string, property: PortalProperty): Promise<PortalOpResult>;
+  publish(db: Database, property: PortalProperty, opts?: PortalPublishOptions): Promise<PortalOpResult>;
+  update(db: Database, externalId: string, property: PortalProperty, opts?: PortalPublishOptions): Promise<PortalOpResult>;
   remove(db: Database, externalId: string): Promise<PortalRemoveResult>;
   getStatus(db: Database, externalId: string): Promise<PortalStatusResult>;
+  /** Busca un aviso propio por referencia (para no duplicar tras un resultado incierto). Opcional. */
+  findByReference?(db: Database, property: Pick<PortalProperty, "id" | "code">): Promise<PortalFindResult>;
 }
 
 /** Operación principal para portales que admiten una sola por aviso: venta, luego alquiler, luego temporario. */

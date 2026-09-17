@@ -143,7 +143,13 @@ export default async function ConversationPage({ params }: PageProps<"/crm/conve
                         <MessageStatus status={m.status} />
                         {m.error ? <p className={cx("text-right text-xs", m.status === "failed" ? "text-danger" : "text-warning")}>{m.error}</p> : null}
                         {canReply && ["failed", "awaiting_credentials"].includes(m.status) && m.error_code !== "window_expired" ? (
-                          <ActionButton action={retryMessageAction} fields={{ messageId: m.id }} label="Reintentar envío" pendingLabel="Reintentando…" variant="ghost" />
+                          <ActionButton
+                            action={retryMessageAction}
+                            fields={{ messageId: m.id }}
+                            label={m.error_code === "uncertain" ? "Verifiqué que no llegó: reenviar" : "Reintentar envío"}
+                            pendingLabel="Reintentando…"
+                            variant="ghost"
+                          />
                         ) : null}
                       </footer>
                     ) : null}

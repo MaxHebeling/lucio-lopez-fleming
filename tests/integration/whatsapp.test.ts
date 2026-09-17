@@ -4,7 +4,9 @@ import "@/server/jobs/handlers";
 import { resetFlagCache } from "@/server/flags";
 import { runJobs } from "@/server/jobs/runner";
 import { ingestWhatsAppWebhook, processInboundMessage, processWebhookEvent } from "@/server/integrations/whatsapp/inbound";
-import { deliverConversationMessage, MSG_FLAG_OFF, MSG_NO_CREDENTIALS, MSG_WINDOW_EXPIRED } from "@/server/integrations/whatsapp/outbound";
+import { deliverConversationMessage, MSG_FLAG_OFF, MSG_NO_CREDENTIALS, MSG_UNCERTAIN, MSG_WINDOW_EXPIRED } from "@/server/integrations/whatsapp/outbound";
+import { PermanentIntegrationError } from "@/server/integrations/http";
+import { RetryableError } from "@/server/resilience";
 import { parseWebhook, type InboundMessageEvent } from "@/server/integrations/whatsapp/payload";
 import { closeConversation, replyAsHuman, retryOutboundMessage, returnToBot, takeConversation } from "@/server/conversations/service";
 import { getConversation, listConversations } from "@/server/conversations/queries";
@@ -282,6 +284,53 @@ describe("envío y estados", () => {
     await setFlag("outbound_whatsapp", false);
   });
 
+  /** fetch que nunca responde (Meta aceptó pero la respuesta no llega): solo termina cuando se aborta. */
+  const hangingFetch = () =>
+    vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+        }),
+    );
+
+  it("timeout después del POST: NO reenvía; queda failed 'uncertain' pidiendo verificar y sin reencolar", async () => {
+    const { db, messageId } = await conversationWithReply();
+    await setFlag("outbound_whatsapp", true);
+    await db.updateTable("integrations").set({ consecutive_failures: 0, circuit_open_until: null }).where("key", "=", "whatsapp_cloud").execute();
+    const fetchMock = hangingFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await deliverConversationMessage(db, messageId, { env: whatsappEnv(), sleep: async () => {}, timeoutMs: 50 });
+    expect(r).toEqual({ result: "failed", code: "uncertain", reason: MSG_UNCERTAIN });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const m = await db.selectFrom("conversation_messages").select(["status", "error_code", "error", "external_message_id"]).where("id", "=", messageId).executeTakeFirstOrThrow();
+    expect(m).toEqual({ status: "failed", error_code: "uncertain", error: expect.stringMatching(/Verificá en WhatsApp si llegó/), external_message_id: null });
+    // Un reintento del mismo job (o del cron) no lo vuelve a mandar: solo el reintento manual desde el CRM
+    expect(await deliverConversationMessage(db, messageId, { env: whatsappEnv(), sleep: async () => {}, timeoutMs: 50 })).toMatchObject({ result: "skipped" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await setFlag("outbound_whatsapp", false);
+  });
+
+  it("corte de conexión tras enviar → incierto (1 llamada); sin conexión (DNS) → se reintenta porque seguro no salió", async () => {
+    const { db, messageId } = await conversationWithReply();
+    await setFlag("outbound_whatsapp", true);
+    await db.updateTable("integrations").set({ consecutive_failures: 0, circuit_open_until: null }).where("key", "=", "whatsapp_cloud").execute();
+    const reset = vi.fn(async () => {
+      throw new TypeError("fetch failed", { cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }) });
+    });
+    vi.stubGlobal("fetch", reset);
+    expect(await deliverConversationMessage(db, messageId, { env: whatsappEnv(), sleep: async () => {} })).toMatchObject({ result: "failed", code: "uncertain" });
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    const other = await conversationWithReply();
+    const dns = vi.fn(async () => {
+      throw new TypeError("fetch failed", { cause: Object.assign(new Error("getaddrinfo ENOTFOUND graph.facebook.com"), { code: "ENOTFOUND" }) });
+    });
+    vi.stubGlobal("fetch", dns);
+    await expect(deliverConversationMessage(db, other.messageId, { env: whatsappEnv(), sleep: async () => {} })).rejects.toBeInstanceOf(RetryableError);
+    expect(dns).toHaveBeenCalledTimes(3);
+    await setFlag("outbound_whatsapp", false);
+  });
+
   it("ventana de 24 h vencida localmente: no llama a Meta y lo explica; estado failed de Meta se refleja", async () => {
     const { db, messageId, waId } = await conversationWithReply({ hoursSinceInbound: 30 });
     await setFlag("outbound_whatsapp", true);
@@ -445,5 +494,28 @@ describe("plantillas para la cola genérica de mensajes", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     expect(await sendWhatsAppTemplate(db, msg, whatsappEnv())).toEqual({ status: "sent", providerMessageId: "wamid.TPL" });
+  });
+
+  it("timeout → incierto y definitivo (sin reintentos de la cola); rechazo 4xx de Meta → permanente", async () => {
+    const { sendWhatsAppTemplate, UncertainTemplateDeliveryError } = await import("@/server/integrations/whatsapp/template-sender");
+    const db = testDb();
+    await db.updateTable("integrations").set({ consecutive_failures: 0, circuit_open_until: null }).where("key", "=", "whatsapp_cloud").execute();
+    const msg = { messageId: "00000000-0000-4000-8000-000000000098", to: "+54 9 387 555-0001", templateKey: "rent_due_reminder", payload: {}, dedupeKey: "y" };
+    const hang = vi.fn(
+      (_u: string, init: RequestInit) => new Promise<Response>((_r, reject) => init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })))),
+    );
+    vi.stubGlobal("fetch", hang);
+    const err = await sendWhatsAppTemplate(db, msg, whatsappEnv(), { timeoutMs: 50 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UncertainTemplateDeliveryError);
+    expect(err).toBeInstanceOf(PermanentIntegrationError);
+    expect((err as Error).message).toMatch(/Verificá si llegó/);
+    expect(hang).toHaveBeenCalledTimes(1);
+
+    const rejected = vi.fn(async () => new Response(JSON.stringify({ error: { code: 132001, message: "Template name does not exist in the translation" } }), { status: 404 }));
+    vi.stubGlobal("fetch", rejected);
+    const err2 = await sendWhatsAppTemplate(db, msg, whatsappEnv()).catch((e: unknown) => e);
+    expect(err2).toBeInstanceOf(PermanentIntegrationError);
+    expect(err2).not.toBeInstanceOf(UncertainTemplateDeliveryError);
+    expect(rejected).toHaveBeenCalledTimes(1);
   });
 });

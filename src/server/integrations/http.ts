@@ -2,7 +2,7 @@
  * HTTP para adaptadores externos: timeout, clasificación de errores (reintentable / permanente) y un único
  * punto de inyección de `fetch` para tests. En producción siempre es `globalThis.fetch`: no hay respuestas simuladas.
  */
-import { RetryableError, TimeoutError, isRetryableStatus, retry, withTimeout } from "../resilience";
+import { RetryableError, TimeoutError, UncertainOutcomeError, isNotSentNetworkError, isRetryableStatus, retry, withTimeout } from "../resilience";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -36,6 +36,7 @@ export class PermanentIntegrationError extends Error {
   }
 }
 
+/** Reintentable sin riesgo de duplicar efectos (nunca un resultado incierto). */
 export function isRetryable(e: unknown): boolean {
   return e instanceof RetryableError || e instanceof TimeoutError || (e instanceof TypeError && /fetch|network/i.test(e.message));
 }
@@ -48,18 +49,26 @@ export type JsonRequest = {
   timeoutMs?: number;
   /** Intentos dentro de la misma ejecución (solo errores reintentables). */
   attempts?: number;
+  /**
+   * Escritura NO idempotente (crear un aviso, publicar un post, consumir un refresh token): nunca se reintenta y un
+   * timeout, un corte después de enviar o un 5xx lanzan UncertainOutcomeError (el proveedor pudo haberla aplicado).
+   * 408/425/429 siguen siendo RetryableError: el proveedor declara que no la procesó.
+   */
+  nonIdempotent?: boolean;
   /** Texto para el mensaje de error (nunca incluye secretos). */
   label: string;
 };
 
 /**
  * Llama y devuelve JSON. 408/425/429/5xx y errores de red → RetryableError; otros 4xx → PermanentIntegrationError
- * con el mensaje del proveedor recortado (sin headers ni tokens).
+ * con el mensaje del proveedor recortado (sin headers ni tokens). Con `nonIdempotent`, ver JsonRequest.
  */
 export async function requestJson<T>(url: string, req: JsonRequest): Promise<{ status: number; data: T }> {
+  const unsafe = Boolean(req.nonIdempotent);
+  const timeoutMs = req.timeoutMs ?? 15_000;
   return retry(
     () =>
-      withTimeout(req.timeoutMs ?? 15_000, async (signal) => {
+      withTimeout(timeoutMs, async (signal) => {
         const headers: Record<string, string> = { accept: "application/json", ...(req.headers ?? {}) };
         let body: BodyInit | undefined;
         if (req.form) {
@@ -74,9 +83,16 @@ export async function requestJson<T>(url: string, req: JsonRequest): Promise<{ s
           res = await httpFetch(url, { method: req.method ?? "GET", headers, body, signal, redirect: "follow" });
         } catch (e) {
           if ((e as Error).name === "AbortError") throw e;
+          if (unsafe && !isNotSentNetworkError(e)) throw new UncertainOutcomeError(`${req.label}: conexión cortada después de enviar (${(e as Error).message})`, undefined, { cause: e });
           throw new RetryableError(`${req.label}: error de red (${(e as Error).message})`);
         }
-        const text = await res.text();
+        let text: string;
+        try {
+          text = await res.text();
+        } catch (e) {
+          if (unsafe && res.ok) throw new UncertainOutcomeError(`${req.label}: el proveedor respondió OK pero la respuesta se perdió`, res.status, { cause: e });
+          throw new RetryableError(`${req.label}: respuesta incompleta (${(e as Error).message})`, res.status);
+        }
         let data: unknown = null;
         try {
           data = text ? JSON.parse(text) : null;
@@ -86,12 +102,16 @@ export async function requestJson<T>(url: string, req: JsonRequest): Promise<{ s
         if (!res.ok) {
           const detail = providerMessage(data);
           const msg = `${req.label}: HTTP ${res.status}${detail ? ` · ${detail}` : ""}`;
+          if (unsafe && res.status >= 500) throw new UncertainOutcomeError(`${msg} (resultado incierto)`, res.status);
           if (isRetryableStatus(res.status)) throw new RetryableError(msg, res.status);
           throw new PermanentIntegrationError(msg, res.status);
         }
         return { status: res.status, data: data as T };
+      }).catch((e: unknown) => {
+        if (unsafe && e instanceof TimeoutError) throw new UncertainOutcomeError(`${req.label}: sin respuesta en ${timeoutMs} ms (resultado incierto)`, undefined, { cause: e });
+        throw e;
       }),
-    { attempts: req.attempts ?? 2, baseMs: 400, capMs: 3_000 },
+    { attempts: unsafe ? 1 : (req.attempts ?? 2), baseMs: 400, capMs: 3_000 },
   );
 }
 

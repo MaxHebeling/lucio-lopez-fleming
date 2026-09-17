@@ -14,3 +14,4 @@ import "../marketing/drafts";
 import "../marketing/publish";
 import "../media/copy";
 import "../rentals/jobs";
+import "../properties/media";

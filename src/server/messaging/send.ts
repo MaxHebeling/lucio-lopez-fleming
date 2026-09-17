@@ -52,6 +52,9 @@ export async function readiness(db: Database, channel: string): Promise<{ ready:
 }
 
 export async function sendQueuedMessage(db: Database, messageId: string): Promise<SendOutcome> {
+  // Disponibilidad del canal ANTES de abrir la transacción: dentro usaría una segunda conexión del pool (agotamiento en serverless).
+  const channelRow = await db.selectFrom("outbound_messages").select("channel").where("id", "=", messageId).executeTakeFirst();
+  const preReady = channelRow ? await readiness(db, channelRow.channel) : null;
   const decision = await db.transaction().execute(async (trx): Promise<Decision> => {
     const m = await trx.selectFrom("outbound_messages").selectAll().where("id", "=", messageId).forUpdate().executeTakeFirst();
     if (!m) throw new PermanentJobError(`Mensaje ${messageId} inexistente`);
@@ -66,7 +69,7 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       await trx.updateTable("outbound_messages").set({ status: "cancelled", last_error: reason, payload: JSON.stringify(redactSensitive(m.template_key, payload)) }).where("id", "=", m.id).execute();
       return { kind: "done", result: { outcome: "cancelled", reason } };
     }
-    const ready = await readiness(db, m.channel);
+    const ready = preReady ?? (await readiness(db, m.channel));
     if (!ready.ready) {
       await trx.updateTable("outbound_messages").set({ status: "awaiting_credentials", last_error: ready.reason }).where("id", "=", m.id).execute();
       return { kind: "done", result: { outcome: "awaiting_credentials", reason: ready.reason } };

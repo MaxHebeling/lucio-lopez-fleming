@@ -4,11 +4,14 @@
  * - sin credenciales → `awaiting_credentials`;
  * - fuera de la ventana de 24 h → `failed` con explicación (solo plantillas aprobadas);
  * - `sending` antes de llamar a Meta evita dobles envíos entre workers; un `sending` viejo queda como incierto.
+ * - timeout / respuesta perdida después del POST → `failed` con error_code `uncertain` y SIN reencolar: el mensaje pudo
+ *   haber llegado; una persona verifica en WhatsApp y reintenta a mano desde el CRM si hace falta.
+ * - rechazo definitivo de Meta (4xx no reintentable) → `failed` sin reintentos.
  */
 import { sql, type Database } from "../../db";
 import { isEnabled } from "../../flags";
 import { log } from "../../log";
-import { CircuitOpenError, RetryableError, TimeoutError } from "../../resilience";
+import { CircuitOpenError, RetryableError, TimeoutError, UncertainOutcomeError } from "../../resilience";
 import { markAwaitingCredentials } from "../credentials";
 import { sendWhatsAppMessage, WhatsAppApiError, WhatsAppNotConfiguredError, type OutgoingMessage } from "./client";
 import { isWindowOpen, WHATSAPP_INTEGRATION_KEY, whatsappSendConfig } from "./config";
@@ -17,6 +20,8 @@ export const MSG_FLAG_OFF = "Envío real de WhatsApp desactivado (flag outbound_
 export const MSG_NO_CREDENTIALS = "WhatsApp Business no está conectado (faltan credenciales): el mensaje no se envió.";
 export const MSG_WINDOW_EXPIRED =
   "Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite enviar una plantilla aprobada. No se envió.";
+export const MSG_UNCERTAIN = "Resultado incierto: WhatsApp no confirmó el envío y el mensaje pudo haber llegado. Verificá en WhatsApp si llegó antes de reintentar.";
+export const UNCERTAIN_CODE = "uncertain";
 const SENDING_STALE_MS = 2 * 60_000;
 
 export type DeliveryResult =
@@ -33,21 +38,26 @@ async function setStatus(db: Database, id: string, status: string, error: string
     .execute();
 }
 
-export async function deliverConversationMessage(db: Database, messageId: string, opts: { env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void> } = {}): Promise<DeliveryResult> {
+export async function deliverConversationMessage(
+  db: Database,
+  messageId: string,
+  opts: { env?: NodeJS.ProcessEnv; sleep?: (ms: number) => Promise<void>; timeoutMs?: number } = {},
+): Promise<DeliveryResult> {
   const m = await db
     .selectFrom("conversation_messages as m")
     .innerJoin("conversations as c", "c.id", "m.conversation_id")
-    .select(["m.id", "m.status", "m.direction", "m.kind", "m.body", "m.payload", "m.external_message_id", "m.status_updated_at", "c.channel", "c.external_thread_id", "c.last_inbound_at"])
+    .select(["m.id", "m.status", "m.direction", "m.kind", "m.body", "m.payload", "m.external_message_id", "m.status_updated_at", "m.error_code", "c.channel", "c.external_thread_id", "c.last_inbound_at"])
     .where("m.id", "=", messageId)
     .executeTakeFirst();
   if (!m || m.direction !== "outbound" || m.channel !== "whatsapp") return { result: "skipped", status: "inexistente" };
   if (m.external_message_id || ["sent", "delivered", "read"].includes(m.status)) return { result: "skipped", status: m.status };
+  // Incierto: solo lo destraba el reintento manual (retryOutboundMessage lo pasa a `queued` y limpia error_code).
+  if (m.status === "failed" && m.error_code === UNCERTAIN_CODE) return { result: "skipped", status: "incierto: requiere verificación manual" };
   if (m.status === "sending") {
     const age = Date.now() - new Date(m.status_updated_at ?? 0).getTime();
     if (age < SENDING_STALE_MS) return { result: "skipped", status: "sending" };
-    const reason = "Estado incierto: el envío se interrumpió y pudo haberse realizado. Verificá en WhatsApp antes de reintentar.";
-    await setStatus(db, m.id, "failed", reason, "uncertain");
-    return { result: "failed", code: "uncertain", reason };
+    await setStatus(db, m.id, "failed", MSG_UNCERTAIN, UNCERTAIN_CODE);
+    return { result: "failed", code: UNCERTAIN_CODE, reason: MSG_UNCERTAIN };
   }
 
   if (!(await isEnabled(db, "outbound_whatsapp"))) {
@@ -84,11 +94,12 @@ export async function deliverConversationMessage(db: Database, messageId: string
   const claimed = await sql<{ id: string }>`
     update conversation_messages set status = 'sending', attempts = attempts + 1, status_updated_at = now()
      where id = ${m.id} and status in ('queued', 'failed', 'awaiting_credentials') and external_message_id is null
+       and not (status = 'failed' and error_code is not distinct from ${UNCERTAIN_CODE})
     returning id`.execute(db);
   if (!claimed.rows[0]) return { result: "skipped", status: "tomado por otro proceso" };
 
   try {
-    const sent = await sendWhatsAppMessage(db, outgoing, { entityType: "conversation_message", entityId: m.id, env: opts.env, sleep: opts.sleep });
+    const sent = await sendWhatsAppMessage(db, outgoing, { entityType: "conversation_message", entityId: m.id, env: opts.env, sleep: opts.sleep, timeoutMs: opts.timeoutMs });
     await db
       .updateTable("conversation_messages")
       .set({ status: "sent", external_message_id: sent.wamid, sent_at: new Date(), status_updated_at: new Date(), error: null, error_code: null })
@@ -101,12 +112,23 @@ export async function deliverConversationMessage(db: Database, messageId: string
       await setStatus(db, m.id, "awaiting_credentials", MSG_NO_CREDENTIALS, "no_credentials");
       return { result: "held", status: "awaiting_credentials", reason: MSG_NO_CREDENTIALS };
     }
+    if (e instanceof UncertainOutcomeError || e instanceof TimeoutError) {
+      // No se relanza: el job termina y NO se reintenta (un reenvío podría duplicar el mensaje).
+      log.warn("whatsapp.send_uncertain", { messageId: m.id, error: (e as Error).message });
+      await db
+        .updateTable("conversation_messages")
+        .set({ status: "failed", error: MSG_UNCERTAIN, error_code: UNCERTAIN_CODE, status_updated_at: new Date(), failed_at: new Date() })
+        .where("id", "=", m.id)
+        .where("status", "=", "sending")
+        .execute();
+      return { result: "failed", code: UNCERTAIN_CODE, reason: MSG_UNCERTAIN };
+    }
     if (e instanceof WhatsAppApiError && e.windowExpired) {
       await setStatus(db, m.id, "failed", MSG_WINDOW_EXPIRED, String(e.code));
       return { result: "failed", code: String(e.code), reason: MSG_WINDOW_EXPIRED };
     }
-    const transient = e instanceof RetryableError || e instanceof TimeoutError || e instanceof CircuitOpenError || (e instanceof WhatsAppApiError && e.retryable);
-    const code = e instanceof WhatsAppApiError ? String(e.code ?? e.status) : e instanceof TimeoutError ? "timeout" : e instanceof CircuitOpenError ? "circuit_open" : "network";
+    const transient = e instanceof RetryableError || e instanceof CircuitOpenError || (e instanceof WhatsAppApiError && e.retryable);
+    const code = e instanceof WhatsAppApiError ? String(e.code ?? e.status) : e instanceof CircuitOpenError ? "circuit_open" : "network";
     if (transient) {
       await setStatus(db, m.id, "failed", `Falla temporal de WhatsApp (${code}); se reintenta automáticamente.`, code);
       throw e; // el job reintenta con backoff; al agotar intentos queda failed y visible

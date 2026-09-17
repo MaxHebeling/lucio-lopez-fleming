@@ -4,7 +4,12 @@ import { sql } from "@/server/db";
 import { resetFlagCache } from "@/server/flags";
 import { processInboundMessage } from "@/server/integrations/whatsapp/inbound";
 import { parseWebhook, type InboundMessageEvent } from "@/server/integrations/whatsapp/payload";
-import { runAssistantTurn } from "@/server/ai/whatsapp/agent";
+import { AI_CALL_TIMEOUT_MS, AI_REPLY_JOB_TIMEOUT_MS, MAX_TOOL_ROUNDS, runAssistantTurn, TURN_BUDGET_MS } from "@/server/ai/whatsapp/agent";
+import { MAX_JOB_TIMEOUT_MS } from "@/server/jobs/queue";
+import { runJobs } from "@/server/jobs/runner";
+import { queueOutboundMessage } from "@/server/conversations/service";
+import { RetryableError } from "@/server/resilience";
+import "@/server/jobs/handlers";
 import type { MessagesClient } from "@/server/ai/client";
 import { HANDOFF_ACK_MESSAGE } from "@/server/conversations/labels";
 import { PROMPT_VERSION } from "@/server/ai/whatsapp/prompt";
@@ -280,5 +285,89 @@ describe("asistente de WhatsApp con herramientas sobre la base real", () => {
     const { client } = fakeClient([overloaded, final({ reply: "¡Hola! ¿Qué tipo de propiedad estás buscando?" })]);
     const r = await runAssistantTurn(db, await testSystemActor(db), { conversationId, messageId }, { client, env, sleep: async () => {} });
     expect(r.outcome).toBe("replied");
+  });
+
+  describe("tiempo acotado, job muerto y derivación idempotente", () => {
+    it("presupuesto: rondas × timeout por llamada entra holgado en el timeout del job", () => {
+      expect(MAX_TOOL_ROUNDS * AI_CALL_TIMEOUT_MS).toBeLessThanOrEqual(TURN_BUDGET_MS);
+      expect(TURN_BUDGET_MS + 30_000).toBeLessThanOrEqual(AI_REPLY_JOB_TIMEOUT_MS);
+      expect(AI_REPLY_JOB_TIMEOUT_MS).toBeLessThanOrEqual(MAX_JOB_TIMEOUT_MS);
+    });
+
+    it("la IA no responde: el turno termina dentro de su presupuesto (sin colgar el job) y a la segunda deriva", async () => {
+      const db = testDb();
+      const { conversationId, messageId } = await inbound("Hola, ¿tienen casas?");
+      const actor = await testSystemActor(db);
+      await sql`update integrations set circuit_open_until = null, consecutive_failures = 0 where key = 'anthropic'`.execute(db);
+      let created = 0;
+      const client: MessagesClient = {
+        messages: {
+          create: (_b, o) => {
+            created++;
+            return new Promise<Anthropic.Message>((_r, reject) => o?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+          },
+        },
+      };
+      const t0 = Date.now();
+      await expect(runAssistantTurn(db, actor, { conversationId, messageId }, { client, env, sleep: async () => {}, turnBudgetMs: 1_500, callTimeoutMs: 400 })).rejects.toBeInstanceOf(RetryableError);
+      expect(Date.now() - t0).toBeLessThan(5_000);
+      expect(created).toBeLessThanOrEqual(3);
+      const r = await runAssistantTurn(db, actor, { conversationId, messageId }, { client, env, sleep: async () => {}, turnBudgetMs: 1_500, callTimeoutMs: 400 });
+      expect(r).toMatchObject({ outcome: "handoff", reason: "ai_error" });
+      const statuses = await db.selectFrom("ai_interactions").select("status").where("conversation_id", "=", conversationId).execute();
+      expect(statuses.map((x) => x.status)).toEqual(["timeout", "timeout"]);
+    });
+
+    it("job de IA muerto (lease vencido en el último intento) → la conversación pasa a una persona con aviso al cliente y notificación", async () => {
+      const db = testDb();
+      await sql`delete from jobs`.execute(db);
+      const admin = await createStaff(db, ["administrador"]);
+      const { conversationId, messageId } = await inbound("Hola, quiero info de alquileres");
+      await sql`delete from jobs`.execute(db);
+      await sql`insert into jobs(type, payload, status, attempts, max_attempts, timeout_ms, locked_by, lease_expires_at, started_at)
+        values ('whatsapp.ai_reply', ${JSON.stringify({ conversationId, messageId })}::jsonb, 'running', 3, 3, 150000, 'w-muerto', now() - interval '1 minute', now() - interval '4 minutes')`.execute(db);
+      await runJobs(db, { budgetMs: 10_000 });
+      const conv = await db.selectFrom("conversations").select(["mode", "handoff_reason"]).where("id", "=", conversationId).executeTakeFirstOrThrow();
+      expect(conv).toEqual({ mode: "human", handoff_reason: "ai_error" });
+      const out = await db.selectFrom("conversation_messages").select(["body", "sender_kind", "reply_to_message_id"]).where("conversation_id", "=", conversationId).where("direction", "=", "outbound").execute();
+      expect(out).toHaveLength(1);
+      expect(out[0]).toMatchObject({ sender_kind: "bot", reply_to_message_id: messageId });
+      expect(out[0]!.body).toContain(HANDOFF_ACK_MESSAGE);
+      const notes = await db.selectFrom("notifications").select(["kind"]).where("user_id", "=", admin.userId).where("kind", "=", "conversation.handoff").execute();
+      expect(notes.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("corte entre el aviso y la derivación: el reintento del job completa la derivación sin repetir el aviso", async () => {
+      const db = testDb();
+      const actor = await testSystemActor(db);
+      const { conversationId, messageId } = await inbound("Quiero hacer una oferta por la casa");
+      // Primer intento: encoló el aviso y se cortó antes de derivar
+      await db.transaction().execute((trx) =>
+        queueOutboundMessage(trx, { conversationId, senderKind: "bot", body: HANDOFF_ACK_MESSAGE, replyToMessageId: messageId, payload: { handoffAck: true, handoff: "negotiation" } }),
+      );
+      const { client } = fakeClient([]);
+      const r = await runAssistantTurn(db, actor, { conversationId, messageId }, { client, env });
+      expect(r).toMatchObject({ outcome: "handoff", reason: "negotiation" });
+      const conv = await db.selectFrom("conversations").select(["mode", "handoff_reason"]).where("id", "=", conversationId).executeTakeFirstOrThrow();
+      expect(conv).toEqual({ mode: "human", handoff_reason: "negotiation" });
+      await runAssistantTurn(db, actor, { conversationId, messageId }, { client, env });
+      const out = await db.selectFrom("conversation_messages").select(["body"]).where("conversation_id", "=", conversationId).where("direction", "=", "outbound").execute();
+      expect(out).toHaveLength(1);
+      expect(client.messages.create).not.toHaveBeenCalled();
+    });
+
+    it("corte entre la respuesta y la derivación: el reintento completa la derivación", async () => {
+      const db = testDb();
+      const actor = await testSystemActor(db);
+      const { conversationId, messageId } = await inbound("Hola, busco casa");
+      await db.transaction().execute((trx) =>
+        queueOutboundMessage(trx, { conversationId, senderKind: "bot", body: "¡Hola! Te paso con un asesor.", replyToMessageId: messageId, payload: { handoff: "low_confidence" } }),
+      );
+      const { client } = fakeClient([]);
+      const r = await runAssistantTurn(db, actor, { conversationId, messageId }, { client, env });
+      expect(r).toMatchObject({ outcome: "replied", handoff: "low_confidence" });
+      const conv = await db.selectFrom("conversations").select(["mode", "handoff_reason"]).where("id", "=", conversationId).executeTakeFirstOrThrow();
+      expect(conv).toEqual({ mode: "human", handoff_reason: "low_confidence" });
+    });
   });
 });

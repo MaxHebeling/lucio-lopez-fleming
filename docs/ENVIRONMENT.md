@@ -19,6 +19,8 @@ Variables: ver `.env.example` (cada una documentada). Reglas:
 - IP del cliente: en Vercel se toma de `x-vercel-forwarded-for`/`x-real-ip`. Fuera de Vercel, detrás de un proxy o
   balanceador, definir `TRUSTED_PROXY_HOPS` (cantidad de proxies propios que agregan al `X-Forwarded-For`); sin eso, en
   producción no se confía en ninguna cabecera y los rate limits por IP caen a la clave compartida.
+- `CRON_STALE_MINUTES` (opcional, 10 por defecto): con `APP_ENV=production`, `/api/ready` responde 503 si el cron no
+  corrió en ese lapso.
 - Integraciones sin credenciales quedan en `awaiting_credentials` (visible en CRM → Integraciones), no fallan en silencio.
 
 Mínimo para que producción funcione: `DATABASE_URL`, `DATABASE_SSL`, `APP_URL`, `APP_ENV=production`, `CRON_SECRET`,

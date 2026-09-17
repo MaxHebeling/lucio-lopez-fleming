@@ -98,7 +98,9 @@ La cola `messaging.send` delega en `sendWhatsAppTemplate`, que implementa el equ
 registerWhatsAppTemplateSender(sendWhatsAppTemplate);
 // (db, { messageId, to, templateKey, payload, dedupeKey }) =>
 //   { status: "sent", providerMessageId } | { status: "awaiting_credentials", reason }
-// Fallas transitorias: lanzar RetryableError/TimeoutError. Rechazos definitivos: otro Error.
+// Fallas transitorias: RetryableError. Rechazos definitivos: PermanentIntegrationError.
+// Resultado incierto (timeout/corte después del POST): UncertainTemplateDeliveryError (subclase de
+// PermanentIntegrationError) → la cola lo deja failed "verificar si llegó", sin reintento automático.
 ```
 
 El módulo debe importarse en `src/server/jobs/handlers.ts`. Mientras no esté registrado, los WhatsApp quedan en
@@ -108,12 +110,23 @@ los reencola cuando el sender existe y `outbound_whatsapp` está encendido.
 ## 3. Portales inmobiliarios
 
 Interfaz: `PortalAdapter` (`src/server/integrations/portals/types.ts`) con `prepare` (mapeo **puro**), `publish`, `update`,
-`remove`, `getStatus` y resultados tipados (`awaiting_credentials` / `invalid_data` / `transient`).
+`remove`, `getStatus`, `findByReference` (opcional) y resultados tipados (`awaiting_credentials` / `invalid_data` /
+`transient` / `uncertain`).
 
 **Sincronización** (`src/server/integrations/portals/sync.ts`)
 - `property.updated`, `property.published`, `property.unpublished` → acción `sync_publications` → job `portals.sync`
   por propiedad+canal (dedupe por evento). Flag `portal_sync` apagado → no se encola nada.
-- El job reclama la fila (`syncing`, lease 15 min), arma el payload y compara `last_payload_hash`: sin cambios no llama.
+- El job reclama la fila con `sync_locked_until` (lease 15 min; `markPublications` no lo pisa), arma el payload y compara
+  `last_payload_hash`: sin cambios no llama.
+- Antes de escribir en el portal marca `remote_write_started_at`; solo un resultado definitivo la limpia. Si quedó
+  marcada (corte, timeout), `external_id` vacío **no** prueba que no haya aviso: se busca por referencia propia antes de
+  crear (y antes de dar por despublicado).
+- Al terminar relee `desired_state` en la misma sentencia: si cambió mientras hablaba con el portal (p. ej. se despublicó
+  durante la creación) queda `pending` y encola la acción que corresponde.
+- **Resultado incierto** (timeout/5xx/corte en la creación): `failed` "Resultado incierto: verificá en Mercado Libre…",
+  sin reintento automático (ni eventos ni la corrida horaria lo retoman). El reintento manual busca el aviso por
+  referencia y lo **adopta** si existe.
+- La corrida horaria (`portals.resume`) y el reintento manual aceptan filas trabadas en `syncing` hace más de 15 min.
 - Con `external_id` **siempre actualiza** (nunca crea otro aviso). Despublicar **pausa** el aviso y conserva `external_id`.
 - Estados: `pending`, `syncing`, `synced`, `failed` (dato inválido o intentos agotados), `retrying` (backoff de la cola),
   `awaiting_credentials`, `disabled` (canal deshabilitado).
@@ -146,9 +159,27 @@ Categorías, Atributos, Publica Inmuebles, Actualiza tus publicaciones; árbol p
 5. Habilitar el canal en `/crm/publicaciones` y encender `portal_sync`.
 
 **Tokens**: el access token dura 6 h; el refresh token es **de un solo uso** y cada renovación devuelve uno nuevo. Por eso
-se guardan cifrados (AES-256-GCM) en `integration_credentials`; la renovación se serializa con advisory lock. Si se carga
-un `MERCADOLIBRE_REFRESH_TOKEN` distinto, se usa ese (reautorización). `invalid_grant` → `awaiting_credentials`
-("volver a autorizar"). Cambiar `INTEGRATIONS_ENCRYPTION_KEY` invalida lo guardado (hay que reautorizar).
+se guardan cifrados (AES-256-GCM) en `integration_credentials`. La renovación usa UNA conexión con advisory lock de
+sesión (sin transacción ni segunda conexión del pool), el POST de token **no se reintenta** (timeout 30 s) y el token
+nuevo se guarda apenas llega, antes de registrar el éxito. Si se carga un `MERCADOLIBRE_REFRESH_TOKEN` distinto, se usa
+ese. `invalid_grant`, o 401/403 de la API → `awaiting_credentials` con "volvé a autorizar". Cambiar
+`INTEGRATIONS_ENCRYPTION_KEY` invalida lo guardado (hay que reautorizar).
+
+**Reautorizar** (cuando `/crm/publicaciones` o CRM → Integraciones muestra "Mercado Libre rechazó…/volvé a autorizar"):
+1. Con la cuenta principal de la inmobiliaria abrir
+   `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=$MERCADOLIBRE_CLIENT_ID&redirect_uri=<redirect registrado>`
+   y aceptar.
+2. Cambiar el `code` (vale 10 min, un solo uso) por tokens:
+   `curl -X POST https://api.mercadolibre.com/oauth/token -H 'content-type: application/x-www-form-urlencoded' -d 'grant_type=authorization_code&client_id=…&client_secret=…&code=…&redirect_uri=…'`.
+3. Cargar el `refresh_token` nuevo en `MERCADOLIBRE_REFRESH_TOKEN` (Vercel, `printf "%s"`, sin salto de línea) y
+   redeployar. Al cambiar la variable, la próxima renovación usa ese token y reemplaza lo guardado.
+4. En `/crm/publicaciones` las filas `awaiting_credentials` se retoman solas en la corrida horaria (o reintento manual).
+   Verificar en `integration_logs` un `oauth.refresh` `ok`.
+
+**Referencia propia y adopción**: cada aviso se crea con `seller_custom_field = LLF-<código>`. Tras un resultado
+incierto, o si el aviso guardado devuelve 404 (borrado en el portal) y la propiedad debe estar publicada, se busca con
+`GET /users/{user_id}/items/search?sku=LLF-<código>` (doc. "Items & Searches", búsqueda por `seller_custom_field`) y se
+adopta el aviso no cerrado que exista en lugar de crear otro. Al despublicar, un 404 no es error.
 
 **Mapeo** (`mercadolibre/mapping.ts`, testeado): tipo → categoría de tipo (casa MLA1466, departamento MLA1472, PH MLA105179,
 terreno/lote MLA1493, local MLA79242, oficina MLA50538, depósito/galpón MLA1475, campo MLA1496, cochera MLA50541,
@@ -168,8 +199,9 @@ ningún POST nuevo.
 
 **Límites y riesgos**
 - Rate limit (429 → reintento con backoff). Cambios de atributos obligatorios por categoría (se detectan en runtime).
-- Si el POST /items se concreta pero la base no llega a guardar `external_id` (corte exacto en ese instante), un
-  reintento podría crear un segundo aviso. Ventana mínima; verificar en Mercado Libre ante errores de base.
+- La búsqueda por referencia depende del índice de Mercado Libre: un aviso recién creado podría tardar en aparecer.
+  Por eso un resultado incierto nunca se reintenta solo: una persona verifica antes de reintentar.
+- Avisos creados antes de este cambio no tienen `seller_custom_field`: la búsqueda no los encuentra.
 - El aviso pausado no se cierra: cerrarlo es irreversible y queda como decisión manual.
 - Paquetes/costos de publicación dependen del contrato de la inmobiliaria.
 
@@ -232,10 +264,17 @@ origen ya cumple y es pública se usa tal cual; si no, se genera un derivado JPE
 la proporción no entra, sin recortar) en storage público, guardado en `social_assets.file_id`. Sin URL pública válida →
 `failed` con "No hay URL pública válida para las imágenes…".
 
-**Idempotencia**: con `external_post_id` no republica. Antes de llamar pasa a `publishing`. Si un proceso muere a mitad:
-Instagram consulta el contenedor guardado (`external_container_id`) y, si ya está `PUBLISHED`, marca publicado sin volver a
-publicar; Facebook queda `failed` pidiendo verificación humana (no se republica a ciegas). Sin credenciales el post sigue
-`scheduled` con el motivo y se retoma cuando se configuren.
+**Idempotencia**: con `external_post_id` no republica. Antes de llamar pasa a `publishing`. Ningún POST a Meta se
+reintenta dentro de la llamada; los que publican (foto publicada, `feed`, `media_publish`) ante timeout/corte/5xx dan
+**resultado incierto** → `failed` "verificá en Facebook/Instagram" (sin reintento). Instagram guarda
+`external_container_id` apenas se crea el contenedor; cualquier intento posterior (falla transitoria, lease vencido,
+reprogramación) consulta ese contenedor primero: `PUBLISHED` → publicado; listo/en proceso → se publica ese mismo
+contenedor; `ERROR`/`EXPIRED` → se crea otro; si no se puede consultar → `failed` pidiendo verificar. Facebook
+interrumpido a mitad queda `failed` pidiendo verificación humana. Sin credenciales el post sigue `scheduled` con el
+motivo y se retoma cuando se configuren.
+
+**Borradores**: el post y sus fotos se crean en una transacción; un borrador que quedó sin fotos se rehidrata cuando se
+reintenta la automatización.
 
 **Cómo verificar**: con la app en modo desarrollo y una Página de prueba, aprobar y programar un post a +2 minutos,
 correr `pnpm jobs:run`, confirmar `status='published'` y `external_post_id`.
@@ -263,3 +302,8 @@ objeto subido.
   `server-only`).
 - Encender integraciones = variables + flag (tabla `feature_flags`) + canal habilitado (portales).
 - Errores y latencias: `integration_logs`; estado agregado: `integrations`; jobs muertos notifican a administración.
+- Circuit breaker: cuentan como falla 401/403, 408/425/429, 5xx, timeouts y red. Los rechazos de datos (400/404/409/422…)
+  se registran en `integration_logs` pero no abren el circuito ni alertan. `integration.failed` se emite al llegar al
+  umbral y se repite como máximo una vez por hora mientras siga fallando.
+- Retención (`system.housekeeping`, diaria desde las 06:00 de Salta): `webhook_events` procesados/ignorados > 90 días,
+  `integration_logs` > 90 días, `ai_interactions` > 365 días (en lotes). `domain_events` no se borra.

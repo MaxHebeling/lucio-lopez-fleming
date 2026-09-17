@@ -8,6 +8,10 @@
  * - Incremental: si el payload de origen no cambió (raw_hash) no se reescribe.
  * - Respeta correcciones humanas: campos en protected_fields no se sobrescriben y propiedades verificadas
  *   manualmente no se tocan (se registran las diferencias como advertencias).
+ * - Despublicar por una advertencia bloqueante: nunca si `is_published` está protegido o la propiedad fue verificada a
+ *   mano, y una advertencia que una persona descartó/resolvió con el mismo valor no vuelve a bloquear. Cuando sí
+ *   corresponde, se usa el servicio `unpublishProperty` (evento + estado de portales) DESPUÉS de la transacción del
+ *   registro, para que la baja llegue también a los portales.
  * - No dispara automatizaciones masivas: una importación no genera borradores de redes ni sincronizaciones.
  */
 import { createHash } from "node:crypto";
@@ -17,8 +21,9 @@ import { systemActor, type SystemActor } from "../../auth/actor";
 import { organizationId } from "../../org";
 import { normalizeEmail, normalizePhone } from "../../contacts/normalize";
 import { errorFields, log } from "../../log";
+import { unpublishProperty } from "../../properties/service";
 import { fetchAdincoPropertyDetail, fetchAdincoRealEstate, listAdincoProperties, mapLimit, type AdincoRealEstate } from "./client";
-import { ADINCO_SOURCE, hasBlockingWarning, mapAdincoProperty, type MigrationWarning, type NormalizedProperty } from "./map";
+import { ADINCO_SOURCE, mapAdincoProperty, type MigrationWarning, type NormalizedProperty } from "./map";
 
 export type ImportOptions = {
   fetchImpl?: typeof fetch;
@@ -210,7 +215,7 @@ export async function runAdincoImport(db: Database, opts: ImportOptions = {}): P
 
     // 8. MEDIA VERIFIED
     if (opts.verifyMedia && importedIds.length) {
-      const r = await verifyMedia(db, run.id, importedIds, opts.fetchImpl, logger);
+      const r = await verifyMedia(db, actor, run.id, importedIds, opts.fetchImpl, logger);
       stats.mediaVerified = r.verified;
       stats.mediaFailed = r.failed;
       stats.mediaInconclusive = r.inconclusive;
@@ -242,7 +247,36 @@ async function setRecord(db: Database | Tx, externalId: string, runId: string, p
 }
 
 type Maps = { branches: Map<string, string>; agents: Map<string, string>; force: boolean };
-type Outcome = { result: "created" | "updated" | "unchanged" | "skippedProtected" | "failed"; propertyId: string | null; published: boolean; reviewRequired: boolean; warnings: MigrationWarning[] };
+type Outcome = {
+  result: "created" | "updated" | "unchanged" | "skippedProtected" | "failed";
+  propertyId: string | null;
+  published: boolean;
+  reviewRequired: boolean;
+  warnings: MigrationWarning[];
+  /** Motivo para despublicar con el servicio (fuera de la transacción del registro). */
+  unpublishReason?: string;
+};
+
+type ReviewedWarning = { code: string; field: string; value_a: string | null; value_b: string | null };
+
+/** Advertencias que una persona descartó o resolvió (reviewed_by no nulo). */
+async function humanReviewedWarnings(db: Database | Tx, externalId: string): Promise<ReviewedWarning[]> {
+  return db
+    .selectFrom("migration_warnings")
+    .select(["code", "field", "value_a", "value_b"])
+    .where("source", "=", ADINCO_SOURCE)
+    .where("external_id", "=", externalId)
+    .where("status", "in", ["dismissed", "resolved"])
+    .where("reviewed_by", "is not", null)
+    .execute();
+}
+
+/** Bloqueante = error que ninguna persona revisó con ese mismo valor. */
+export function effectiveBlocking(warnings: MigrationWarning[], reviewed: ReviewedWarning[]): MigrationWarning[] {
+  return warnings.filter(
+    (w) => w.severity === "error" && !reviewed.some((r) => r.code === w.code && r.field === w.field && r.value_a === (w.valueA ?? null) && r.value_b === (w.valueB ?? null)),
+  );
+}
 
 export async function importOne(db: Database, actor: SystemActor, runId: string, externalId: string, raw: unknown, maps: Maps): Promise<Outcome> {
   const rawHash = createHash("sha256").update(JSON.stringify(raw)).digest("hex");
@@ -262,7 +296,7 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
   await setRecord(db, externalId, runId, { stage: "normalized", normalized: n });
   await setRecord(db, externalId, runId, { stage: "validated" });
 
-  return db.transaction().execute(async (trx) => {
+  const outcome = await db.transaction().execute(async (trx): Promise<Outcome> => {
     // Estado real de la multimedia ya verificada: si todas las fotos conocidas fallaron, sigue bloqueada
     // aunque el mapeo del origen no lo detecte (evita republicar una ficha sin fotos visibles).
     const existingRef = await trx.selectFrom("external_refs").select("entity_id").where("source", "=", ADINCO_SOURCE).where("external_type", "=", "property").where("external_id", "=", externalId).executeTakeFirst();
@@ -274,7 +308,10 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
       const m = media.rows[0];
       if (m && m.failed > 0 && m.usable === 0) warnings.push({ code: "media_unreachable", field: "media", severity: "error", message: "Ninguna foto del origen responde: no se publica" });
     }
-    const blocking = hasBlockingWarning(warnings);
+    const reviewed = await humanReviewedWarnings(trx, externalId);
+    const blockingWarnings = effectiveBlocking(warnings, reviewed);
+    const blocking = blockingWarnings.length > 0;
+    let unpublishReason: string | undefined;
 
     const ref = await trx.selectFrom("external_refs").select("entity_id").where("source", "=", ADINCO_SOURCE).where("external_type", "=", "property").where("external_id", "=", externalId).executeTakeFirst();
     const locationId = await upsertLocations(trx, n);
@@ -357,15 +394,22 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
           await trx.deleteFrom("property_agents").where("property_id", "=", propertyId).where("role", "=", "lead").where("user_id", "<>", agentUserId).execute();
           await trx.insertInto("property_agents").values({ property_id: propertyId, user_id: agentUserId, role: "lead" }).onConflict((oc) => oc.doNothing()).execute();
         }
-        // Una advertencia bloqueante nueva despublica; una resuelta en origen vuelve a publicar solo si nadie la despublicó a mano.
-        if (blocking && current.is_published) patch.is_published = false;
+        // Una advertencia bloqueante nueva despublica (con el servicio, después de la transacción) salvo que una persona
+        // haya decidido la publicación; una resuelta en origen vuelve a publicar solo si nadie la despublicó a mano.
+        if (blocking && current.is_published) {
+          if (protectedFields.has("is_published")) {
+            allWarnings.push({ code: "publication_kept_by_crm", field: "is_published", severity: "info", message: "El origen tiene un dato bloqueante, pero la publicación la decidió una persona en el CRM: no se despublica" });
+          } else {
+            unpublishReason = `Importación: ${blockingWarnings.map((w) => w.message).join(" · ")}`.slice(0, 500);
+          }
+        }
         if (!blocking && !current.is_published && !protectedFields.has("is_published") && ["available", "reserved"].includes(String(patch.status ?? current.status))) {
           patch.is_published = true;
           patch.published_at = current.published_at ?? new Date();
         }
         patch.last_synced_at = new Date();
         await trx.updateTable("properties").set(patch as never).where("id", "=", propertyId).execute();
-        published = Boolean(patch.is_published ?? current.is_published) && !blocking;
+        published = Boolean(patch.is_published ?? current.is_published) && !unpublishReason && (!blocking || protectedFields.has("is_published"));
         result = diffs.length || patch.status || patch.is_published !== undefined ? "updated" : "unchanged";
         if (result === "updated") {
           await audit(trx, actor, { action: "PROPERTY_REIMPORTED", entityType: "property", entityId: propertyId, before: Object.fromEntries(diffs.map((d) => [d.column, d.current])), after: patch, metadata: { runId } });
@@ -381,8 +425,13 @@ export async function importOne(db: Database, actor: SystemActor, runId: string,
       propertyId,
       error: null,
     });
-    return { result, propertyId, published, reviewRequired, warnings: allWarnings };
+    return { result, propertyId, published, reviewRequired, warnings: allWarnings, unpublishReason };
   });
+  if (outcome.unpublishReason && outcome.propertyId) {
+    // Si falla, el registro queda `failed` (runAdincoImport) y la próxima corrida lo reintenta.
+    await unpublishProperty(db, actor, outcome.propertyId, outcome.unpublishReason);
+  }
+  return outcome;
 }
 
 function fmt(v: unknown): string | null {
@@ -563,7 +612,7 @@ async function importOfficesAndSellers(db: Database, actor: SystemActor, re: Adi
 }
 
 /** HEAD a cada foto nueva: verified si responde imagen, failed si no. Una propiedad sin ninguna foto válida queda en revisión. */
-async function verifyMedia(db: Database, runId: string, propertyIds: string[], fetchImpl: typeof fetch = fetch, logger: (m: string) => void = () => {}) {
+async function verifyMedia(db: Database, actor: SystemActor, runId: string, propertyIds: string[], fetchImpl: typeof fetch = fetch, logger: (m: string) => void = () => {}) {
   const media = await db
     .selectFrom("property_media as m")
     .innerJoin("properties as p", "p.id", "m.property_id")
@@ -614,18 +663,26 @@ async function verifyMedia(db: Database, runId: string, propertyIds: string[], f
     50,
   );
   logger(`Multimedia: ${verified} ok · ${failed} inexistentes · ${inconclusive} sin verificar${aborted ? " (verificación abortada: el origen está bloqueando)" : ""}`);
-  const noImages = await sql<{ property_id: string; external_id: string }>`
-    select p.id as property_id, r.external_id from properties p
+  const noImages = await sql<{ property_id: string; external_id: string; is_published: boolean; human_decided: boolean; dismissed: boolean }>`
+    select p.id as property_id, r.external_id, p.is_published,
+      (p.manually_verified_at is not null or 'is_published' = any(p.protected_fields)) as human_decided,
+      exists (select 1 from migration_warnings w where w.source = ${ADINCO_SOURCE} and w.external_id = r.external_id
+                and w.code = 'media_unreachable' and w.field = 'media' and w.status in ('dismissed', 'resolved')
+                and w.reviewed_by is not null and w.value_a is null and w.value_b is null) as dismissed
+    from properties p
     join external_refs r on r.entity_id = p.id and r.external_type = 'property' and r.source = ${ADINCO_SOURCE}
     where p.id = any(${propertyIds}::uuid[])
       and exists (select 1 from property_media m where m.property_id = p.id and m.kind = 'image' and m.deleted_at is null)
       and not exists (select 1 from property_media m where m.property_id = p.id and m.kind = 'image' and m.deleted_at is null and m.status <> 'failed')`.execute(db);
+  const message = "Ninguna foto del origen responde: no se publica";
   for (const r of noImages.rows) {
+    // Una persona ya decidió (verificó la ficha, fijó la publicación o descartó esta advertencia): no se despublica.
+    if (r.dismissed) continue;
     await db.transaction().execute(async (trx) => {
-      await trx.updateTable("properties").set({ is_published: false }).where("id", "=", r.property_id).execute();
-      await upsertWarnings(trx, runId, r.external_id, r.property_id, [{ code: "media_unreachable", field: "media", severity: "error", message: "Ninguna foto del origen responde: no se publica" }], { closeStale: false });
-      await setRecord(trx, r.external_id, runId, { stage: "review_required", propertyId: r.property_id });
+      await upsertWarnings(trx, runId, r.external_id, r.property_id, [{ code: "media_unreachable", field: "media", severity: r.human_decided ? "warning" : "error", message }], { closeStale: false });
+      if (!r.human_decided) await setRecord(trx, r.external_id, runId, { stage: "review_required", propertyId: r.property_id });
     });
+    if (!r.human_decided && r.is_published) await unpublishProperty(db, actor, r.property_id, `Importación: ${message}`);
   }
   await sql`update migration_records set stage = 'media_verified' where source = ${ADINCO_SOURCE} and last_run_id = ${runId} and stage = 'imported'`.execute(db);
   return { verified, failed, inconclusive, aborted };

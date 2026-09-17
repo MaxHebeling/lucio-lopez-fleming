@@ -849,6 +849,8 @@ export interface PropertyPublications {
   last_payload_hash: string | null;
   last_synced_at: Timestamp | null;
   property_id: string;
+  remote_write_started_at: Timestamp | null;
+  sync_locked_until: Timestamp | null;
   sync_status: Generated<string>;
   updated_at: Generated<Timestamp>;
 }
