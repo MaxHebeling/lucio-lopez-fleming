@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
+import { assignAgents, changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
 import { createLocation } from "@/server/properties/locations";
 import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
@@ -152,6 +152,60 @@ describe("listado y ficha de propiedades", () => {
 
     const readonly = await createStaff(db, ["solo_lectura"]);
     await expect(duplicateProperty(db, readonly, p.id)).rejects.toThrow(/permiso/);
+  });
+});
+
+describe("agentes y dirección exacta (autorización)", () => {
+  it("asignar agentes exige properties.assign_agents (no alcanza editar datos) y solo usuarios del equipo activos", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const agent = await createStaff(db, ["agente"]);
+    const p = await createProperty(db, admin, input(hood.id));
+    // Un agente con properties.update no puede autoasignarse como responsable de una propiedad ajena
+    await expect(assignAgents(db, agent, p.id, agent.userId)).rejects.toThrow(/permiso/);
+
+    const owner = await createOwner(db);
+    await expect(assignAgents(db, admin, p.id, owner.userId)).rejects.toThrow(/usuario activo del equipo/);
+    const inactive = await createStaff(db, ["agente"]);
+    await db.updateTable("users").set({ is_active: false }).where("id", "=", inactive.userId).execute();
+    await expect(assignAgents(db, admin, p.id, agent.userId, [inactive.userId])).rejects.toThrow(/usuario activo del equipo/);
+    const deleted = await createStaff(db, ["agente"]);
+    await db.updateTable("users").set({ deleted_at: new Date() }).where("id", "=", deleted.userId).execute();
+    await expect(assignAgents(db, admin, p.id, deleted.userId)).rejects.toThrow(/usuario activo del equipo/);
+    await expect(assignAgents(db, admin, p.id, "00000000-0000-4000-8000-000000000000")).rejects.toThrow(/usuario activo del equipo/);
+
+    await assignAgents(db, admin, p.id, agent.userId, [admin.userId]);
+    const rows = await db.selectFrom("property_agents").select(["user_id", "role"]).where("property_id", "=", p.id).orderBy("role").execute();
+    expect(rows).toEqual([
+      { user_id: agent.userId, role: "lead" },
+      { user_id: admin.userId, role: "support" },
+    ]);
+    expect(agent.permissions.has("properties.assign_agents")).toBe(false);
+    expect(admin.permissions.has("properties.assign_agents")).toBe(true);
+  });
+
+  it("mostrar la dirección exacta de una propiedad publicada exige properties.publish", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const agent = await createStaff(db, ["agente"]);
+    const p = await createProperty(db, admin, input(hood.id));
+    await changeStatus(db, admin, p.id, "available");
+    await addPropertyImage(db, admin, p.id, await jpeg(40, 30));
+    await publishProperty(db, admin, p.id);
+
+    await expect(updateProperty(db, agent, p.id, { hideExactAddress: false })).rejects.toThrow(/publicar/);
+    // El formulario reenvía el valor actual: editar otros datos sigue permitido
+    await updateProperty(db, agent, p.id, { bedrooms: 5, hideExactAddress: true });
+    const hidden = await db.selectFrom("properties").select(["bedrooms", "hide_exact_address"]).where("id", "=", p.id).executeTakeFirstOrThrow();
+    expect(hidden).toEqual({ bedrooms: 5, hide_exact_address: true });
+
+    await updateProperty(db, admin, p.id, { hideExactAddress: false });
+    // Ocultarla de nuevo no requiere publicar
+    await updateProperty(db, agent, p.id, { hideExactAddress: true });
+
+    // Sin publicar, el agente puede elegir
+    const draft = await createProperty(db, agent, input(hood.id));
+    await updateProperty(db, agent, draft.id, { hideExactAddress: false });
   });
 });
 

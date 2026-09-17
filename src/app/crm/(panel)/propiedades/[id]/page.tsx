@@ -70,7 +70,8 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
   const canPublish = can(actor, "properties.publish");
   const canMedia = can(actor, "properties.manage_media");
   const canPrivate = can(actor, "properties.read_private");
-  const staff = canUpdate ? (await propertyFormOptions(db, actor)).staff : [];
+  const canAssignAgents = can(actor, "properties.assign_agents");
+  const staff = canAssignAgents ? (await propertyFormOptions(db, actor)).staff : [];
   const status = p.status as PropertyStatus;
   const transitions = STATUS_TRANSITIONS[status] ?? [];
   const leadAgent = d.agents.find((a) => a.role === "lead");
@@ -344,7 +345,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="agentes" className="scroll-mt-28">
           <Card title="Agentes">
-            {canUpdate ? (
+            {canAssignAgents ? (
               <AgentsEditor
                 propertyId={p.id}
                 staff={[...staff, ...d.agents.filter((a) => !staff.some((s) => s.id === a.user_id)).map((a) => ({ id: a.user_id, full_name: `${a.full_name} (inactivo)` }))]}

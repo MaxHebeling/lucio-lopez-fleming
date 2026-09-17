@@ -56,12 +56,14 @@ type Props = {
   initial?: PropertyFormInitial;
   initialChain?: LocationNode[];
   canCreateLocation: boolean;
+  /** Publicada con dirección oculta y sin permiso para publicar: no puede mostrar la dirección exacta (el servidor lo exige igual). */
+  lockHideExactAddress?: boolean;
 };
 
 const num = (v: string | number | null | undefined) => (v === null || v === undefined ? "" : String(Number(v)));
 const tri = (v: boolean | null | undefined) => (v === null || v === undefined ? "" : v ? "true" : "false");
 
-export function PropertyForm({ mode, propertyId, options, initial, initialChain = [], canCreateLocation }: Props) {
+export function PropertyForm({ mode, propertyId, options, initial, initialChain = [], canCreateLocation, lockHideExactAddress = false }: Props) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [typeKey, setTypeKey] = useState(initial?.type_key ?? "");
@@ -101,7 +103,7 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
       addressNumber: s("addressNumber"),
       addressFloor: s("addressFloor"),
       addressUnit: s("addressUnit"),
-      hideExactAddress: fd.get("hideExactAddress") === "on",
+      hideExactAddress: lockHideExactAddress || fd.get("hideExactAddress") === "on",
       latitude: s("latitude"),
       longitude: s("longitude"),
       totalAreaM2: s("totalAreaM2"),
@@ -232,7 +234,8 @@ export function PropertyForm({ mode, propertyId, options, initial, initialChain 
             {number("latitude", "Latitud", initial?.latitude)}
             {number("longitude", "Longitud", initial?.longitude)}
           </div>
-          <Checkbox name="hideExactAddress" label="Ocultar la dirección exacta en el sitio" defaultChecked={initial?.hide_exact_address ?? true} />
+          <Checkbox name="hideExactAddress" label="Ocultar la dirección exacta en el sitio" defaultChecked={lockHideExactAddress || (initial?.hide_exact_address ?? true)} disabled={lockHideExactAddress} />
+          {lockHideExactAddress ? <p className="text-xs text-stone">La propiedad está publicada: mostrar la dirección exacta lo decide quien tiene permiso para publicar.</p> : null}
         </div>
       </Card>
 

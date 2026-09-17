@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/server/next/context";
+import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getPropertyDetail, propertyFormOptions } from "@/server/properties/queries";
@@ -34,6 +35,7 @@ export default async function EditPropertyPage({ params }: PageProps<"/crm/propi
         initialChain={detail.location}
         canCreateLocation
         initial={{ ...p, featureKeys: detail.features.map((f) => f.key) }}
+        lockHideExactAddress={p.is_published && p.hide_exact_address && !can(actor, "properties.publish")}
       />
     </>
   );
