@@ -14,6 +14,10 @@ import { NotesSection } from "@/components/crm/notes-section";
 import { logOutreachAction } from "../../_shared/actions";
 import { orNotFound, requireUuid } from "../../_shared/load";
 import { AddEmailButton, AddPhoneButton, RemoveEmailButton, RemovePhoneButton, RolesTagsButton } from "./contact-editors";
+import { contactSalesPanels } from "@/server/sales/crm-panels";
+import { BuyerProfileCard } from "@/components/crm/sales/buyer-profile";
+import { CompatiblePropertiesCard, NextActionsCard } from "@/components/crm/sales/sales-cards";
+import { IntentSignalsCard } from "@/components/crm/sales/sales-panels";
 
 export const metadata: Metadata = { title: "Contacto" };
 
@@ -25,7 +29,7 @@ export default async function ContactPage({ params }: PageProps<"/crm/contactos/
   const db = getDb();
   const detail = await orNotFound(getContactDetail(db, actor, id));
   if (detail.mergedInto !== null) redirect(`/crm/contactos/${detail.mergedInto}`);
-  const timeline = await getContactTimeline(db, actor, id);
+  const [timeline, sales] = await Promise.all([getContactTimeline(db, actor, id), contactSalesPanels(db, actor, id)]);
   const { contact: c, emails, phones, roles, tags, notes, assigned, openDuplicates } = detail;
   const canUpdate = can(actor, "contacts.update");
   const primaryPhone = phones[0];
@@ -142,6 +146,10 @@ export default async function ContactPage({ params }: PageProps<"/crm/contactos/
             </dl>
           </Card>
 
+          {sales?.next ? <NextActionsCard items={sales.next.items} canAccept={sales.next.canAccept} canDecide={sales.next.canDecide} /> : null}
+          {sales ? <BuyerProfileCard contactId={c.id} profile={sales.profile} options={sales.options} /> : null}
+          {sales?.compatible ? <CompatiblePropertiesCard contactId={c.id} result={sales.compatible} canDismiss={canUpdate} /> : null}
+
           <NotesSection notes={notes} entityType="contact" entityId={c.id} canWrite={canUpdate} idempotencyKey={randomUUID()} />
 
           <Card title="Historial">
@@ -176,6 +184,7 @@ export default async function ContactPage({ params }: PageProps<"/crm/contactos/
           <Card title="Acciones rápidas" className="hidden lg:block">
             <QuickActions contactId={c.id} primaryPhone={primaryPhone} actorCan={(p) => can(actor, p)} />
           </Card>
+          {sales?.signals ? <IntentSignalsCard level={sales.signals.level} signals={sales.signals.signals} linkedSessions={sales.signals.linkedSessions} /> : null}
           <Card title="Roles y etiquetas" actions={canUpdate ? <RolesTagsButton contactId={c.id} roles={roles} tags={tags.map((t) => t.name)} /> : null}>
             <div className="flex flex-wrap gap-1.5">
               {roles.length === 0 && tags.length === 0 ? <p className="text-sm text-stone">Sin roles ni etiquetas</p> : null}

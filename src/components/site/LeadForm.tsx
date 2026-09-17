@@ -5,6 +5,7 @@ import { startTransition, useActionState, useEffect, useId, useRef, useState, ty
 import { Check } from "lucide-react";
 import { submitLeadAction, type LeadFormState } from "@/app/(site)/actions";
 import { clientLeadErrors } from "./lead-form-validation";
+import { readConcierge, siteSessionKey, trackSite } from "./sales/site-track";
 
 type Kind = "property" | "visit" | "contact" | "appraisal" | "owner";
 
@@ -27,6 +28,19 @@ function newKey(): string {
 
 const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
+/** Consultas de búsqueda (no de propietarios): llevan la sesión de la pestaña y, si se usó, los filtros del concierge. */
+const SEARCH_KINDS = new Set<Kind>(["property", "visit", "contact"]);
+
+/** Filtros del concierge sin los fragmentos de texto (evidencia): al servidor viajan solo datos estructurados. */
+function conciergeIntentJson(): string {
+  const stored = readConcierge();
+  const intent = (stored?.response as { intent?: Record<string, unknown> } | undefined)?.intent;
+  if (!intent) return "";
+  const clean = Object.fromEntries(Object.entries(intent).map(([k, v]) => [k, v && typeof v === "object" && "evidence" in v ? { ...(v as object), evidence: null } : v]));
+  const json = JSON.stringify(clean);
+  return json.length <= 6000 ? json : "";
+}
+
 /**
  * Formulario público → CRM. Funciona sin JS (Server Action; si el servidor rechaza, vuelve con lo escrito).
  * Con JS: se envía con onSubmit + transición (React no resetea el formulario, así un rechazo no borra lo escrito),
@@ -47,13 +61,27 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   // Valores que solo existen en el navegador: se escriben directo en los inputs ocultos (sin re-render).
   useEffect(() => {
     if (keyRef.current) keyRef.current.value = newKey();
+    if (SEARCH_KINDS.has(kind)) {
+      // Solo se vincula si la persona envía la consulta (y sin Do Not Track / GPC: siteSessionKey devuelve null).
+      const session = formRef.current?.elements.namedItem("sessionKey");
+      const intent = formRef.current?.elements.namedItem("conciergeIntent");
+      if (session instanceof HTMLInputElement) session.value = siteSessionKey() ?? "";
+      if (intent instanceof HTMLInputElement) intent.value = siteSessionKey() ? conciergeIntentJson() : "";
+    }
     const sp = new URLSearchParams(window.location.search);
     for (const k of UTM_FIELDS) {
       const input = formRef.current?.elements.namedItem(k);
       const v = sp.get(k);
       if (v && input instanceof HTMLInputElement) input.value = v.slice(0, 200);
     }
-  }, []);
+  }, [kind]);
+
+  const openedRef = useRef(false);
+  const onFirstFocus = () => {
+    if (openedRef.current) return;
+    openedRef.current = true;
+    trackSite("lead_form_opened", { ...(propertyCode ? { propertyCode } : {}), props: { kind } });
+  };
 
   useEffect(() => {
     inFlight.current = false;
@@ -110,7 +138,7 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
   const ownerLabel = submitLabel && ownerGoal === "vender" ? submitLabel : ownerGoal === "alquilar" ? "Quiero alquilar mi propiedad" : "Quiero vender mi propiedad";
 
   return (
-    <form ref={formRef} action={action} onSubmit={onSubmit} onReset={() => setOwnerGoal("vender")} className={`grid ${size === "lg" ? "gap-5" : "gap-4"}`} aria-describedby={`${id}-status`}>
+    <form ref={formRef} action={action} onSubmit={onSubmit} onFocus={onFirstFocus} onReset={() => setOwnerGoal("vender")} className={`grid ${size === "lg" ? "gap-5" : "gap-4"}`} aria-describedby={`${id}-status`}>
       <input type="hidden" name="kind" value={kind} />
       {/* Sin value/defaultValue: los escribe el efecto de montaje y React no debe tocarlos al re-renderizar (en un input
           hidden, reasignar defaultValue pisa el valor: se perdían la clave y los UTM después de un error). */}
@@ -120,6 +148,12 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
       {UTM_FIELDS.map((k) => (
         <input key={k} type="hidden" name={k} />
       ))}
+      {SEARCH_KINDS.has(kind) ? (
+        <>
+          <input type="hidden" name="sessionKey" />
+          <input type="hidden" name="conciergeIntent" />
+        </>
+      ) : null}
       {/* Honeypot: invisible para personas y lectores de pantalla */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
         <label htmlFor={`${id}-website`}>No completar</label>
@@ -236,6 +270,45 @@ export function LeadForm({ kind, propertyCode, operation, defaultMessage, submit
         <textarea {...fieldProps("message")} className={`${control} min-h-28`} maxLength={2000} rows={compact ? 3 : 4} defaultValue={values.message ?? defaultMessage} />
         {errorText("message")}
       </div>
+
+      {SEARCH_KINDS.has(kind) ? (
+        // Captura progresiva: 1–2 preguntas opcionales, nunca obligatorias (sugieren datos del perfil que confirma el equipo).
+        <details className="group rounded-[var(--radius-md)]" open={Boolean(values.moveTimeframe || values.financing)}>
+          <summary className={`flex min-h-11 cursor-pointer list-none items-center justify-between text-sm font-semibold ${dark ? "text-paper" : "text-ink"}`}>
+            Contanos un poco más (opcional)
+            <span aria-hidden className="text-lg transition-transform group-open:rotate-45">
+              +
+            </span>
+          </summary>
+          <div className={`grid gap-4 pt-2 ${compact ? "" : "sm:grid-cols-2"}`}>
+            <div>
+              <label htmlFor={`${id}-moveTimeframe`} className={label}>
+                ¿Para cuándo lo buscás?
+              </label>
+              <select {...fieldProps("moveTimeframe")} className={control} defaultValue={values.moveTimeframe ?? ""}>
+                <option value="">Prefiero no decirlo</option>
+                <option value="immediate">Lo antes posible</option>
+                <option value="within_3_months">En los próximos 3 meses</option>
+                <option value="within_6_months">En los próximos 6 meses</option>
+                <option value="later">Más adelante</option>
+              </select>
+            </div>
+            {operation !== "rent" && operation !== "temporary_rent" ? (
+              <div>
+                <label htmlFor={`${id}-financing`} className={label}>
+                  ¿Cómo pensás pagar?
+                </label>
+                <select {...fieldProps("financing")} className={control} defaultValue={values.financing ?? ""}>
+                  <option value="">Prefiero no decirlo</option>
+                  <option value="cash">Contado</option>
+                  <option value="credit">Con crédito hipotecario</option>
+                  <option value="undecided">Todavía no lo sé</option>
+                </select>
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
 
       <div
         id={`${id}-status`}

@@ -19,6 +19,8 @@ import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
 import { getTourSummary } from "@/server/tours/queries";
+import { propertyClientsPanel } from "@/server/sales/crm-panels";
+import { CompatibleClientsCard } from "@/components/crm/sales/sales-panels";
 
 export const metadata: Metadata = { title: "Propiedad" };
 
@@ -66,7 +68,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
-  const tour = await getTourSummary(db, actor, d.property.id);
+  const [tour, clients] = await Promise.all([getTourSummary(db, actor, d.property.id), propertyClientsPanel(db, actor, d.property.id)]);
   const p = d.property;
   const canUpdate = can(actor, "properties.update");
   const canPrice = can(actor, "properties.change_price");
@@ -454,6 +456,12 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           </Card>
         </section>
         )}
+
+        {clients ? (
+          <section className="scroll-mt-28">
+            <CompatibleClientsCard items={clients.items} total={clients.total} scope={clients.scope} available={clients.available} minScore={clients.minScore} />
+          </section>
+        ) : null}
 
         {d.leads ? (
           <section id="leads" className="scroll-mt-28">

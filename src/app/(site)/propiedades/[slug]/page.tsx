@@ -19,6 +19,10 @@ import { pageMetadata, siteUrl } from "@/components/site/seo";
 import { Fact, Paragraphs } from "@/components/site/property/facts";
 import PropertyMediaSection from "@/components/site/property/PropertyMediaSection";
 import { mediaTabs } from "@/server/tours/model";
+import { getSiteFlag } from "@/server/site/public-flags";
+import { suggestedQuestions } from "@/server/sales/property-qa/answer";
+import { PropertyQA, PropertyViewTracker } from "@/components/site/sales/PropertyQA";
+import { CompareToggle, CompareTray } from "@/components/site/sales/CompareControls";
 
 
 /**
@@ -79,7 +83,14 @@ export async function generateMetadata({ params }: PageProps<"/propiedades/[slug
 export default async function PropertyPage({ params }: PageProps<"/propiedades/[slug]">) {
   const { slug } = await params;
   const p = await resolve(slug);
-  const [info, similar, extras] = await Promise.all([getSiteInfo(), getSiteSimilar(p, 4), getSitePropertyMediaExtras(p.code)]);
+  const [info, similar, extras, qaOn, compareOn, signalsOn] = await Promise.all([
+    getSiteInfo(),
+    getSiteSimilar(p, 4),
+    getSitePropertyMediaExtras(p.code),
+    getSiteFlag("ai_property_qa"),
+    getSiteFlag("site_compare"),
+    getSiteFlag("ai_matching"),
+  ]);
   const crumbs = propertyBreadcrumb(p);
   const base = siteUrl();
   const url = `${base}/propiedades/${p.slug}`;
@@ -170,6 +181,7 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
       </div>
 
       <div className="container-site mt-8">
+        <div data-track-gallery>
         {tabs.length && extras.tour ? (
           <PropertyMediaSection
             tabs={tabs}
@@ -188,9 +200,13 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
         ) : (
           gallery
         )}
+        </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="tabular text-sm text-ink-2">Código de propiedad: {p.code}</p>
-          <ShareButton url={url} title={p.headline} />
+          <span className="flex flex-wrap items-center gap-2">
+            {compareOn ? <CompareToggle code={p.code} label={p.headline} className="min-h-11 border border-line !bg-white px-4 text-sm !shadow-none aria-pressed:!bg-ink" /> : null}
+            <ShareButton url={url} title={p.headline} />
+          </span>
         </div>
       </div>
 
@@ -222,6 +238,8 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
               ))}
             </dl>
           </section>
+
+          {qaOn ? <PropertyQA code={p.code} suggestions={suggestedQuestions(p)} visitable={!closed} /> : null}
 
           {p.description ? (
             <section aria-labelledby="descripcion-title" className="mt-14">
@@ -302,7 +320,7 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
                 <LeadForm kind="property" propertyCode={p.code} operation={main?.operation} compact defaultMessage={`Hola, quiero más información sobre la propiedad Cód. ${p.code}.`} />
               </div>
               {!closed ? (
-                <details className="group mt-6 border-t border-line pt-4">
+                <details className="group mt-6 border-t border-line pt-4" data-visit-request>
                   <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between font-semibold">
                     Pedir una visita
                     <span aria-hidden className="text-xl transition-transform group-open:rotate-45">
@@ -355,6 +373,8 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
         </a>
       </div>
 
+      {compareOn ? <CompareTray aboveContactBar /> : null}
+      {signalsOn ? <PropertyViewTracker code={p.code} /> : null}
       <JsonLd data={propertyJsonLd(p, url, base, info)} />
     </article>
   );

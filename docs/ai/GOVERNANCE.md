@@ -105,3 +105,22 @@ tabla. La respuesta mostrada vive solo en la sesión (`ai_messages`, retención 
 
 No envía mensajes, no cambia estados, no asigna, no agenda, no publica, no borra, no ve auditoría ni usuarios, no lee
 documentos privados y no reacciona a eventos.
+
+## 10. Fase 2 · Ventas (2026-09)
+
+Detalle en [SALES.md](./SALES.md). Las reglas de arriba se aplican igual; además:
+
+| Regla | Dónde vive | Test |
+| --- | --- | --- |
+| IA pública anónima con límite por IP (hash) y presupuesto propio dentro del general | `sales/public-ai.ts` | `ai-sales-site.test.ts` › presupuesto público / límite por IP |
+| El modelo del concierge solo extrae filtros; claves fuera del catálogo se descartan y toda cifra debe estar en el texto | `sales/concierge.ts` (`normalizeAiExtract`) | › monto inventado, catálogo |
+| Q&A público solo con el DTO publicado; cifras de la descripción no son evidencia; dirección oculta bloqueada | `sales/property-qa/*` | › dirección oculta, inyección en la descripción |
+| Perfil del cliente: lista cerrada de campos, nada se confirma solo (sugerido → persona confirma) | `sales/profile/*` | `ai-sales-crm.test.ts` › lista cerrada, sugerencias |
+| Coincidencias estimadas y explicables; nunca contacto automático | `sales/matching/*` | › match inverso sin contacto |
+| La IA recomienda, la persona decide: aceptar crea una tarea real; descartar/posponer se registra | `sales/nba/*` | › siguiente acción |
+| Señales de interés sin PII; sesión vinculada solo al enviar una consulta; DNT/GPC respetado | `site/events.ts`, `sales/site-context.ts` | `ai-sales-site.test.ts` › vínculo de sesión, DNT |
+| Sin loops: ningún automatismo escucha `lead.qualified`, `match.candidates_computed`, `recommendation.*` | `db/migrations/0511` | `ai-sales-crm.test.ts` › automatización |
+
+Capabilities: todas las herramientas nuevas siguen siendo `read` (`client_briefing`). Las propuestas (sugerencias del
+perfil, candidatos, recomendaciones) se persisten como estados que una persona decide; ningún proceso ejecuta acciones
+sobre clientes (mensajes, estados, asignaciones).

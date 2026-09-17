@@ -20,3 +20,4 @@ import "../tours/service";
 import "../site/events";
 import "../visits/jobs";
 import "../ai/jobs";
+import "../sales/jobs";

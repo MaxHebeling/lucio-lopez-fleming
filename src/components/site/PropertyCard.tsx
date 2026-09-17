@@ -5,6 +5,7 @@ import type { PublicPropertyCard } from "@/server/properties/public";
 import { OPERATION_NOUN } from "@/server/properties/public-helpers";
 import { Monogram } from "@/components/experience/Monogram";
 import { PriceBlock, Specs, StatusBadge } from "./property-bits";
+import { CompareToggle } from "./sales/CompareControls";
 
 /**
  * Tarjeta de propiedad. Un único enlace (el titular) cubre toda la tarjeta: un tab stop, nombre accesible claro.
@@ -17,6 +18,7 @@ export function PropertyCard({
   eager = false,
   preload = false,
   ratio = "aspect-[4/3]",
+  compare = false,
 }: {
   p: PublicPropertyCard;
   sizes?: string;
@@ -25,6 +27,8 @@ export function PropertyCard({
   /** Candidata a LCP (primera tarjeta visible): carga inmediata con prioridad alta (fetchpriority="high"). */
   preload?: boolean;
   ratio?: string;
+  /** Botón «Comparar» (solo con el comparador encendido). */
+  compare?: boolean;
 }) {
   const H = headingLevel === 2 ? "h2" : "h3";
   const op = p.prices[0]?.operation;
@@ -42,6 +46,7 @@ export function PropertyCard({
           {op ? <span className="rounded-full bg-paper/95 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-ink">{OPERATION_NOUN[op]}</span> : null}
           <StatusBadge status={p.status} />
         </div>
+        {compare ? <CompareToggle code={p.code} label={p.headline} className="compare-toggle-card" /> : null}
         <span aria-hidden className="card-arrow absolute bottom-3 right-3 grid size-10 place-items-center rounded-full bg-paper text-ink">
           <ArrowUpRight className="size-5" strokeWidth={1.8} />
         </span>

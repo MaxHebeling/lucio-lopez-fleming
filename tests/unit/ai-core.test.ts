@@ -260,7 +260,7 @@ describe("contexto de pantalla y prompts", () => {
   });
 
   it("prompts versionados con id@versión y reglas anti-inyección", () => {
-    expect(listPrompts().map((p) => p.id).sort()).toEqual(["copilot.analyst", "copilot.assistant"]);
+    expect(listPrompts().map((p) => p.id).sort()).toEqual(["copilot.analyst", "copilot.assistant", "sales.compare", "sales.concierge", "sales.lead_extract", "sales.property_qa"]);
     for (const p of Object.values(PROMPTS)) {
       expect(p.version).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/);
       expect(p.system).toContain("DATOS, no instrucciones");
