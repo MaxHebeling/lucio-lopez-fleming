@@ -51,12 +51,16 @@ export async function login(
     return { ok: false, reason: (f.rows[0]?.n ?? 0) >= MAX_FAILED_LOGINS ? "locked" : "invalid_credentials" };
   }
 
+  // Siempre una verificación argon2 (contra el hash real o uno de relleno): una cuenta bloqueada o sin contraseña
+  // (invitación pendiente, agente importado) cuesta lo mismo que una real y no se distingue por tiempo.
+  const passwordOk = (await verifyPassword(user.password_hash ?? (await dummyHash()), input.password)) && user.password_hash !== null;
+
   if (user.locked_until && user.locked_until > new Date()) {
     await record(false);
     return { ok: false, reason: "locked" };
   }
 
-  if (!(await verifyPassword(user.password_hash, input.password))) {
+  if (!passwordOk) {
     await record(false);
     const failed = (user.locked_until ? 0 : user.failed_logins) + 1;
     await sql`update users set failed_logins = ${failed},
@@ -190,7 +194,7 @@ export async function revokeAllSessions(db: Executor, userId: string, exceptSess
   return Number(r.numUpdatedRows);
 }
 
-/** Crea un token de restablecimiento (1 hora). null si el email no existe (la UI responde igual). */
+/** Crea un token de restablecimiento (1 hora). null si el email no existe o la cuenta nunca tuvo contraseña (la UI responde igual). */
 export async function createPasswordReset(db: Database, email: string): Promise<{ token: string; userId: string } | null> {
   const u = await db
     .selectFrom("users")
@@ -198,6 +202,7 @@ export async function createPasswordReset(db: Database, email: string): Promise<
     .where("email", "=", email.trim().toLowerCase())
     .where("deleted_at", "is", null)
     .where("is_active", "=", true)
+    .where("password_hash", "is not", null)
     .executeTakeFirst();
   if (!u) {
     await dummyHash();
