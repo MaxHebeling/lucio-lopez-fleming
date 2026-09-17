@@ -7,6 +7,8 @@ sobre una propiedad **ficticia** (`/demo/tour-360`). Guía para quien captura la
 
 ```
 public/tours/demo/residencia/          assets estáticos de la demo (manifest.json, 9 panorámicas, previews, miniaturas, plano.svg, cover.jpg)
+docs/TOUR_DEMO_CREDITS.md              créditos CC0 (Poly Haven) de los renders 3D de la demo
+docs/TOUR_DEMO_VALIDATION.md           validación de ángulos de hotspots contra el render (error máx. 0,198°)
 scripts/seed-demo-tour.ts              pnpm seed:demo-tour → carga/actualiza la demo desde el manifiesto (idempotente)
 scripts/tours/demo-placeholders.ts     genera placeholders válidos desde el manifiesto (no pisa archivos sin --force)
 

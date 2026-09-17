@@ -291,7 +291,7 @@
       "thumbnail": "galeria-thumb.jpg",
       "width": 4096,
       "height": 2048,
-      "initialYaw": 0.3,
+      "initialYaw": -0.1,
       "initialPitch": -0.04,
       "plan": {
         "x": 0.3339,
