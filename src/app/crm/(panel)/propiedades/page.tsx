@@ -221,6 +221,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
                     <span className="flex flex-wrap gap-1">
                       <Badge tone={PROPERTY_STATUS_TONE[p.status]}>{STATUS_LABEL[p.status as PropertyStatus] ?? p.status}</Badge>
                       {p.is_published ? <Badge tone="success">Publicada</Badge> : null}
+                      {p.is_demo ? <Badge tone="warning">DEMO</Badge> : null}
                     </span>
                     {price(p)}
                   </div>
@@ -263,6 +264,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
                     <span className="flex flex-col items-start gap-1">
                       <Badge tone={PROPERTY_STATUS_TONE[p.status]}>{STATUS_LABEL[p.status as PropertyStatus] ?? p.status}</Badge>
                       {p.is_published ? <Badge tone="success">Publicada</Badge> : null}
+                      {p.is_demo ? <Badge tone="warning">DEMO</Badge> : null}
                     </span>
                   </td>
                   <td>{price(p)}</td>

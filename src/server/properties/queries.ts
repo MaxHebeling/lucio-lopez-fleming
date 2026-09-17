@@ -52,6 +52,7 @@ export type PropertyListItem = {
   title: string;
   status: string;
   is_published: boolean;
+  is_demo: boolean;
   type_name: string;
   branch_name: string | null;
   location_name: string | null;
@@ -117,6 +118,7 @@ export async function listProperties(db: Database, actor: Actor, raw: PropertyLi
     "p.title",
     "p.status",
     "p.is_published",
+    "p.is_demo",
     "t.name as type_name",
     "b.name as branch_name",
     "l.name as location_name",
@@ -216,7 +218,7 @@ export async function getPropertyDetail(db: Database, actor: Actor, id: string) 
     .leftJoin("users as vu", "vu.id", "p.manually_verified_by")
     .select([
       "p.id", "p.code", "p.slug", "p.title", "p.description", "p.type_key", "t.name as type_name", "t.field_schema", "p.status",
-      "p.is_published", "p.published_at", "p.featured", "p.branch_id", "b.name as branch_name", "p.location_id", "p.address_street",
+      "p.is_published", "p.is_demo", "p.published_at", "p.featured", "p.branch_id", "b.name as branch_name", "p.location_id", "p.address_street",
       "p.address_number", "p.address_floor", "p.address_unit", "p.hide_exact_address", "p.latitude", "p.longitude", "p.total_area_m2",
       "p.covered_area_m2", "p.uncovered_area_m2", "p.land_area_m2", "p.rooms", "p.bedrooms", "p.bathrooms", "p.toilets", "p.garages",
       "p.age_years", "p.orientation", "p.disposition", "p.condition", "p.credit_eligible", "p.professional_use", "p.allows_pets",

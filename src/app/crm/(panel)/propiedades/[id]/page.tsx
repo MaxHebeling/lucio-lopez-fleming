@@ -18,6 +18,7 @@ import { MediaManager } from "../_components/media-manager";
 import { crmImageSource } from "@/server/media/crm-preview";
 import { PriceForm, PublishControls, StatusForm } from "../_components/property-actions";
 import { AgentsEditor, OwnersEditor } from "../_components/people-editors";
+import { getTourSummary } from "@/server/tours/queries";
 
 export const metadata: Metadata = { title: "Propiedad" };
 
@@ -65,6 +66,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
+  const tour = await getTourSummary(db, actor, d.property.id);
   const p = d.property;
   const canUpdate = can(actor, "properties.update");
   const canPrice = can(actor, "properties.change_price");
@@ -85,9 +87,10 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     ["precios", "Precios"],
     ["estado", "Estado"],
     ["multimedia", `Multimedia (${d.media.length})`],
+    ["tour", "Tour 360°"],
     ...(canPrivate ? [["propietarios", "Propietarios"]] : []),
     ["agentes", "Agentes"],
-    ["publicaciones", "Publicaciones"],
+    ...(p.is_demo ? [] : [["publicaciones", "Publicaciones"]]),
     ...(d.leads ? [["leads", "Leads"]] : []),
     ...(d.audit ? [["auditoria", "Auditoría"]] : []),
   ] as Array<[string, string]>;
@@ -116,17 +119,19 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
             {p.is_published ? <Badge tone="success">Publicada{p.published_at ? ` desde ${formatDate(p.published_at)}` : ""}</Badge> : <Badge>No publicada</Badge>}
             {p.featured ? <Badge tone="brand">Destacada</Badge> : null}
             {p.source === "adinco_import" ? <Badge tone="info">Migrada</Badge> : null}
+            {p.is_demo ? <Badge tone="warning">DEMO</Badge> : null}
+            {tour ? <Badge tone={tour.status === "published" ? "success" : "neutral"}>Tour 360° {tour.status === "published" ? "publicado" : "en borrador"}</Badge> : null}
           </span>
         }
         actions={
           <>
-            <PublishControls propertyId={p.id} isPublished={p.is_published} blockers={d.blockers} canPublish={canPublish} />
+            {p.is_demo ? null : <PublishControls propertyId={p.id} isPublished={p.is_published} blockers={d.blockers} canPublish={canPublish} />}
             {canUpdate ? (
               <ButtonLink href={`/crm/propiedades/${p.id}/editar`} variant="secondary" size="sm">
                 Editar datos
               </ButtonLink>
             ) : null}
-            {can(actor, "properties.create") ? (
+            {can(actor, "properties.create") && !p.is_demo ? (
               <ActionButton action={duplicateAction.bind(null, p.id)} confirm="¿Duplicar esta propiedad? Se crea un borrador nuevo sin fotos ni publicaciones." pendingLabel="Duplicando…" successHref="/crm/propiedades/{id}?duplicada=1">
                 Duplicar
               </ActionButton>
@@ -136,6 +141,12 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
       />
 
       <div className="mb-4 flex flex-col gap-2">
+        {p.is_demo ? (
+          <Alert tone="warning">
+            <span className="font-semibold">Propiedad DEMO ficticia.</span> Solo existe para la demostración pública del tour 360° (/demo/tour-360): no se publica en el sitio, portales ni redes, no se
+            duplica y no se vincula a leads ni contratos. Se actualiza con <code>pnpm seed:demo-tour</code>.
+          </Alert>
+        ) : null}
         {sp.creada ? <Alert tone="success">Propiedad creada como borrador.</Alert> : null}
         {sp.guardada ? <Alert tone="success">Cambios guardados.</Alert> : null}
         {sp.duplicada ? <Alert tone="success">Copia creada. Revisá los datos, cargá fotos y cambiá el estado cuando esté lista.</Alert> : null}
@@ -145,7 +156,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
             {canUpdate ? " Editá el texto para no publicar la altura." : " Avisale a quien pueda editar la propiedad."}
           </Alert>
         ) : null}
-        {!p.is_published && d.blockers.length ? (
+        {!p.is_published && !p.is_demo && d.blockers.length ? (
           <Alert tone="warning">
             <span className="font-semibold">Para publicar falta:</span>
             <ul className="mt-1 list-disc pl-5">
@@ -330,6 +341,32 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           </Card>
         </section>
 
+        <section id="tour" className="scroll-mt-28">
+          <Card
+            title="Tour virtual 360°"
+            actions={
+              <Link href={`/crm/propiedades/${p.id}/tour`} className="text-xs font-semibold underline underline-offset-4">
+                {tour ? "Abrir editor" : canMedia && !p.is_demo ? "Crear tour" : "Ver"}
+              </Link>
+            }
+          >
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              {tour ? (
+                <>
+                  <Badge tone={tour.status === "published" ? "success" : "neutral"}>{tour.status === "published" ? "PUBLICADO" : "BORRADOR"}</Badge>
+                  <span className="text-ink-2">{tour.kind === "internal" ? `Tour propio · ${tour.sceneCount} ${tour.sceneCount === 1 ? "escena" : "escenas"}` : "Tour externo"}</span>
+                  {tour.status === "published" && !p.is_published && !p.is_demo ? <span className="text-warning">No se ve en el sitio hasta publicar la propiedad.</span> : null}
+                </>
+              ) : (
+                <>
+                  <Badge>SIN TOUR</Badge>
+                  <span className="text-stone">Sin tour, la ficha pública se muestra solo con fotos.</span>
+                </>
+              )}
+            </div>
+          </Card>
+        </section>
+
         {canPrivate && d.owners ? (
           <section id="propietarios" className="scroll-mt-28">
             <Card title="Propietarios">
@@ -376,6 +413,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
           </Card>
         </section>
 
+{p.is_demo ? null : (
         <section id="publicaciones" className="scroll-mt-28">
           <Card title="Publicaciones por canal">
             <Table label="Publicaciones por canal">
@@ -415,6 +453,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
             </Table>
           </Card>
         </section>
+        )}
 
         {d.leads ? (
           <section id="leads" className="scroll-mt-28">
