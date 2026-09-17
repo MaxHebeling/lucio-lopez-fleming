@@ -50,10 +50,22 @@ export const TASK_KIND_LABEL: Record<string, string> = { task: "Tarea", call: "L
 export const TASK_STATUS_LABEL: Record<string, string> = { open: "Pendiente", done: "Hecha", cancelled: "Cancelada" };
 
 export const APPOINTMENT_KIND_LABEL: Record<string, string> = { visit: "Visita", call: "Llamada", meeting: "Reunión", follow_up: "Seguimiento" };
-export const APPOINTMENT_STATUS_LABEL: Record<string, string> = { scheduled: "Programada", confirmed: "Confirmada", completed: "Realizada", cancelled: "Cancelada", no_show: "No asistió" };
+export const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
+  scheduled: "Programada",
+  confirmed: "Confirmada",
+  en_route: "En camino",
+  checked_in: "Check-in",
+  in_progress: "En curso",
+  completed: "Realizada",
+  cancelled: "Cancelada",
+  no_show: "No asistió",
+};
 export const APPOINTMENT_STATUS_TONE: Record<string, "neutral" | "success" | "danger" | "warning" | "info"> = {
   scheduled: "info",
   confirmed: "success",
+  en_route: "info",
+  checked_in: "success",
+  in_progress: "warning",
   completed: "neutral",
   cancelled: "danger",
   no_show: "warning",

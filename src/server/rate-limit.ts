@@ -23,3 +23,11 @@ export async function rateLimit(
 export async function purgeRateLimits(db: Executor): Promise<void> {
   await sql`delete from rate_limit_buckets where window_start < now() - interval '1 day'`.execute(db);
 }
+
+/** Lee el contador de la ventana actual sin incrementarlo (p. ej. fallos acumulados antes de intentar de nuevo). */
+export async function peekRateLimit(db: Executor, key: string, windowSeconds: number): Promise<number> {
+  const windowMs = windowSeconds * 1000;
+  const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs);
+  const r = await sql<{ count: number }>`select count from rate_limit_buckets where key = ${key.slice(0, 200)} and window_start = ${windowStart}`.execute(db);
+  return r.rows[0]?.count ?? 0;
+}

@@ -73,7 +73,8 @@ describe("agenda y visitas", () => {
     await expect(cancelAppointment(db, agent, { appointmentId: visit.id })).rejects.toThrow(/motivo/);
 
     const events = await db.selectFrom("domain_events").select(["event_type", "payload"]).where("aggregate_id", "=", visit.id).execute();
-    expect(events.map((e) => e.event_type)).toEqual(["visit.scheduled"]);
+    // Con el núcleo operativo de visitas encendido (flag visits_operations) se suman los eventos appointment.*.
+    expect(events.map((e) => e.event_type)).toEqual(["visit.scheduled", "appointment.created", "appointment.assigned"]);
     let stageKey = await db.selectFrom("opportunities as o").innerJoin("pipeline_stages as s", "s.id", "o.stage_id").select("s.key").where("o.id", "=", opp.id).executeTakeFirstOrThrow();
     expect(stageKey.key).toBe("visita_programada");
 

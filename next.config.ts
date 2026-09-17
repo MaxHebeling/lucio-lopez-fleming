@@ -85,6 +85,25 @@ const nextConfig: NextConfig = {
       { source: "/crm/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/propietarios/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/demo/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      // Portal de visitas: el check-in pide la ubicación una vez (con consentimiento) y el informe admite dictado.
+      // Solo en estas rutas se habilitan geolocalización y micrófono para el propio origen (último header gana).
+      { source: "/crm/mis-visitas/:path*", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(self), payment=()" }] },
+      // Link del cliente: nunca se indexa ni se cachea, y el token no viaja en el Referer a sitios externos (wa.me, tel).
+      {
+        source: "/visita/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+        ],
+      },
+      {
+        source: "/api/visita/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
     ];
   },
 };

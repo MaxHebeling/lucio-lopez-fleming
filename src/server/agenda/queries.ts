@@ -29,7 +29,7 @@ export async function listAppointments(db: Executor, actor: Actor, opts: { from:
     .where("a.ends_at", ">", opts.from);
   if (!scope.all) q = q.where((eb) => eb.or([eb("a.assigned_user_id", "=", scope.userId!), eb("a.created_by", "=", scope.userId!)]));
   else if (opts.agent && /^[0-9a-f-]{36}$/i.test(opts.agent)) q = q.where("a.assigned_user_id", "=", opts.agent);
-  if (!opts.includeInactive) q = q.where("a.status", "in", ["scheduled", "confirmed", "completed", "no_show"]);
+  if (!opts.includeInactive) q = q.where("a.status", "in", ["scheduled", "confirmed", "en_route", "checked_in", "in_progress", "completed", "no_show"]);
   const rows = await q.orderBy("a.starts_at").limit(1000).execute();
   return { rows, scopeAll: scope.all };
 }

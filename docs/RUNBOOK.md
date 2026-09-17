@@ -11,6 +11,10 @@
 | Portal no sincroniza | `property_publications.sync_status/last_error` | CRM → Portales → reintentar; `awaiting_credentials` = faltan credenciales |
 | Importación con fallas | salida JSON (`failed`, `aborted`), `migration_records.error` | si `aborted` por bloqueo del origen: esperar y reintentar (es incremental) |
 | Usuario bloqueado | `users.locked_until`, `login_attempts` | esperar 15 min o restablecer contraseña |
+| Un cliente dice que su link de visita «no está disponible» | link rotado/revocado, vencido (fin + `visits.client_link_grace_hours`), flags `client_visit_link`/`visits_operations`, `rate_limit_buckets` con clave `visit-link:fail:*` | el agente genera un link nuevo (rotar) desde Mis visitas; si fue rate limit, esperar 1 h |
+| Alertas de visitas no aparecen / llegan tarde | job `visits.alerts` (cada 5 min) en CRM → Sistema → Jobs, cron | verificar cron y flag `visits_operations`; reintentar el job |
+| Check-in «requiere revisión» en todas las visitas de una propiedad | coordenadas de la propiedad vacías o erróneas | corregir latitud/longitud en la ficha; los check-ins ya registrados no se recalculan |
+| Pedido de borrar ubicaciones de un agente | `appointment_checkins` | la retención diaria las anonimiza; para adelantar: `update appointment_checkins set latitude=null, longitude=null, accuracy_m=null, coords_purged_at=now() where user_id = …` (auditar el pedido) |
 | Propietario ve datos ajenos (reporte) | Sev 1 | apagar `owner_portal`, preservar evidencia, revisar queries del portal y tests de aislamiento |
 
 ## Tareas periódicas del equipo técnico
