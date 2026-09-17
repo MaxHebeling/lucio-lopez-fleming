@@ -15,12 +15,15 @@ export function PropertyCard({
   sizes = "(min-width: 1280px) 30vw, (min-width: 640px) 46vw, 92vw",
   headingLevel = 3,
   eager = false,
+  preload = false,
   ratio = "aspect-[4/3]",
 }: {
   p: PublicPropertyCard;
   sizes?: string;
   headingLevel?: 2 | 3;
   eager?: boolean;
+  /** Candidata a LCP (primera tarjeta visible): se precarga con prioridad alta. */
+  preload?: boolean;
   ratio?: string;
 }) {
   const H = headingLevel === 2 ? "h2" : "h3";
@@ -29,7 +32,7 @@ export function PropertyCard({
     <article className="card group flex h-full flex-col">
       <div className={`media-frame relative ${ratio} overflow-hidden rounded-[var(--radius-lg)] bg-paper-2`}>
         {p.cover ? (
-          <Image src={p.cover.url} alt={p.cover.alt} fill sizes={sizes} className="card-img object-cover" loading={eager ? "eager" : "lazy"} />
+          <Image src={p.cover.url} alt={p.cover.alt} fill sizes={sizes} className="card-img object-cover" {...(preload ? { preload: true } : { loading: eager ? "eager" : "lazy" })} />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-line">
             <Monogram className="h-16 w-auto" />

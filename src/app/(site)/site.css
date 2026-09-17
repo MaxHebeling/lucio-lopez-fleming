@@ -684,6 +684,55 @@
     }
   }
 
+  /* Panel de filtros único (listados): columna lateral en desktop, diálogo a pantalla completa en mobile. */
+  .filters-shell-head {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .filters-shell-body {
+      position: sticky;
+      top: calc(var(--header-h) + 1.5rem);
+      max-height: calc(100svh - var(--header-h) - 3rem);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-bottom: 1rem;
+      padding-right: 0.5rem;
+    }
+  }
+  @media (max-width: 1023.98px) {
+    .filters-shell {
+      display: none;
+    }
+    /* Sin JS no hay diálogo: el panel se muestra como bloque antes de los resultados. */
+    html:not([data-motion]) .filters-shell {
+      display: block;
+    }
+    .filters-shell.is-open {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: var(--z-drawer);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: var(--paper);
+    }
+    .filters-shell.is-open .filters-shell-head {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      padding: 0.75rem var(--gutter);
+    }
+    .filters-shell.is-open .filters-shell-body {
+      background: var(--paper);
+      padding: 1.5rem var(--gutter);
+    }
+  }
+
   /* Mapa estático de tiles OSM */
   .osm-map {
     position: relative;
