@@ -151,12 +151,86 @@ export function tidyTitle(raw: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-/** Titular editorial consistente: "Casa en venta en El Tipal". */
-export function propertyHeadline(typeName: string, operation: PublicOperation | null, zone: string | null): string {
+export type HeadlineFacts = {
+  category?: string | null;
+  bedrooms?: number | null;
+  rooms?: number | null;
+  coveredAreaM2?: number | string | null;
+  landAreaM2?: number | string | null;
+  totalAreaM2?: number | string | null;
+};
+
+/**
+ * Diferencial real para el titular (solo datos cargados, nunca estimados): dormitorios; si no, ambientes; si no,
+ * la superficie con su tipo ("150 m² cubiertos", "terreno de 800 m²"). Sin datos → null.
+ */
+export function headlineDetail(f: HeadlineFacts): string | null {
+  const land = formatArea(f.landAreaM2 ?? null);
+  const covered = formatArea(f.coveredAreaM2 ?? null);
+  const total = formatArea(f.totalAreaM2 ?? null);
+  if (f.category === "land") return (land ?? total) ? `de ${land ?? total}` : null;
+  if (f.bedrooms && f.bedrooms > 0) return `de ${f.bedrooms} ${f.bedrooms === 1 ? "dormitorio" : "dormitorios"}`;
+  if (f.rooms && f.rooms > 0) return `de ${f.rooms} ${f.rooms === 1 ? "ambiente" : "ambientes"}`;
+  if (covered) return `de ${covered} cubiertos`;
+  if (land) return `con terreno de ${land}`;
+  if (total) return `de ${total}`;
+  return null;
+}
+
+/**
+ * Titular editorial consistente: "Casa de 3 dormitorios en venta en El Tipal". La zona es el barrio si existe (y no es
+ * un comodín igual a la localidad) o la localidad; `detail` (headlineDetail) evita que decenas de fichas compartan titular.
+ */
+export function propertyHeadline(typeName: string, operation: PublicOperation | null, zone: string | null, detail: string | null = null): string {
   const parts = [typeName];
+  if (detail) parts.push(detail);
   if (operation) parts.push(`en ${OPERATION_NOUN[operation]}`);
   if (zone) parts.push(`en ${zone}`);
   return parts.join(" ");
+}
+
+// ───────────────────────── Títulos (<title>) ─────────────────────────
+
+export const TITLE_MAX = 60;
+export const BRAND_TITLE_SUFFIX = " · Lucio López Fleming";
+
+const TRAILING_CONNECTORS = /(?:\s+(?:en|de|del|la|el|los|las|y|con|a|al|por|para)|\s*[·,;:–-])+$/i;
+
+/** Recorta en un límite de palabra (nunca a mitad de palabra) y saca conectores colgando al final. */
+export function truncateAtWord(text: string, max = TITLE_MAX): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max + 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  const base = lastSpace > 0 ? cut.slice(0, lastSpace) : clean.slice(0, max);
+  return base.replace(TRAILING_CONNECTORS, "").trim();
+}
+
+/** El primer candidato que entra en `max` caracteres; si ninguno, el último recortado por palabra. */
+export function fitTitle(candidates: string[], max = TITLE_MAX): string {
+  const list = candidates.map((c) => c.replace(/\s+/g, " ").trim()).filter(Boolean);
+  return list.find((c) => c.length <= max) ?? truncateAtWord(list[list.length - 1] ?? "", max);
+}
+
+/** Título de página con la marca solo si entra (el título "absoluto" se usa tal cual, sin plantilla). */
+export function withBrand(title: string, max = TITLE_MAX): string {
+  return fitTitle([`${title}${BRAND_TITLE_SUFFIX}`, title], max);
+}
+
+/**
+ * <title> de una ficha ≤ 60 caracteres sin cortar palabras. Orden de preferencia: titular completo con código y marca,
+ * sin marca, sin código; después el titular sin diferencial con código; por último el más corto recortado por palabra.
+ */
+export function propertyPageTitle(p: { headline: string; shortHeadline: string; code: number; seoTitle?: string | null }): string {
+  if (p.seoTitle?.trim()) return withBrand(p.seoTitle.trim());
+  const code = `Cód. ${p.code}`;
+  return fitTitle([
+    `${p.headline} · ${code}${BRAND_TITLE_SUFFIX}`,
+    `${p.headline} · ${code}`,
+    `${p.shortHeadline} · ${code}`,
+    p.headline,
+    p.shortHeadline,
+  ]);
 }
 
 /** ¿El título cargado agrega algo al titular generado? ("casa en venta" no; "Depto Dean Funes Premium" sí). */

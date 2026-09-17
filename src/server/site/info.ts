@@ -4,9 +4,11 @@
  */
 import "server-only";
 import { cache } from "react";
-import { connection } from "next/server";
+import { unstable_cache } from "next/cache";
 import type { Executor } from "../db";
 import { ORG_SLUG } from "../org";
+import { SITE_CACHE_TAGS, SITE_REVALIDATE_SECONDS } from "./revalidate";
+import { readPublic } from "./public-data";
 
 export type PublicBranch = {
   slug: string;
@@ -65,21 +67,33 @@ export async function loadSiteInfo(db: Executor): Promise<SiteInfo> {
     isMain: b.is_main,
   }));
   const main = mapped.find((b) => b.isMain) ?? mapped[0];
-  const wa = process.env.SITE_WHATSAPP_E164?.trim();
   return {
     name: org?.name ?? "Lucio López Fleming Inmobiliaria",
     foundedYear: org?.founded_year ?? null,
     branches: mapped,
     mainPhone: main?.phone ?? null,
     mainEmail: main?.email ?? null,
-    whatsappE164: wa && /^\+[1-9]\d{7,14}$/.test(wa) ? wa : null,
+    whatsappE164: siteWhatsapp(),
     social: { ...SOCIAL },
   };
 }
 
-/** Memoizado por request (header, footer y página lo piden a la vez). Siempre en request: el build no toca la base. */
-export const getSiteInfo = cache(async () => {
-  await connection();
-  const { getDb } = await import("../db");
-  return loadSiteInfo(getDb());
-});
+function siteWhatsapp(): string | null {
+  const wa = process.env.SITE_WHATSAPP_E164?.trim();
+  return wa && /^\+[1-9]\d{7,14}$/.test(wa) ? wa : null;
+}
+
+const siteInfoCached = unstable_cache(
+  async () => {
+    const { getDb } = await import("../db");
+    return loadSiteInfo(getDb());
+  },
+  ["site", "info", "v2"],
+  { tags: [SITE_CACHE_TAGS.info], revalidate: SITE_REVALIDATE_SECONDS },
+);
+
+/**
+ * Cacheado (etiqueta site:info, se invalida con revalidatePublicSite) y memoizado por render (header, footer y página
+ * lo piden a la vez). El WhatsApp sale de la variable de entorno en cada lectura, nunca de la caché.
+ */
+export const getSiteInfo = cache(async (): Promise<SiteInfo> => ({ ...(await readPublic(siteInfoCached)), whatsappE164: siteWhatsapp() }));

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import type { ZoneShowcase } from "@/server/properties/public";
+import type { ZoneShowcase } from "@/server/properties/public-home";
 import { plural } from "@/server/properties/public-helpers";
 import { Reveal, TextReveal } from "@/components/experience/Reveal";
 

@@ -12,6 +12,7 @@ import { sql, type Executor } from "../db";
 import {
   OPERATION_SLUGS,
   PAGE_SIZE,
+  headlineDetail,
   propertyHeadline,
   publicCoordinates,
   publicStreet,
@@ -175,10 +176,12 @@ type CardRow = {
   title: string;
   type_key: string;
   type_name: string;
+  type_category: string;
   status: string;
   featured: boolean;
   location_id: string | null;
   bedrooms: number | null;
+  rooms: number | null;
   bathrooms: number | null;
   garages: number | null;
   total_area_m2: string | null;
@@ -194,8 +197,8 @@ const OP_ORDER: Record<string, number> = { sale: 0, rent: 1, temporary_rent: 2 }
 
 /** Columnas de tarjeta (explícitas) + precios activos (monto anulado si está oculto) + portada + conteo de fotos. */
 const cardSelect = sql`
-  p.id, p.code, p.slug, p.title, p.type_key, t.name as type_name, p.status, p.featured, p.location_id,
-  p.bedrooms, p.bathrooms, p.garages, p.total_area_m2, p.covered_area_m2, p.land_area_m2, p.published_at,
+  p.id, p.code, p.slug, p.title, p.type_key, t.name as type_name, t.category as type_category, p.status, p.featured, p.location_id,
+  p.bedrooms, p.rooms, p.bathrooms, p.garages, p.total_area_m2, p.covered_area_m2, p.land_area_m2, p.published_at,
   (select jsonb_agg(jsonb_build_object(
       'operation', o.operation, 'currency', o.currency,
       'amount', case when o.price_hidden then null else o.amount end,
@@ -238,7 +241,8 @@ function photoAlt(headline: string, index: number, total: number): string {
 function mapCard(idx: LocationIndex, r: CardRow): PublicPropertyCard {
   const zone = zoneOf(idx, r.location_id);
   const prices = mapPrices(r.prices);
-  const headline = propertyHeadline(r.type_name, prices[0]?.operation ?? null, zone.area ?? zone.locality);
+  const detail = headlineDetail({ category: r.type_category, bedrooms: r.bedrooms, rooms: r.rooms, coveredAreaM2: r.covered_area_m2, landAreaM2: r.land_area_m2, totalAreaM2: r.total_area_m2 });
+  const headline = propertyHeadline(r.type_name, prices[0]?.operation ?? null, zone.area ?? zone.locality, detail);
   const coverUrl = r.cover ? publicMediaUrl(r.cover) : null;
   return {
     code: r.code,
@@ -348,26 +352,28 @@ export type Facets = {
 };
 
 /**
- * Conteos por operación, tipo, zona y características sobre lo publicado. Con `operation`, tipos/zonas/características
- * se cuentan dentro de esa operación (así el menú nunca ofrece combinaciones vacías).
+ * Conteos por operación, tipo, zona y características sobre lo publicado, dentro de la operación y el tipo vigentes
+ * (así los menús nunca ofrecen combinaciones vacías): operaciones se cuentan dentro del tipo, tipos dentro de la
+ * operación, y zonas/características/total dentro de ambos.
  */
-export async function getPublicFacets(db: Executor, operation?: PublicOperation): Promise<Facets> {
+export async function getPublicFacets(db: Executor, operation?: PublicOperation, typeKey?: string): Promise<Facets> {
   const idx = await locationIndex(db);
   const opFilter = operation ? sql`and exists (select 1 from property_operations o where o.property_id = p.id and o.is_active and o.operation = ${operation})` : sql``;
+  const typeFilter = typeKey ? sql`and p.type_key = ${typeKey}` : sql``;
   const [ops, types, locs, feats, total] = await Promise.all([
     sql<{ operation: string; n: number }>`
       select o.operation, count(distinct p.id)::int as n from properties p join property_operations o on o.property_id = p.id and o.is_active
-      where ${publishedWhere} group by o.operation`.execute(db),
+      where ${publishedWhere} ${typeFilter} group by o.operation`.execute(db),
     sql<{ key: string; name: string; name_plural: string; n: number; sort_order: number }>`
       select t.key, t.name, t.name_plural, t.sort_order, count(*)::int as n from properties p join property_types t on t.key = p.type_key
       where ${publishedWhere} ${opFilter} group by t.key, t.name, t.name_plural, t.sort_order order by n desc, t.sort_order`.execute(db),
     sql<{ location_id: string | null; n: number }>`
-      select p.location_id, count(*)::int as n from properties p where ${publishedWhere} ${opFilter} group by p.location_id`.execute(db),
+      select p.location_id, count(*)::int as n from properties p where ${publishedWhere} ${opFilter} ${typeFilter} group by p.location_id`.execute(db),
     sql<{ key: string; name: string; n: number }>`
       select fe.key, fe.name, count(*)::int as n from properties p join property_features pf on pf.property_id = p.id join features fe on fe.id = pf.feature_id
-      where ${publishedWhere} ${opFilter} and fe.grp in ('amenity', 'building_amenity', 'building_service', 'ambient')
+      where ${publishedWhere} ${opFilter} ${typeFilter} and fe.grp in ('amenity', 'building_amenity', 'building_service', 'ambient')
       group by fe.key, fe.name having count(*) >= 3 order by n desc limit 24`.execute(db),
-    sql<{ n: number }>`select count(*)::int as n from properties p where ${publishedWhere} ${opFilter}`.execute(db),
+    sql<{ n: number }>`select count(*)::int as n from properties p where ${publishedWhere} ${opFilter} ${typeFilter}`.execute(db),
   ]);
 
   const zones = new Map<string, ZoneCount>();
@@ -406,15 +412,21 @@ export const SHOWCASE_MIN_PHOTOS = 8;
  * 4. luego las de más fotos (proxy objetivo de producción fotográfica cuidada) y más recientes.
  * Tipos residenciales/emprendimientos primero para el hero (una casa con paisaje comunica mejor que un galpón).
  */
-export async function getShowcaseProperties(db: Executor, limit = 6): Promise<PublicPropertyCard[]> {
+export async function getShowcaseProperties(db: Executor, limit = 6, opts: { preferCoverWidth?: number } = {}): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
+  // Hero a sangre: primero las portadas con ancho real conocido ≥ preferCoverWidth (sin dato de ancho no se supone nada).
+  const wide = opts.preferCoverWidth
+    ? sql`coalesce((select coalesce(m.width, f.width) from property_media m left join files f on f.id = m.file_id and f.deleted_at is null
+           where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed'
+           order by m.is_cover desc, m.sort_order, m.created_at limit 1) >= ${opts.preferCoverWidth}, false) desc,`
+    : sql``;
   const rows = await sql<CardRow>`
     select ${cardSelect}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       and (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image'
            and m.status in ('verified', 'stored')) >= ${SHOWCASE_MIN_PHOTOS}
-    order by p.featured desc,
+    order by ${wide} p.featured desc,
       (t.category in ('residential', 'development')) desc,
       (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status in ('verified', 'stored')) desc,
       p.published_at desc, p.code desc
@@ -432,29 +444,6 @@ export async function getRecentProperties(db: Executor, limit = 10, excludeCodes
     order by p.published_at desc nulls last, p.code desc
     limit ${limit}`.execute(db);
   return rows.rows.map((r) => mapCard(idx, r));
-}
-
-export type ZoneShowcase = ZoneCount & { cover: PublicPhoto | null };
-
-/** Zonas con más propiedades publicadas + la portada de la propiedad con más fotos de cada una. */
-export async function getZoneShowcase(db: Executor, limit = 6): Promise<ZoneShowcase[]> {
-  const idx = await locationIndex(db);
-  const facets = await getPublicFacets(db);
-  const top = facets.zones.slice(0, limit);
-  if (!top.length) return [];
-  const rows = await sql<CardRow>`
-    select ${cardSelect}
-    from properties p join property_types t on t.key = p.type_key
-    where ${publishedWhere} and p.status in ('available', 'reserved')
-    order by (select count(*) from property_media m where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status in ('verified', 'stored')) desc,
-      p.published_at desc`.execute(db);
-  const used = new Set<number>();
-  const cards = rows.rows.map((r) => mapCard(idx, r));
-  return top.map((z) => {
-    const match = cards.find((c) => c.zone.localitySlug === z.slug && c.cover && !used.has(c.code));
-    if (match) used.add(match.code);
-    return { ...z, cover: match?.cover ? { ...match.cover, alt: `Propiedad publicada en ${z.name}` } : null };
-  });
 }
 
 // ───────────────────────── Ficha ─────────────────────────
@@ -482,7 +471,6 @@ type DetailRow = CardRow & {
   hide_exact_address: boolean;
   latitude: string | null;
   longitude: string | null;
-  rooms: number | null;
   toilets: number | null;
   uncovered_area_m2: string | null;
   age_years: number | null;
@@ -507,8 +495,8 @@ export async function getPublicPropertyBySlug(db: Executor, slug: string): Promi
   const found = await sql<DetailRow>`
     select ${cardSelect},
       p.description, p.address_street, p.address_number, p.hide_exact_address, p.latitude, p.longitude,
-      p.rooms, p.toilets, p.uncovered_area_m2, p.age_years, p.orientation, p.disposition, p.condition,
-      p.credit_eligible, p.professional_use, p.allows_pets, p.attributes, t.field_schema, t.category as type_category,
+      p.toilets, p.uncovered_area_m2, p.age_years, p.orientation, p.disposition, p.condition,
+      p.credit_eligible, p.professional_use, p.allows_pets, p.attributes, t.field_schema,
       p.seo_title, p.seo_description, p.updated_at, p.branch_id
     from properties p join property_types t on t.key = p.type_key
     where p.slug = ${slug} and ${publishedWhere}`.execute(db);
