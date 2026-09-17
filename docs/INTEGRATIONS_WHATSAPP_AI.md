@@ -57,14 +57,28 @@ Meta ──POST firmado──▶ /api/webhooks/whatsapp
 - Sin `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`: `awaiting_credentials` y la integración `whatsapp_cloud` también.
 - Ventana de 24 h vencida (control local o error 131047 de Meta): `failed` con la explicación. Solo se puede escribir
   con una plantilla aprobada (`WHATSAPP_REENGAGEMENT_TEMPLATE`, botón **Enviar plantilla aprobada**).
-- Errores transitorios (red, timeout, 5xx, 130429, 131000, 131016…): reintento con backoff; errores definitivos: `failed`.
-- `sending` que quedó colgado más de 2 min (worker caído a mitad del envío) pasa a `failed` "estado incierto" y **no**
-  se reenvía solo, para no duplicar mensajes: una persona verifica y reintenta.
+- Errores transitorios en los que Meta seguro NO aceptó el mensaje (sin conexión/DNS, 5xx, 130429, 131000, 131016…):
+  reintento con backoff; errores definitivos (4xx no reintentables): `failed` sin reintentos.
+- **Resultado incierto** (timeout o conexión cortada después de enviar el POST, respuesta OK sin id): `failed` con
+  `error_code='uncertain'` y "Verificá en WhatsApp si llegó antes de reintentar". **No** se reenvía solo (ni el job,
+  ni el cron): el botón del CRM pasa a "Verifiqué que no llegó: reenviar".
+- `sending` que quedó colgado más de 2 min (worker caído a mitad del envío) queda igual como incierto.
+- Plantillas de la cola genérica (`sendWhatsAppTemplate`): transitorio → `RetryableError`; rechazo definitivo →
+  `PermanentIntegrationError`; incierto → `UncertainTemplateDeliveryError` (subclase de `PermanentIntegrationError`:
+  `messaging.send` lo deja `failed` sin reintentos, con el aviso de verificar).
 
 ## Asistente de IA
 
 - Modelo `AI_MODEL` (por defecto `claude-sonnet-5`), sin reintentos del SDK: `callIntegration("anthropic")` +
-  `withTimeout(30 s)` + hasta 2 intentos solo en 408/409/429/5xx/conexión.
+  `withTimeout(25 s)` por llamada + hasta 2 intentos solo en 408/409/429/5xx/conexión y solo si queda tiempo.
+- Tiempo acotado: el turno completo tiene 100 s (`TURN_BUDGET_MS`), dentro del timeout del job (150 s): 4 rondas × 25 s
+  entran; un intento nunca se extiende más allá del presupuesto y el turno respeta la cancelación del job. Agotarlo
+  cuenta como falla (`timeout`): la primera se reintenta, la segunda deriva.
+- Si el job `whatsapp.ai_reply` muere igual (intentos agotados, error permanente o lease vencido), su dead handler
+  deriva la conversación a una persona (`ai_error`, notificación con resumen) y encola el aviso al cliente.
+- Aviso + derivación idempotentes: primero se encola el mensaje (aviso fijo o respuesta) con `payload.handoff` y después
+  se deriva; si el proceso se corta entre ambos, el reintento (o el dead handler) completa la derivación sin repetir
+  el aviso.
 - Prompt versionado (`PROMPT_VERSION` en `src/server/ai/whatsapp/prompt.ts`). Bloque estático cacheable + contexto
   de la conversación. Salida JSON (`output_config.format`) validada con zod: `reply`, `confidence`, `handoff`,
   `handoff_reason`, `summary`.
@@ -159,6 +173,6 @@ asistente acotado a la atención comercial de la empresa (como este) está permi
   `registerWhatsAppTemplateSender(sendWhatsAppTemplate)`; cada `templateKey` debe coincidir con una plantilla
   aprobada (o indicar `payload.whatsappTemplate.name` y `bodyParameters`).
 - Las guardas no validan cantidades pequeñas sin unidad (p. ej. "3 dormitorios"): las sigue cubriendo el prompt.
-- Un timeout de red al enviar puede producir un duplicado si Meta sí entregó (se prioriza no perder el mensaje).
+- Un envío con resultado incierto requiere que una persona verifique en WhatsApp: se prioriza no duplicar mensajes.
 - Si un teléfono coincide con más de un contacto existente, la captura central crea un contacto nuevo y un candidato
   a duplicado (comportamiento del módulo de contactos); la conversación queda fija a su contacto.

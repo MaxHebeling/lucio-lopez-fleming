@@ -14,6 +14,8 @@ Variables: ver `.env.example` (cada una documentada). Reglas:
 - Secretos solo en el gestor del entorno (Vercel → Settings → Environment Variables), nunca en el repo ni en logs.
 - Al cargar con CLI usar `printf "%s" "$VALOR" | vercel env add NOMBRE production` (evita el salto de línea de `echo`).
 - `CRON_SECRET` ≥ 32 caracteres aleatorios (`openssl rand -base64 48`).
+- `CRON_STALE_MINUTES` (opcional, 10 por defecto): con `APP_ENV=production`, `/api/ready` responde 503 si el cron no
+  corrió en ese lapso.
 - Integraciones sin credenciales quedan en `awaiting_credentials` (visible en CRM → Integraciones), no fallan en silencio.
 
 Mínimo para que producción funcione: `DATABASE_URL`, `DATABASE_SSL`, `APP_URL`, `APP_ENV=production`, `CRON_SECRET`,
