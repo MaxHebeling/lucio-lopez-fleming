@@ -81,5 +81,16 @@ describe("plantillas de email", () => {
     expect(JSON.stringify(out)).not.toContain("secreto");
     expect(out.fullName).toBe("Ana");
     expect(redactSensitive("owner_report_ready", { reportUrl: "/x" })).toEqual({ reportUrl: "/x" });
+    // Plantilla desconocida o clave de un solo uso no declarada: igual se redacta
+    expect(JSON.stringify(redactSensitive("no_existe", { inviteUrl: "/x?token=secreto", token: "secreto" }))).not.toContain("secreto");
+  });
+
+  it("toda clave de link de un solo uso de cada plantilla está declarada como sensible", () => {
+    for (const [key, def] of Object.entries(EMAIL_TEMPLATES)) {
+      const shape = Object.keys((def.schema as unknown as { shape: Record<string, unknown> }).shape);
+      for (const field of shape.filter((f) => /^(reset|invite)Url$|token/i.test(f))) {
+        expect(def.sensitiveKeys, `${key}.${field}`).toContain(field);
+      }
+    }
   });
 });

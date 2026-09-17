@@ -53,7 +53,10 @@ Respuesta `{ id }` → `provider_message_id`.
 - Sin credenciales o flag apagado → `awaiting_credentials` con el motivo. Nunca `sent`.
 - Plantilla desconocida o payload inválido → `failed` + error permanente (no se reintenta).
 - 429/5xx → `failed` y reintento de la cola con backoff; otros 4xx → `failed` permanente.
-- Tras enviar se redactan del payload los datos de un solo uso (`resetUrl`, `inviteUrl`).
+- Los datos de un solo uso (`resetUrl`, `inviteUrl`, `token` y los `sensitiveKeys` de cada plantilla) se redactan cuando el
+  mensaje sale de la cola: enviado, fallido sin reintento (error permanente o job muerto) o cancelado. Un fallo reintentable
+  conserva el link para el próximo intento. La tarea horaria cancela y redacta los que vencieron (`expiresAt`) o siguen sin
+  credenciales pasados los 7 días de la ventana de reanudación.
 - Si el payload trae `expiresAt` y venció antes de enviarse → `cancelled` (no se manda un link vencido).
 
 **Plantillas** (`src/server/messaging/templates.ts`) — contrato de payload para quienes encolan:

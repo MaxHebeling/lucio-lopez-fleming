@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "@/server/db";
 import "@/server/jobs/handlers";
 import { queueMessage } from "@/server/messaging/outbound";
-import { resumeAwaitingMessages, sendQueuedMessage } from "@/server/messaging/send";
+import { redactUndeliverableMessages, resumeAwaitingMessages, sendQueuedMessage } from "@/server/messaging/send";
 import { registerWhatsAppTemplateSender } from "@/server/messaging/whatsapp-bridge";
 import { runJobs } from "@/server/jobs/runner";
-import { PermanentJobError } from "@/server/jobs/registry";
+import { getJobDeadHandler, PermanentJobError } from "@/server/jobs/registry";
 import { dispatchPendingEvents } from "@/server/automation/engine";
 import { emitEvent } from "@/server/events";
 import { json, loadIntegrationReferenceData, mockHttp, setFlag } from "../helpers/integrations";
@@ -137,6 +137,52 @@ describe("mensajería saliente (email)", () => {
     } finally {
       http.restore();
     }
+  });
+
+  it("el link de un solo uso no queda en el payload si el envío falla definitivamente o se abandona", async () => {
+    const db = testDb();
+    process.env.RESEND_API_KEY = "re_test_123";
+    process.env.EMAIL_FROM = "avisos@luciolopezfleming.com.ar";
+    let mode: "500" | "422" = "422";
+    const http = mockHttp([(c) => (c.url.includes("resend") ? json({ name: "error", message: "rechazado" }, Number(mode)) : undefined)]);
+    const payloadOf = async (id: string) => JSON.stringify((await db.selectFrom("outbound_messages").select("payload").where("id", "=", id).executeTakeFirstOrThrow()).payload);
+    try {
+      // 4xx del proveedor → failed permanente → redactado
+      const rejected = await message("t:redact-4xx");
+      await expect(sendQueuedMessage(db, rejected)).rejects.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(rejected)).not.toContain("un-solo-uso");
+
+      // Payload inválido (link fuera de APP_URL) → failed permanente → redactado
+      const invalid = await message("t:redact-invalid", { payload: { fullName: "Ana", resetUrl: "https://phishing.example.com/r?token=secreto-invalido" } });
+      await expect(sendQueuedMessage(db, invalid)).rejects.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(invalid)).not.toContain("secreto-invalido");
+
+      // 5xx → reintentable: el link se conserva para el reintento; si el job muere, se redacta
+      mode = "500";
+      const transient = await message("t:redact-5xx");
+      await expect(sendQueuedMessage(db, transient)).rejects.not.toBeInstanceOf(PermanentJobError);
+      expect(await payloadOf(transient)).toContain("un-solo-uso");
+      await getJobDeadHandler("messaging.send")!({ messageId: transient }, { db, actor: await testSystemActor(db), jobId: "00000000-0000-4000-8000-000000000001", error: "agotó intentos" });
+      expect(await payloadOf(transient)).not.toContain("un-solo-uso");
+      expect((await db.selectFrom("outbound_messages").select("status").where("id", "=", transient).executeTakeFirstOrThrow()).status).toBe("failed");
+    } finally {
+      http.restore();
+    }
+
+    // Sin credenciales: queda esperando con el link; si vence o pasa la ventana de reanudación, se cancela y se redacta
+    delete process.env.RESEND_API_KEY;
+    const waiting = await message("t:redact-waiting-ok", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vigente", expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
+    const expired = await message("t:redact-waiting-expired", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vencida", expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
+    const old = await message("t:redact-waiting-old", { payload: { fullName: "Ana", resetUrl: "/crm/restablecer?token=espera-vieja" } });
+    for (const id of [waiting, expired, old]) expect((await sendQueuedMessage(db, id)).outcome).toBe("awaiting_credentials");
+    await sql`update outbound_messages set payload = jsonb_set(payload, '{expiresAt}', to_jsonb(${new Date(Date.now() - 1000).toISOString()}::text)) where id = ${expired}`.execute(db);
+    await sql`update outbound_messages set created_at = now() - interval '8 days' where id = ${old}`.execute(db);
+    expect(await redactUndeliverableMessages(db)).toMatchObject({ cancelled: 2 });
+    expect(await payloadOf(waiting)).toContain("espera-vigente");
+    expect(await payloadOf(expired)).not.toContain("espera-vencida");
+    expect(await payloadOf(old)).not.toContain("espera-vieja");
+    const statuses = await db.selectFrom("outbound_messages").select(["id", "status"]).where("id", "in", [waiting, expired, old]).execute();
+    expect(Object.fromEntries(statuses.map((r) => [r.id, r.status]))).toEqual({ [waiting]: "awaiting_credentials", [expired]: "cancelled", [old]: "cancelled" });
   });
 
   it("links temporales vencidos se cancelan en vez de enviarse tarde", async () => {
