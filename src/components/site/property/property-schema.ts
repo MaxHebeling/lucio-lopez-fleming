@@ -1,5 +1,17 @@
 import type { PublicPropertyDetail } from "@/server/properties/public";
+import { OPERATION_NOUN, OPERATION_TO_SLUG } from "@/server/properties/public-constants";
 import type { SiteInfo } from "@/server/site/info";
+
+export type Crumb = { name: string; path: string };
+
+/** Migas de la ficha (las mismas en pantalla y en JSON-LD): Inicio › Propiedades en {operación} › Cód. N. */
+export function propertyBreadcrumb(p: Pick<PublicPropertyDetail, "code" | "slug" | "prices">): Crumb[] {
+  const op = p.prices[0]?.operation;
+  const listing: Crumb = op
+    ? { name: `Propiedades en ${OPERATION_NOUN[op]}`, path: op === "temporary_rent" ? "/propiedades?operacion=temporario" : `/propiedades/${OPERATION_TO_SLUG[op]}` }
+    : { name: "Propiedades", path: "/propiedades" };
+  return [{ name: "Inicio", path: "/" }, listing, { name: `Cód. ${p.code}`, path: `/propiedades/${p.slug}` }];
+}
 
 const RESIDENCE: Record<string, string> = { casa: "SingleFamilyResidence", departamento: "Apartment", ph: "Apartment" };
 
@@ -49,11 +61,7 @@ export function propertyJsonLd(p: PublicPropertyDetail, url: string, base: strin
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Inicio", item: `${base}/` },
-        { "@type": "ListItem", position: 2, name: "Propiedades", item: `${base}/propiedades` },
-        { "@type": "ListItem", position: 3, name: p.headline, item: url },
-      ],
+      itemListElement: propertyBreadcrumb(p).map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.path === "/" ? `${base}/` : `${base}${c.path}` })),
     },
   ];
 }

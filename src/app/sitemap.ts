@@ -1,14 +1,21 @@
 import type { MetadataRoute } from "next";
-import { connection } from "next/server";
-import { getDb } from "@/server/db";
-import { listPublishedForSitemap } from "@/server/properties/public";
+import { filtersToQuery } from "@/server/properties/public-helpers";
+import { getSiteListingCombinations, getSiteSitemapProperties } from "@/server/site/public-data";
 import { siteUrl } from "@/components/site/seo";
 
-/** Sitemap dinámico: páginas institucionales, listados y fichas publicadas (lastModified real). */
+/** Se sirve desde caché y se regenera al invalidar el sitio o a los 5 minutos. */
+export const revalidate = 300;
+
+/** El generador de Next no escapa las URL: `&` debe ir como entidad XML. */
+const xmlUrl = (u: string) => u.replace(/&/g, "&amp;");
+
+/**
+ * Sitemap dinámico: páginas institucionales, listados, listados por tipo y/o localidad con resultados (sus URL
+ * canónicas, ver listingMetadata) y fichas publicadas (lastModified real).
+ */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  await connection();
   const base = siteUrl();
-  const props = await listPublishedForSitemap(getDb());
+  const [props, combos] = await Promise.all([getSiteSitemapProperties(), getSiteListingCombinations()]);
   const latest = props.reduce<Date | undefined>((acc, p) => (!acc || p.updatedAt > acc ? p.updatedAt : acc), undefined);
   const statics: MetadataRoute.Sitemap = [
     { url: `${base}/`, lastModified: latest, changeFrequency: "daily", priority: 1 },
@@ -22,5 +29,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/terminos`, changeFrequency: "yearly", priority: 0.1 },
     { url: `${base}/privacidad`, changeFrequency: "yearly", priority: 0.1 },
   ];
-  return [...statics, ...props.map((p) => ({ url: `${base}/propiedades/${p.slug}`, lastModified: p.updatedAt, changeFrequency: "weekly" as const, priority: 0.8 }))];
+  const listings: MetadataRoute.Sitemap = combos.map((c) => ({
+    url: xmlUrl(`${base}/propiedades/${c.operation}${filtersToQuery({ tipo: c.typeKey ?? undefined, zona: c.zoneSlug ?? undefined, caracteristicas: [], pagina: 1 })}`),
+    lastModified: new Date(c.updatedAt),
+    changeFrequency: "daily" as const,
+    priority: c.typeKey && c.zoneSlug ? 0.6 : 0.7,
+  }));
+  return [...statics, ...listings, ...props.map((p) => ({ url: `${base}/propiedades/${p.slug}`, lastModified: p.updatedAt, changeFrequency: "weekly" as const, priority: 0.8 }))];
 }

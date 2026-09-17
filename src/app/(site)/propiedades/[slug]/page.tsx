@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
-import { connection } from "next/server";
-import { cache } from "react";
 import { ArrowRight, Check, MapPin, Phone } from "lucide-react";
-import { getDb } from "@/server/db";
-import { getPublicPropertyBySlug, getSimilarProperties, type PublicPropertyDetail } from "@/server/properties/public";
-import { OPERATION_NOUN, OPERATION_TO_SLUG, filtersToQuery, formatArea, telHref, whatsappHref } from "@/server/properties/public-helpers";
+import type { PublicPropertyDetail } from "@/server/properties/public";
+import { OPERATION_NOUN, OPERATION_TO_SLUG, filtersToQuery, formatArea, propertyHeadline, propertyPageTitle, telHref, truncateAtWord, whatsappHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
+import { getSiteProperty, getSiteSimilar } from "@/server/site/public-data";
 import { Gallery } from "@/components/site/property/Gallery";
 import { ShareButton } from "@/components/site/property/ShareButton";
-import { propertyJsonLd } from "@/components/site/property/property-schema";
+import { propertyBreadcrumb, propertyJsonLd } from "@/components/site/property/property-schema";
 import { LeadForm } from "@/components/site/LeadForm";
 import { PropertyCard } from "@/components/site/PropertyCard";
 import { PriceBlock, StatusBadge } from "@/components/site/property-bits";
@@ -19,13 +17,17 @@ import { WhatsAppIcon } from "@/components/site/icons";
 import { JsonLd } from "@/components/site/JsonLd";
 import { pageMetadata, siteUrl } from "@/components/site/seo";
 
-const lookup = cache(async (slug: string) => {
-  await connection();
-  return getPublicPropertyBySlug(getDb(), slug);
-});
+/**
+ * ISR: ninguna ficha se genera en el build; cada una se genera en su primera visita, se sirve desde caché y se
+ * regenera al invalidar (cambios desde el CRM o eventos property.*) o a los 5 minutos como respaldo.
+ */
+export const revalidate = 300;
+export function generateStaticParams(): Array<{ slug: string }> {
+  return [];
+}
 
 async function resolve(slug: string): Promise<PublicPropertyDetail> {
-  const r = await lookup(slug);
+  const r = await getSiteProperty(slug);
   if (r.kind === "redirect") permanentRedirect(`/propiedades/${r.slug}`);
   if (r.kind === "archived") {
     const q = filtersToQuery({ tipo: r.typeKey, zona: r.zoneSlug ?? undefined });
@@ -35,28 +37,39 @@ async function resolve(slug: string): Promise<PublicPropertyDetail> {
   return r.property;
 }
 
+/**
+ * Meta descripción armada solo con datos cargados: titular, superficies y ambientes, ubicación, precio, código y el
+ * comienzo de la descripción (o, sin descripción, las características). Máximo ~158 caracteres, cortada por palabra.
+ */
 function metaDescription(p: PublicPropertyDetail): string {
-  if (p.seoDescription) return p.seoDescription;
+  if (p.seoDescription?.trim()) return p.seoDescription.trim();
   const facts = [
-    p.bedrooms ? `${p.bedrooms} dormitorios` : null,
-    p.bathrooms ? `${p.bathrooms} baños` : null,
-    formatArea(p.coveredAreaM2 ?? p.totalAreaM2 ?? p.landAreaM2),
+    p.bedrooms ? `${p.bedrooms} ${p.bedrooms === 1 ? "dormitorio" : "dormitorios"}` : null,
+    p.bathrooms ? `${p.bathrooms} ${p.bathrooms === 1 ? "baño" : "baños"}` : null,
+    p.coveredAreaM2 ? `${formatArea(p.coveredAreaM2)} cubiertos` : null,
+    p.landAreaM2 ? `terreno de ${formatArea(p.landAreaM2)}` : !p.coveredAreaM2 && p.totalAreaM2 ? formatArea(p.totalAreaM2) : null,
   ].filter(Boolean);
-  const price = p.prices[0] && !p.prices[0].priceHidden && p.prices[0].amount !== null ? `${p.prices[0].currency === "USD" ? "USD" : "$"} ${new Intl.NumberFormat("es-AR").format(p.prices[0].amount)}` : "Precio a consultar";
-  const lead = `${p.headline}${facts.length ? `: ${facts.join(", ")}` : ""}. ${price}. Cód. ${p.code}.`;
-  const desc = p.description ? ` ${p.description.replace(/\s+/g, " ")}` : "";
-  return `${lead}${desc}`.slice(0, 158).replace(/\s+\S*$/, "…");
+  const main = p.prices[0];
+  const price = main && !main.priceHidden && main.amount !== null ? `${main.currency === "USD" ? "USD" : "$"} ${new Intl.NumberFormat("es-AR").format(main.amount)}` : "Precio a consultar";
+  const place = p.zone.area && p.zone.locality ? ` Ubicación: ${p.zone.area}, ${p.zone.locality}.` : p.zone.locality ? ` Ubicación: ${p.zone.locality}.` : "";
+  const lead = `${p.headline}${facts.length ? `: ${facts.join(", ")}` : ""}.${place} ${price}. Cód. ${p.code}.`;
+  const extra = p.description
+    ? ` ${p.description.replace(/\s+/g, " ").trim()}`
+    : p.features.length
+      ? ` ${p.features.flatMap((g) => g.items).slice(0, 5).join(", ")}.`
+      : " Consultá por esta propiedad a Lucio López Fleming Inmobiliaria.";
+  const full = `${lead}${extra}`;
+  return full.length <= 158 ? full : `${truncateAtWord(full, 157)}…`;
 }
 
 export async function generateMetadata({ params }: PageProps<"/propiedades/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const p = await resolve(slug);
-  return pageMetadata({
-    title: p.seoTitle ?? `${p.headline} · Cód. ${p.code}`,
-    description: metaDescription(p),
-    path: `/propiedades/${p.slug}`,
-    image: p.cover ? { url: p.cover.url, alt: p.cover.alt } : null,
-  });
+  const title = propertyPageTitle({ headline: p.headline, shortHeadline: propertyHeadline(p.typeName, p.prices[0]?.operation ?? null, p.zone.area ?? p.zone.locality), code: p.code, seoTitle: p.seoTitle });
+  return {
+    ...pageMetadata({ title, description: metaDescription(p), path: `/propiedades/${p.slug}`, image: p.cover ? { url: p.cover.url, alt: p.cover.alt } : null }),
+    title: { absolute: title },
+  };
 }
 
 function Fact({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -85,8 +98,8 @@ function Paragraphs({ text }: { text: string }) {
 export default async function PropertyPage({ params }: PageProps<"/propiedades/[slug]">) {
   const { slug } = await params;
   const p = await resolve(slug);
-  const db = getDb();
-  const [info, similar] = await Promise.all([getSiteInfo(), getSimilarProperties(db, p, 4)]);
+  const [info, similar] = await Promise.all([getSiteInfo(), getSiteSimilar(p, 4)]);
+  const crumbs = propertyBreadcrumb(p);
   const base = siteUrl();
   const url = `${base}/propiedades/${p.slug}`;
   const main = p.prices[0];
@@ -102,22 +115,22 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
     <article className="pb-28 lg:pb-24">
       <div className="container-site pt-6 lg:pt-10">
         <nav aria-label="Migas de pan" className="text-sm text-ink-2">
+          {/* Mismas migas que el JSON-LD BreadcrumbList (propertyBreadcrumb). */}
           <ol className="flex flex-wrap items-center gap-1.5">
-            <li>
-              <Link href="/" className="hover:underline">
-                Inicio
-              </Link>
-            </li>
-            <li aria-hidden>/</li>
-            <li>
-              <Link href={main ? `/propiedades/${main.operation === "sale" ? "venta" : main.operation === "rent" ? "alquiler" : ""}`.replace(/\/$/, "") : "/propiedades"} className="hover:underline">
-                {main ? `Propiedades en ${OPERATION_NOUN[main.operation]}` : "Propiedades"}
-              </Link>
-            </li>
-            <li aria-hidden>/</li>
-            <li aria-current="page" className="tabular">
-              Cód. {p.code}
-            </li>
+            {crumbs.map((c, i) => (
+              <li key={c.path} className="flex items-center gap-1.5">
+                {i > 0 ? <span aria-hidden>/</span> : null}
+                {i < crumbs.length - 1 ? (
+                  <Link href={c.path} className="hover:underline">
+                    {c.name}
+                  </Link>
+                ) : (
+                  <span aria-current="page" className="tabular">
+                    {c.name}
+                  </span>
+                )}
+              </li>
+            ))}
           </ol>
         </nav>
 

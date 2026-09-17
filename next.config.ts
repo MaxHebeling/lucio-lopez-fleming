@@ -45,15 +45,26 @@ const nextConfig: NextConfig = {
       ...(storagePublic ? [{ protocol: storagePublic.protocol.replace(":", "") as "https", hostname: storagePublic.hostname }] : []),
     ],
   },
+  // La barra final se resuelve en redirects() (abajo) y no con el 308 implícito de Next, que corre antes que todo:
+  // así /company/ va a /empresa en un solo salto en lugar de 308 → 301.
+  skipTrailingSlashRedirect: true,
   // URLs del sitio anterior (Adinco) → sitio nuevo. 301 explícito: es lo que esperan buscadores y portales.
   // Las fichas /luciolopez-{código} se resuelven contra property_redirects en /api/site/legacy/[code].
   async redirects() {
+    const legacy = [
+      { source: "/properties", destination: "/propiedades" },
+      { source: "/properties/operation/forSale", destination: "/propiedades/venta" },
+      { source: "/properties/operation/forRent", destination: "/propiedades/alquiler" },
+      { source: "/company", destination: "/empresa" },
+      { source: "/contact", destination: "/contacto" },
+    ];
     return [
-      { source: "/properties", destination: "/propiedades", statusCode: 301 },
-      { source: "/properties/operation/forSale", destination: "/propiedades/venta", statusCode: 301 },
-      { source: "/properties/operation/forRent", destination: "/propiedades/alquiler", statusCode: 301 },
-      { source: "/company", destination: "/empresa", statusCode: 301 },
-      { source: "/contact", destination: "/contacto", statusCode: 301 },
+      ...legacy.flatMap((r) => [
+        { ...r, statusCode: 301 as const },
+        { source: `${r.source}/`, destination: r.destination, statusCode: 301 as const },
+      ]),
+      // Equivalente al redirect implícito de Next (sin trailingSlash): /ruta/ → /ruta, 308.
+      { source: "/:path+/", destination: "/:path+", permanent: true },
     ];
   },
   async rewrites() {
