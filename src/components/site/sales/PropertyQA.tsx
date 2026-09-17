@@ -117,7 +117,7 @@ export function PropertyQA({ code, suggestions, visitable }: { code: number; sug
             <label htmlFor={`${id}-q`} className="sr-only">
               Tu pregunta sobre esta propiedad
             </label>
-            <input id={`${id}-q`} className="concierge-input" value={question} onChange={(e) => setQuestion(e.target.value)} minLength={3} maxLength={300} placeholder="Por ejemplo: ¿tiene calefacción?" autoComplete="off" />
+            <input id={`${id}-q`} className="concierge-input" value={question} onChange={(e) => setQuestion(e.target.value)} minLength={3} maxLength={300} placeholder="Por ejemplo: ¿tiene calefacción?" autoComplete="off" style={{ outline: "none" }} />
             <button type="submit" disabled={pending || question.trim().length < 3} className="btn btn-ink concierge-submit">
               {pending ? "Buscando…" : "Preguntar"}
             </button>

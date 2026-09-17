@@ -184,7 +184,7 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
         ) : null}
       </header>
 
-      {conciergeOn ? <ConciergeSearch variant="listing" page="listing" /> : null}
+      {conciergeOn ? <ConciergeSearch variant="listing" page="listing" currentHref={`${preset.basePath}${filtersToQuery({ ...f, pagina: 1, orden: undefined }, omit)}`} /> : null}
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[18.5rem_1fr] xl:grid-cols-[20rem_1fr]">
         {/* Un solo panel: columna lateral en desktop y diálogo a pantalla completa en mobile (sin JS, bloque visible). */}

@@ -8,8 +8,8 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    min-height: 52px;
-    padding: 0.35rem 0.35rem 0.35rem 1rem;
+    min-height: 48px;
+    padding: 0.25rem 0.25rem 0.25rem 1rem;
     border-radius: 999px;
     border: 1px solid var(--line);
     background: var(--white);
@@ -36,12 +36,12 @@
   .concierge-input::placeholder {
     color: var(--stone);
   }
-  .concierge-input:focus {
-    outline: none;
+  .concierge-input::-webkit-search-cancel-button {
+    appearance: none;
   }
   .concierge-submit {
     flex: none;
-    min-height: 42px;
+    min-height: 40px;
     padding: 0 1.1rem;
     font-size: 0.875rem;
   }

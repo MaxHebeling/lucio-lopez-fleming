@@ -19,7 +19,7 @@ const PLACEHOLDER = "Contanos qué buscás: «casa con jardín hasta USD 180.000
  * que entendió (para explicarlo en el listado y, si la persona envía una consulta, sugerir su perfil) y navega.
  * Nunca muestra resultados inventados: los resultados son el listado real.
  */
-export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"; page: "home" | "listing" }) {
+export function ConciergeSearch({ variant, page, currentHref }: { variant: "hero" | "listing"; page: "home" | "listing"; /** URL canónica del listado actual (la arma el servidor). */ currentHref?: string }) {
   const router = useRouter();
   const id = useId();
   const [typed, setText] = useState<string | null>(null);
@@ -31,14 +31,14 @@ export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"
   // En el listado: si la URL actual es la que armó la última interpretación de esta pestaña, se explica.
   const storedRaw = useSyncExternalStore(noopSubscribe, conciergeSnapshot, () => "");
   const restored = useMemo(() => {
-    if (page !== "listing" || !storedRaw) return null;
+    if (page !== "listing" || !storedRaw || !currentHref) return null;
     try {
       const stored = JSON.parse(storedRaw) as StoredConcierge;
-      return stored.href === `${window.location.pathname}${window.location.search}` ? stored : null;
+      return stored.href === currentHref ? stored : null;
     } catch {
       return null;
     }
-  }, [page, storedRaw]);
+  }, [page, storedRaw, currentHref]);
   const text = typed ?? restored?.text ?? "";
   const shown = result ?? (restored?.response as Ok | undefined) ?? null;
 
@@ -100,6 +100,8 @@ export function ConciergeSearch({ variant, page }: { variant: "hero" | "listing"
           placeholder={PLACEHOLDER}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          // El foco se indica en todo el control (:focus-within), no en el campo interno.
+          style={{ outline: "none" }}
         />
         <button type="submit" disabled={pending} className={`btn concierge-submit ${variant === "hero" ? "btn-light" : "btn-ink"}`}>
           {pending ? "Interpretando…" : "Buscar"}

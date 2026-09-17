@@ -114,7 +114,7 @@ export default async function HomePage() {
         search={
           <>
             {conciergeOn ? (
-              <div className="mb-3">
+              <div className="mb-2">
                 <ConciergeSearch variant="hero" page="home" />
               </div>
             ) : null}
