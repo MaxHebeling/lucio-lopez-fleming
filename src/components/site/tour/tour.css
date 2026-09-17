@@ -664,6 +664,12 @@ button.tour-plan-point:hover .tour-plan-name {
   background: var(--ink);
   color: var(--paper);
 }
+/* El ambiente actual queda por encima de los puntos vecinos para que «Estás aquí» nunca quede tapado. */
+.tour-plan-point[data-current],
+.tour-plan-point:hover,
+.tour-plan-point:focus-visible {
+  z-index: 2;
+}
 .tour-plan-point[data-current] .tour-plan-dot {
   background: var(--brick);
   animation: tour-pulse 1.8s var(--ease-in-out) infinite;

@@ -5,11 +5,16 @@
  * en el script (necesita disco).
  */
 import { z } from "zod";
-import { isEquirectangular, isPitchInRange, isYawInRange } from "./model";
+import { isEquirectangular, isPitchInRange, normalizeYaw } from "./model";
 
 const file = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,120}\.(jpg|jpeg|png|webp|svg)$/, "Nombre de archivo inválido (minúsculas, sin rutas)");
 const slug = z.string().regex(/^[a-z0-9-]{1,60}$/, "Slug inválido");
-const yaw = z.number().refine(isYawInRange, "yaw fuera de (−π, π]");
+/** Tolera el redondeo de π en manifiestos exportados (3.1416) y lo normaliza; valores claramente fuera de rango se rechazan. */
+const YAW_ROUNDING = 1e-3;
+const yaw = z
+  .number()
+  .refine((v) => Number.isFinite(v) && v > -Math.PI - YAW_ROUNDING && v <= Math.PI + YAW_ROUNDING, "yaw fuera de (−π, π]")
+  .transform(normalizeYaw);
 const pitch = z.number().refine(isPitchInRange, "pitch fuera de [−π/2, π/2]");
 const unit = z.number().min(0).max(1);
 

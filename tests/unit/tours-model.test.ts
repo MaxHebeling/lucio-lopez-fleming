@@ -184,6 +184,17 @@ describe("manifiesto del tour demo", () => {
     }
   });
   const clone = () => JSON.parse(JSON.stringify(real));
+  it("acepta π redondeado (3.1416) y lo normaliza a (−π, π]", () => {
+    const m = clone();
+    m.scenes[0].initialYaw = 3.1416;
+    m.scenes[0].hotspots[0].yaw = -3.1416;
+    const r = parseTourManifest(m);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.manifest.scenes[0]!.initialYaw).toBeGreaterThan(-Math.PI);
+    expect(r.manifest.scenes[0]!.initialYaw).toBeLessThanOrEqual(Math.PI);
+    expect(r.manifest.scenes[0]!.hotspots[0]!.yaw).toBeCloseTo(Math.PI - 0.0000073, 4);
+  });
   it("rechaza slugs repetidos, destinos inexistentes, 2:1 inválido y ángulos fuera de rango", () => {
     const m = clone();
     m.scenes[1].slug = "entrada";

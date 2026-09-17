@@ -27,10 +27,12 @@ export const DEMO_PROPERTY = {
   description:
     "Propiedad FICTICIA creada para demostrar el recorrido virtual 360°. No está en venta ni en alquiler, no tiene dirección ni precio y sus datos son de ejemplo. Las imágenes son renders 3D de una residencia que no existe.",
   typeKey: "casa",
+  // Coherentes con el plano demostrativo (plano.svg): living, comedor y 3 dormitorios; baño principal + toilette.
   rooms: 5,
-  bedrooms: 1,
+  bedrooms: 3,
   bathrooms: 1,
-  coveredAreaM2: "180",
+  toilets: 1,
+  coveredAreaM2: "290",
   landAreaM2: "900",
 } as const;
 
@@ -82,6 +84,7 @@ export async function seedDemoTour(db: Database, opts: { dir: string; publicPref
       rooms: DEMO_PROPERTY.rooms,
       bedrooms: DEMO_PROPERTY.bedrooms,
       bathrooms: DEMO_PROPERTY.bathrooms,
+      toilets: DEMO_PROPERTY.toilets,
       covered_area_m2: DEMO_PROPERTY.coveredAreaM2,
       land_area_m2: DEMO_PROPERTY.landAreaM2,
       hide_exact_address: true,

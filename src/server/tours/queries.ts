@@ -202,6 +202,7 @@ export type DemoShowcase = {
     rooms: number | null;
     bedrooms: number | null;
     bathrooms: number | null;
+    toilets: number | null;
     garages: number | null;
     coveredAreaM2: number | null;
     landAreaM2: number | null;
@@ -215,7 +216,7 @@ export async function getDemoShowcase(db: Executor): Promise<DemoShowcase | null
   const p = await db
     .selectFrom("properties as p")
     .innerJoin("property_types as t", "t.key", "p.type_key")
-    .select(["p.id", "p.code", "p.title", "p.description", "t.name as type_name", "p.rooms", "p.bedrooms", "p.bathrooms", "p.garages", "p.covered_area_m2", "p.land_area_m2", "p.total_area_m2"])
+    .select(["p.id", "p.code", "p.title", "p.description", "t.name as type_name", "p.rooms", "p.bedrooms", "p.bathrooms", "p.toilets", "p.garages", "p.covered_area_m2", "p.land_area_m2", "p.total_area_m2"])
     .where("p.slug", "=", DEMO_PROPERTY_SLUG)
     .where("p.is_demo", "=", true)
     .where("p.deleted_at", "is", null)
@@ -234,6 +235,7 @@ export async function getDemoShowcase(db: Executor): Promise<DemoShowcase | null
       rooms: p.rooms,
       bedrooms: p.bedrooms,
       bathrooms: p.bathrooms,
+      toilets: p.toilets,
       garages: p.garages,
       coveredAreaM2: num(p.covered_area_m2),
       landAreaM2: num(p.land_area_m2),

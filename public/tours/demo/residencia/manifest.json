@@ -8,8 +8,8 @@
     "floorPlanViewBox": [
       0,
       0,
-      1000,
-      720
+      298.0,
+      291.5
     ],
     "startScene": "entrada",
     "guided": [
@@ -30,21 +30,28 @@
       "panorama": "entrada-360.jpg",
       "preview": "entrada-preview.jpg",
       "thumbnail": "entrada-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": -0.049,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0.0,
       "initialPitch": -0.05,
       "plan": {
-        "x": 0.48,
-        "y": 0.872
+        "x": 0.4245,
+        "y": 0.8731
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "living",
           "label": "Ir al living",
-          "yaw": -0.049,
-          "pitch": -0.12
+          "yaw": 0.0,
+          "pitch": -0.341
+        },
+        {
+          "type": "info",
+          "label": "Puerta pivotante",
+          "content": "Puerta de entrada de roble macizo con giro pivotante.",
+          "yaw": 3.1416,
+          "pitch": -0.0997
         }
       ]
     },
@@ -54,56 +61,63 @@
       "panorama": "living-360.jpg",
       "preview": "living-preview.jpg",
       "thumbnail": "living-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 0.517,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0.7,
+      "initialPitch": -0.06,
       "plan": {
-        "x": 0.47,
-        "y": 0.59
+        "x": 0.3691,
+        "y": 0.7118
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "entrada",
-          "label": "Ir a la entrada",
-          "yaw": 3.092,
-          "pitch": -0.12
+          "label": "Volver a la entrada",
+          "yaw": 2.5088,
+          "pitch": -0.3266
         },
         {
           "type": "scene",
           "target": "cocina",
           "label": "Ir a la cocina",
-          "yaw": 1.373,
-          "pitch": -0.12
+          "yaw": -1.8797,
+          "pitch": -0.3403
         },
         {
           "type": "scene",
           "target": "comedor",
           "label": "Ir al comedor",
-          "yaw": 1.784,
-          "pitch": -0.12
+          "yaw": -0.7071,
+          "pitch": -0.2917
         },
         {
           "type": "scene",
           "target": "pasillo",
           "label": "Ir al pasillo",
-          "yaw": -1.146,
-          "pitch": -0.12
+          "yaw": 1.746,
+          "pitch": -0.2022
         },
         {
           "type": "scene",
           "target": "galeria",
-          "label": "Ir a la galería",
-          "yaw": 0.517,
-          "pitch": -0.12
+          "label": "Salir a la galería",
+          "yaw": -0.1153,
+          "pitch": -0.2425
         },
         {
           "type": "info",
           "label": "Hogar a leña",
-          "content": "Hogar a leña revestido en piedra, con leñero lateral. Dato ficticio de la demostración.",
-          "yaw": -0.52,
-          "pitch": -0.08
+          "content": "Hogar lineal empotrado en el muro de piedra natural.",
+          "yaw": 1.1462,
+          "pitch": -0.1148
+        },
+        {
+          "type": "info",
+          "label": "Vista al jardín",
+          "content": "Ventanales de piso a techo que se abren a la galería.",
+          "yaw": 0.7352,
+          "pitch": 0.0552
         }
       ]
     },
@@ -113,28 +127,28 @@
       "panorama": "cocina-360.jpg",
       "preview": "cocina-preview.jpg",
       "thumbnail": "cocina-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 3.141,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": -1.1,
+      "initialPitch": -0.1,
       "plan": {
-        "x": 0.77,
-        "y": 0.507
+        "x": 0.2433,
+        "y": 0.8285
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "living",
-          "label": "Ir al living",
-          "yaw": -1.768,
-          "pitch": -0.12
+          "label": "Volver al living",
+          "yaw": 0.486,
+          "pitch": -0.3179
         },
         {
           "type": "info",
           "label": "Isla de cocina",
-          "content": "Isla con mesada de granito y desayunador para cuatro personas. Dato ficticio de la demostración.",
-          "yaw": 0.35,
-          "pitch": -0.3
+          "content": "Isla central con mesada de piedra clara y banquetas.",
+          "yaw": -1.124,
+          "pitch": -0.2217
         }
       ]
     },
@@ -144,28 +158,28 @@
       "panorama": "comedor-360.jpg",
       "preview": "comedor-preview.jpg",
       "thumbnail": "comedor-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 0.4,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": -0.7,
+      "initialPitch": -0.08,
       "plan": {
-        "x": 0.77,
-        "y": 0.681
+        "x": 0.245,
+        "y": 0.6501
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "living",
-          "label": "Ir al living",
-          "yaw": -1.357,
-          "pitch": -0.12
+          "label": "Volver al living",
+          "yaw": 0.9576,
+          "pitch": -0.36
         },
         {
           "type": "info",
-          "label": "Luz de la mañana",
-          "content": "Ventanal orientado al este: luz natural directa hasta el mediodía. Dato ficticio de la demostración.",
-          "yaw": 1.4,
-          "pitch": 0.05
+          "label": "Mesa para seis",
+          "content": "Comedor integrado con vista a la galería y al jardín.",
+          "yaw": -1.3143,
+          "pitch": -0.2185
         }
       ]
     },
@@ -175,97 +189,97 @@
       "panorama": "pasillo-360.jpg",
       "preview": "pasillo-preview.jpg",
       "thumbnail": "pasillo-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": -1.014,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 1.45,
       "initialPitch": -0.05,
       "plan": {
-        "x": 0.26,
-        "y": 0.458
+        "x": 0.6393,
+        "y": 0.7461
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "living",
-          "label": "Ir al living",
-          "yaw": 1.996,
-          "pitch": -0.12
+          "label": "Volver al living",
+          "yaw": -1.5708,
+          "pitch": -0.3431
         },
         {
           "type": "scene",
           "target": "dormitorio",
-          "label": "Ir al dormitorio",
-          "yaw": -1.014,
-          "pitch": -0.12
+          "label": "Suite principal",
+          "yaw": 1.2661,
+          "pitch": -0.2685
         }
       ]
     },
     {
       "slug": "dormitorio",
-      "name": "Dormitorio",
+      "name": "Dormitorio principal",
       "panorama": "dormitorio-360.jpg",
       "preview": "dormitorio-preview.jpg",
       "thumbnail": "dormitorio-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 3.141,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": -2.4,
+      "initialPitch": -0.1,
       "plan": {
-        "x": 0.122,
-        "y": 0.339
+        "x": 0.7248,
+        "y": 0.5575
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "pasillo",
-          "label": "Ir al pasillo",
-          "yaw": 2.128,
-          "pitch": -0.12
+          "label": "Volver al pasillo",
+          "yaw": 2.8181,
+          "pitch": -0.2552
         },
         {
           "type": "scene",
           "target": "bano",
           "label": "Ir al baño",
-          "yaw": 3.141,
-          "pitch": -0.12
+          "yaw": 2.1094,
+          "pitch": -0.3436
         },
         {
           "type": "info",
-          "label": "Placard a medida",
-          "content": "Placard de piso a techo con puertas corredizas. Dato ficticio de la demostración.",
-          "yaw": -1.35,
-          "pitch": 0
+          "label": "Vista al jardín",
+          "content": "Ventanal de piso a techo con cortinas de lino.",
+          "yaw": -0.5934,
+          "pitch": 0.0193
         }
       ]
     },
     {
       "slug": "bano",
-      "name": "Baño",
+      "name": "Baño principal",
       "panorama": "bano-360.jpg",
       "preview": "bano-preview.jpg",
       "thumbnail": "bano-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 0.4,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0.3,
+      "initialPitch": -0.08,
       "plan": {
-        "x": 0.122,
-        "y": 0.604
+        "x": 0.8507,
+        "y": 0.5866
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "dormitorio",
-          "label": "Ir al dormitorio",
-          "yaw": 0,
-          "pitch": -0.12
+          "label": "Volver a la suite",
+          "yaw": -1.7879,
+          "pitch": -0.36
         },
         {
           "type": "info",
-          "label": "Ducha con mampara",
-          "content": "Ducha a ras del piso con mampara de vidrio templado. Dato ficticio de la demostración.",
-          "yaw": 1.2,
-          "pitch": -0.2
+          "label": "Bañera exenta",
+          "content": "Bañera exenta junto a la ventana con vista al verde.",
+          "yaw": 0.2285,
+          "pitch": -0.3987
         }
       ]
     },
@@ -275,35 +289,35 @@
       "panorama": "galeria-360.jpg",
       "preview": "galeria-preview.jpg",
       "thumbnail": "galeria-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": 0.282,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 0.3,
+      "initialPitch": -0.04,
       "plan": {
-        "x": 0.59,
-        "y": 0.297
+        "x": 0.3339,
+        "y": 0.482
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "living",
-          "label": "Ir al living",
-          "yaw": -2.624,
-          "pitch": -0.12
+          "label": "Volver al living",
+          "yaw": 2.8906,
+          "pitch": -0.3594
         },
         {
           "type": "scene",
           "target": "piscina",
           "label": "Ir a la piscina",
-          "yaw": 0.282,
-          "pitch": -0.12
+          "yaw": -0.5296,
+          "pitch": -0.3154
         },
         {
           "type": "info",
-          "label": "Parrilla",
-          "content": "Parrilla de ladrillo con mesada y bacha. Dato ficticio de la demostración.",
-          "yaw": 1.5,
-          "pitch": -0.15
+          "label": "Galería cubierta",
+          "content": "Galería con cielorraso de listones de madera y living exterior.",
+          "yaw": 1.5592,
+          "pitch": -0.1839
         }
       ]
     },
@@ -313,34 +327,28 @@
       "panorama": "piscina-360.jpg",
       "preview": "piscina-preview.jpg",
       "thumbnail": "piscina-thumb.jpg",
-      "width": 2048,
-      "height": 1024,
-      "initialYaw": -2.859,
-      "initialPitch": -0.05,
+      "width": 4096,
+      "height": 2048,
+      "initialYaw": 1.5,
+      "initialPitch": -0.04,
       "plan": {
-        "x": 0.63,
-        "y": 0.106
+        "x": 0.2131,
+        "y": 0.3276
       },
       "hotspots": [
         {
           "type": "scene",
           "target": "galeria",
-          "label": "Ir a la galería",
-          "yaw": -2.859,
-          "pitch": -0.12
+          "label": "Volver a la galería",
+          "yaw": 2.2823,
+          "pitch": -0.3273
         },
         {
           "type": "info",
-          "label": "Piscina climatizada",
-          "content": "Piscina de 8 × 4 m con solárium. Dato ficticio de la demostración.",
-          "yaw": 1,
-          "pitch": -0.35
-        },
-        {
-          "type": "cta",
-          "label": "¿Te interesa una casa así?",
-          "yaw": -0.9,
-          "pitch": 0.02
+          "label": "Solárium",
+          "content": "Reposeras sobre solado de piedra y vista a los cerros.",
+          "yaw": 0.7293,
+          "pitch": -0.1158
         }
       ]
     }

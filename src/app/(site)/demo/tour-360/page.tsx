@@ -70,7 +70,7 @@ export default async function DemoTourPage() {
           </div>
           <div className="flex flex-col gap-2 lg:col-span-4 lg:items-end lg:text-right">
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-2">{p.title}</p>
-            <p className="display text-3xl">Sin precio · ficticia</p>
+            <p className="display text-3xl">Propiedad ficticia</p>
           </div>
         </header>
       </div>
@@ -104,6 +104,7 @@ export default async function DemoTourPage() {
               <Fact label="Ambientes" value={p.rooms} />
               <Fact label="Dormitorios" value={p.bedrooms} />
               <Fact label="Baños" value={p.bathrooms} />
+              <Fact label="Toilettes" value={p.toilets} />
               <Fact label="Escenas 360°" value={tour.scenes.length} />
             </dl>
           </section>
