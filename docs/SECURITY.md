@@ -50,6 +50,20 @@ en el proveedor). Quien ya tuvo la URL puede seguir viéndola hasta que la foto 
 Si hiciera falta más (p. ej. obras sin anunciar), la alternativa es subir a privado y copiar al público al publicar
 (`property.published`), con el costo de mover objetos al despublicar.
 
+## Tours virtuales 360° y analítica del sitio (2026-09)
+
+- **Embeds externos**: iframe solo con host exacto de la allowlist por proveedor (`my.matterport.com`, `kuula.co`,
+  `storage.net-fs.com` de 3DVista), https, `sandbox` mínimo y `allow` acotado; cualquier otro host o proveedor «otro» se
+  abre en pestaña nueva (`rel="noopener noreferrer"`). La CSP `frame-src` suma solo esos hosts; `connect-src` suma el
+  origen público del storage (el visor descarga las panorámicas con fetch). Validación en servidor, checks SQL y tests
+  con `javascript:`, `data:`, http y hosts parecidos.
+- **Subidas del editor**: mismas defensas que las fotos (firma real, tamaño, píxeles máximos, sin EXIF/GPS); planos solo
+  raster (no se aceptan SVG de usuarios). Sin storage configurado la subida se rechaza antes de procesar.
+- **Propiedad demo**: la base impide publicarla; excluida de consultas públicas, conteos y vínculos comerciales.
+- **Analítica first-party** (`site_events`): sin IP, user agent, cookies ni datos personales; clave de sesión aleatoria
+  por pestaña; allowlist y tamaño acotado; rate limit por IP con hash (la IP en claro no se guarda) y por sesión; respeta
+  Do Not Track / Global Privacy Control; retención 13 meses.
+
 ## Reportar una vulnerabilidad
 
 Escribir a la dirección técnica del proyecto (no abrir issue público). Se responde en 72 h.

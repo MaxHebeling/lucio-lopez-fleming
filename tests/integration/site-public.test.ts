@@ -339,7 +339,17 @@ describe("DTOs públicos de propiedades", () => {
     const { getAction } = await import("@/server/automation/actions");
     await import("@/server/site/revalidate");
     const defs = await testDb().selectFrom("automation_definitions").select(["trigger_event", "is_enabled", "is_system", "actions"]).where("key", "like", "site_revalidate_%").execute();
-    expect(defs.map((d) => d.trigger_event).sort()).toEqual(["property.price_changed", "property.published", "property.status_changed", "property.unpublished", "property.updated"]);
+    expect(defs.map((d) => d.trigger_event).sort()).toEqual([
+      "property.price_changed",
+      "property.published",
+      "property.status_changed",
+      "property.unpublished",
+      "property.updated",
+      // Tours virtuales (0171): publicar, despublicar o editar un tour también invalida el sitio.
+      "virtual_tour.published",
+      "virtual_tour.unpublished",
+      "virtual_tour.updated",
+    ]);
     expect(defs.every((d) => d.is_enabled && d.is_system && JSON.stringify(d.actions) === '[{"type":"revalidate_public_site"}]')).toBe(true);
     expect(getAction("revalidate_public_site")).toBeTypeOf("function");
   });

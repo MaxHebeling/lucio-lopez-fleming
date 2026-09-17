@@ -101,6 +101,16 @@ Mobile: sin GSAP ni Lenis; revelados por IntersectionObserver y CSS.
   pedir visita, compartir, similares reales.
 - Todo formulario: validación en servidor, rate limit, honeypot, idempotencia, confirmación clara, crea lead en el CRM.
 
+### Tour virtual 360° (fichas con tour y demo)
+
+- Solo con tour publicado aparecen las pestañas **Fotos · Tour 360° · Plano · Video** (las disponibles); sin tour la
+  ficha no cambia. La portada del tour usa la misma escala tipográfica (display) y la foto a sangre en tinta.
+- Capa inmersiva en tinta con texto papel y acento ladrillo: escena en Instrument Serif, herramientas en píldoras de
+  vidrio, hotspots de círculo fino. Entrada ≈ 560 ms (la foto escala y la UI se retira) + fundido de la portada; cambio de
+  escena con fundido + desenfoque leve (≈ 420 ms); todo desactivado con `prefers-reduced-motion`.
+- El JS del tour (PSV + three) se carga por intención o al entrar; nunca en el bundle inicial. Detalle, CRM, analítica
+  y seguridad: `docs/VIRTUAL_TOURS.md`. Demo pública ficticia: `/demo/tour-360` (noindex, fuera del sitemap).
+
 ## 7. SEO
 
 - Metadata por página, canonical, OpenGraph con foto real, JSON-LD (`RealEstateAgent` para la empresa con sus dos

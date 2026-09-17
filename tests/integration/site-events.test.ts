@@ -114,6 +114,11 @@ describe("site_events", () => {
         (select avg((props->>'durationMs')::bigint)::float from site_events where tour_id = ${tourId} and name = 'virtual_tour_closed' and props ? 'durationMs') as avg_ms,
         (select count(distinct session_key)::int from site_events where tour_id = ${tourId} and name = 'virtual_tour_scene_viewed' and scene_slug in ('galeria', 'piscina')) as reached_garden,
         (select count(*)::int from site_events where tour_id = ${tourId} and name = 'virtual_tour_cta_clicked' and props->>'cta' = 'visit') as visit_clicks`.execute(db);
+    await sql`select percentile_cont(0.5) within group (order by (props->>'durationMs')::bigint) / 1000 as mediana_s, avg((props->>'durationMs')::bigint) / 1000 as promedio_s
+      from site_events where tour_id = ${tourId} and name = 'virtual_tour_closed' and props ? 'durationMs'`.execute(db);
+    const top = await sql<{ scene_slug: string; sesiones: number }>`select scene_slug, count(distinct session_key)::int as sesiones
+      from site_events where tour_id = ${tourId} and name = 'virtual_tour_scene_viewed' group by scene_slug order by sesiones desc`.execute(db);
+    expect(top.rows[0]?.scene_slug).toBe("living");
     expect(q.rows[0]!.opened).toBeGreaterThan(0);
   });
 });
