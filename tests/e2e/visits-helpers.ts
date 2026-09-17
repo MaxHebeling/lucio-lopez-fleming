@@ -94,5 +94,6 @@ export async function shot(page: Page, name: string) {
   const dir = process.env.VISITS_SHOTS_DIR;
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
+  await page.waitForLoadState("networkidle");
   await page.screenshot({ path: resolve(dir, `${name}.png`), fullPage: true });
 }

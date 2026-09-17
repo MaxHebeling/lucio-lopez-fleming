@@ -30,6 +30,7 @@ export const metadata: Metadata = { title: "Visita" };
 
 const dayFmt = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Argentina/Salta" });
 const hhmm = (d: Date) => utcToLocalInput(d).slice(11);
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function eventDetail(kind: VisitEventKind, data: Record<string, unknown>): string | null {
   const reason = typeof data.reason === "string" ? (CHECKIN_REASON_LABEL[data.reason as CheckinReason] ?? null) : null;
@@ -89,7 +90,7 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
       </nav>
 
       <header className="flex flex-col gap-2">
-        <p className="text-sm capitalize text-stone">{dayFmt.format(v.starts_at)}</p>
+        <p className="text-sm text-stone">{capitalize(dayFmt.format(v.starts_at))}</p>
         <h1 className="text-3xl font-bold tabular-nums tracking-tight">
           {hhmm(v.starts_at)} – {hhmm(v.ends_at)}
         </h1>
@@ -201,6 +202,8 @@ export default async function VisitPage({ params }: PageProps<"/crm/mis-visitas/
           </Card>
           <Card title="Seguimiento">
             <FollowUpPanel
+              // Remonta al cambiar la sugerencia (p. ej. al confirmar el informe con otro interés).
+              key={utcToLocalInput(d.report?.follow_up_at ?? d.suggestedFollowUpAt)}
               appointmentId={v.id}
               reportConfirmed={d.report?.status === "confirmed"}
               suggestedLocal={utcToLocalInput(d.report?.follow_up_at ?? d.suggestedFollowUpAt)}

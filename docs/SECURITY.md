@@ -64,6 +64,21 @@ Si hiciera falta más (p. ej. obras sin anunciar), la alternativa es subir a pri
   por pestaña; allowlist y tamaño acotado; rate limit por IP con hash (la IP en claro no se guarda) y por sesión; respeta
   Do Not Track / Global Privacy Control; retención 13 meses.
 
+## Núcleo operativo de visitas (2026-09)
+
+- **Alcance**: `visits.operate` ve y opera solo las visitas asignadas (crearla no alcanza); `visits.monitor` /
+  `agenda.read_all` ven todas **de su organización**. Fuera de alcance = 404 en páginas, acciones y API. Registrar
+  presencia (salgo, check-in, iniciar) solo lo hace el agente asignado, aunque sea admin.
+- **Link del cliente**: token de 32 bytes, en base solo SHA-256, rotación/revocación inmediata, vencimiento por tiempo,
+  respuesta 404 idéntica para cualquier caso negativo, rate limit por IP (general y de fallos), `noindex`, `no-store`,
+  `Referrer-Policy: no-referrer`, fuera del sitemap. DTO mínimo: sin dirección exacta si está oculta, sin teléfonos del
+  agente salvo perfil público, sin ubicación, sin ids internos.
+- **Ubicación**: una lectura con consentimiento, solo en la franja de la visita; coordenadas solo en
+  `appointment_checkins` con retención de 30 días; nunca en auditoría, eventos, timeline ni notificaciones (ver
+  docs/operations/PRIVACY_LOCATION.md). `Permissions-Policy` habilita geolocalización y micrófono solo en `/crm/mis-visitas`.
+- **Integridad**: transiciones validadas en servidor y por trigger; timeline append-only; idempotencia en transiciones,
+  check-ins (clave por intento), seguimiento (clave determinística) y links (índice único de link activo).
+
 ## Reportar una vulnerabilidad
 
 Escribir a la dirección técnica del proyecto (no abrir issue público). Se responde en 72 h.

@@ -115,6 +115,12 @@ test("mobile 390: flujo completo del agente y link del cliente en vivo", async (
   // Seguimiento (sugerido por interés alto)
   const follow = page.getByRole("form", { name: "Crear tarea de seguimiento" });
   await expect(follow.getByLabel("Fecha y hora del seguimiento")).not.toHaveValue("");
+  // Interés alto → sugerido 24 h después de finalizar (no 48 h de la sugerencia sin interés)
+  const due = await follow.getByLabel("Fecha y hora del seguimiento").inputValue();
+  const finished = (await pool.query<{ finished_at: Date }>("select finished_at from appointments where id = $1", [visit.id])).rows[0]!.finished_at;
+  const hoursAhead = (new Date(`${due}:00-03:00`).getTime() - finished.getTime()) / 3_600_000;
+  expect(hoursAhead).toBeGreaterThan(23.9);
+  expect(hoursAhead).toBeLessThan(24.2);
   await follow.getByRole("button", { name: "Crear tarea de seguimiento" }).click();
   await expect(page.getByRole("paragraph").filter({ hasText: /^Tarea de seguimiento creada$/ })).toBeVisible();
   const task = await pool.query<{ kind: string; assigned_user_id: string }>("select t.kind, t.assigned_user_id from appointments a join tasks t on t.id = a.follow_up_task_id where a.id = $1", [visit.id]);

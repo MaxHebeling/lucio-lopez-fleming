@@ -12,7 +12,7 @@ type Status = { phase: LivePhase | "closed"; checkedInAt: string | null };
 
 const POLL_MS = 12_000;
 const MAX_BACKOFF_MS = 120_000;
-const timeFmt = new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Salta" });
+const timeFmt = new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Salta" });
 
 const STEPS: Array<{ phase: LivePhase; label: string }> = [
   { phase: "scheduled", label: "Programada" },

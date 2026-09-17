@@ -9,7 +9,7 @@ import { ClientLiveStatus } from "@/components/visits/client-live-status";
 export const dynamic = "force-dynamic";
 
 const dayFmt = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Argentina/Salta" });
-const timeFmt = new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Salta" });
+const timeFmt = new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Salta" });
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function Brand() {
@@ -72,7 +72,7 @@ export default async function ClientVisitPage({ params }: PageProps<"/visita/[to
             </p>
             <ContactActions contact={view.contact} />
           </article>
-          <p className="vx-foot">Este enlace es personal y vence en poco tiempo. No guarda ni muestra ubicaciones.</p>
+          <p className="vx-foot">Este enlace es personal y vence en poco tiempo. Nunca muestra la ubicación de tu asesor.</p>
         </div>
       </main>
     );

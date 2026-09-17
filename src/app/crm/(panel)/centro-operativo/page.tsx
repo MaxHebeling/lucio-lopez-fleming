@@ -8,7 +8,7 @@ import { getOpsBoard } from "@/server/visits/queries";
 import { listStaffUsers } from "@/server/crm/lookups";
 import { addDays, isLocalDate, localDate, utcToLocalInput } from "@/server/crm/time";
 import { ALERT_LABEL, type AlertKind } from "@/server/visits/rules";
-import { visitPhase, VISIT_PHASE_LABEL, type VisitPhase } from "@/server/visits/state";
+import { visitPhase, type VisitPhase } from "@/server/visits/state";
 import { Badge, EmptyState, PageHeader, Select, Table, buttonClass, cx } from "@/components/ui";
 import { flatParams } from "@/components/crm/pagination";
 import { CheckinBadge, VisitStatusBadge } from "@/components/visits/visit-badges";
@@ -177,7 +177,7 @@ export default async function OpsCenterPage({ searchParams }: PageProps<"/crm/ce
                         <span className="text-stone">{r.follow_up_task_id ? "Con seguimiento" : "Sin seguimiento"}</span>
                       </span>
                     ) : (
-                      <span className="text-stone">{VISIT_PHASE_LABEL[visitPhase(r.status)]}</span>
+                      <span className="text-stone">—</span>
                     )}
                   </td>
                   <td>

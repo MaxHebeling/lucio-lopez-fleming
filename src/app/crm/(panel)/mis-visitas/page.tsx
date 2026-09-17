@@ -78,7 +78,7 @@ export default async function MyVisitsPage({ searchParams }: PageProps<"/crm/mis
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold tabular-nums leading-none">{hhmm(v.starts_at)}</span>
-                      {view === "proximas" ? <span className="text-sm capitalize text-stone">{dayFmt.format(v.starts_at)}</span> : null}
+                      {view === "proximas" ? <span className="text-sm text-stone">{dayFmt.format(v.starts_at)}</span> : null}
                       <VisitStatusBadge status={v.status} />
                       <CheckinBadge c={v.last_checkin} />
                     </span>
