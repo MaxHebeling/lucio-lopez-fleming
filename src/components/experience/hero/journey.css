@@ -503,6 +503,10 @@
     .jr[data-pinned][data-active-index="0"] .jr-progress,
     .jr[data-pinned][data-active-index="0"] .jr-skip:not(:focus-visible) {
       opacity: 0;
+      pointer-events: none;
+    }
+    .jr[data-pinned] .jr-progress {
+      pointer-events: none;
     }
     .jr[data-pinned] .jr-progress,
     .jr[data-pinned] .jr-skip {

@@ -260,6 +260,7 @@ test("reduced motion: todo visible y sin atributo de movimiento activo", async (
   expect(await page.locator("[data-hero]").evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
   // Recorrido en versión estable: nunca fijado; fila editorial de 3–4 escenas con su texto y el acceso a la ficha.
   const journey = page.locator("[data-journey]");
+  await expect(journey.locator(".jr-scene").first()).toBeAttached();
   await expect(journey).not.toHaveAttribute("data-pinned", "");
   const shown = await journey.locator(".jr-scene").evaluateAll((els) => els.filter((e) => getComputedStyle(e).display !== "none").length);
   expect(shown).toBeGreaterThanOrEqual(3);

@@ -18,9 +18,13 @@
     position: relative;
     background: var(--surface-ink);
   }
+  /* Destino de «Saltar recorrido»: siempre al final del recorrido (en el modo fijado el alto lo da la pista de scroll). */
   .jr-end {
-    display: block;
-    height: 0;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
     outline: none;
   }
   /* La primera sección del home cubre el recorrido como una hoja. */

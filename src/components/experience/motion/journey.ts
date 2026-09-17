@@ -259,6 +259,8 @@ function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement)
 
   const marks: number[] = [0];
   const entries: number[] = [0];
+  /** Momento en que cada escena queda completa (texto incluido): destino del foco con teclado. */
+  const settled: number[] = [0];
   const levelSwitch = new Map<Scene, number>();
   let paperAt = Number.POSITIVE_INFINITY;
   let t = HOLD_START;
@@ -368,6 +370,7 @@ function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement)
       captionIn(s, at + dur * 0.55);
       marks.push(at + dur * 0.5);
     }
+    settled.push(at + dur + 0.05);
     // Profundidad mientras se lee: la foto baja apenas y el texto sube (velocidades distintas).
     tween(inner0, { yPercent: 2 }, { yPercent: -2, duration: dur + HOLD, ease: "none" }, at + dur * 0.4);
 
@@ -441,7 +444,7 @@ function buildJourney({ gsap, ScrollTrigger, lenis }: Engine, root: HTMLElement)
   sync();
 
   // ── Foco con teclado: la escena del control enfocado se trae a la vista.
-  const timeOf = (index: number) => (index === 0 ? 0 : Math.min(tl.duration(), (marks[index] ?? 0) + 0.45));
+  const timeOf = (index: number) => (index === 0 ? 0 : Math.min(tl.duration(), settled[index] ?? 0));
   const onFocusIn = (e: FocusEvent) => {
     const el = e.target;
     if (!(el instanceof Element) || !el.matches(":focus-visible")) return;

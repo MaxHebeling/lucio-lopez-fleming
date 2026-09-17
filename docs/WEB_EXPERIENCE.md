@@ -53,11 +53,12 @@ enseguida: «quiero ver esta casa / escribirles».
 
 Ritmo: IMPACTO → PAUSA → PROPIEDAD → TERRITORIO → SERVICIOS → PROCESO → CONVERSIÓN → CONFIANZA → CIERRE.
 
-1. **Portada de revista** (`CoverHero`) — la foto de la oficina modular (`public/brand/photos/oficina-modular.jpg`,
-   1200 × 1600) es la imagen explícita de la portada: lámina vertical a sangre (derecha en desktop, arriba en mobile)
-   con un ancho máximo de ~1 vez su alto para no estirarla. Titular «Buenos negocios, desde 1974.» por líneas, año de
-   fundación como numeral fantasma detrás de la lámina, CTA «Ver propiedades» y «Quiero vender mi propiedad», buscador
-   en barra (operación · ubicación · tipo · precio). En desktop queda fija y la escena siguiente la cubre como una hoja.
+1. **Portada + recorrido arquitectónico** (`components/experience/hero`, ver §4.1) — la foto de la oficina modular
+   (`public/brand/photos/oficina-modular.jpg`, 1200 × 1600) es la portada y el LCP: lámina vertical protagonista
+   (derecha en desktop, arriba en mobile), titular «Buenos negocios, desde 1974.» por líneas, año de fundación como
+   numeral fantasma, CTA «Ver propiedades» y «Quiero vender mi propiedad», concierge y buscador en barra. Al scrollear,
+   la ventana roja del container se vuelve el portal a un recorrido por una propiedad real (o, si no está disponible,
+   por la inmobiliaria) que termina sobre papel y da paso al manifiesto.
 2. **Manifiesto** (`EditorialManifesto`) — textos reales, se enciende palabra por palabra con el scroll (desktop).
 3. **Destacadas** (`FeaturedEditorial`) — 3 propiedades de `getShowcaseProperties` (≥ 8 fotos no fallidas, destacadas
    del equipo primero), cada una con composición propia: foto protagonista + número, split editorial, localidad gigante
@@ -73,11 +74,90 @@ Ritmo: IMPACTO → PAUSA → PROPIEDAD → TERRITORIO → SERVICIOS → PROCESO 
    empresa, foto real del equipo y oficinas con horarios.
 9. **Recientes** y **Cierre** (`FinalCover`, la foto de la portada reencuadrada sobre el cielo).
 
+## 4.1 Recorrido arquitectónico de la portada
+
+**Idea.** El usuario entra a la marca (la oficina modular) y, al scrollear, atraviesa la ventana roja del container
+hacia una casa real, escena por escena: acceso → entrar → subir → la vista → el exterior → de noche, y la última escena
+se asienta sobre papel como primera hoja del home. La arquitectura es el eje; el scroll conduce todo (scrub, nada de
+autoplay, ni carrusel, ni fundido tras fundido). Las aberturas reales de cada foto (ventana, puerta, arco) son las
+máscaras de las transiciones.
+
+**Propiedad.** Cód. 2605, «Casa en Club de Campo El Tipal» (Salta; dos plantas, 5 dormitorios, 4 baños, 500 m²
+cubiertos según la publicación). Fotos de su publicación (1024 px, no hay más grandes), solo redimensionadas con un
+sharpen leve (`scripts/site/hero-journey-images.ts` → `public/brand/journey/el-tipal-2605/`); nada generado ni
+reescalado. Se evitaron la fachada con portón y la fachada de noche porque muestran la altura de la calle y la
+publicación oculta la dirección exacta.
+
+| # | Escena | Foto (sort_order) | Encuadre | Entra con |
+| --- | --- | --- | --- | --- |
+| 01 | Portada | oficina modular | lámina | — (LCP) |
+| 02 | Acceso · «Casa en El Tipal» | camino a la fachada (04) | stage | `through`: la ventana roja del container |
+| 03 | Planta baja · «Hall y living» | hall con escalera y living (05) | stage | `through`: la puerta en arco de la fachada |
+| 04 | Planta alta · «Dos plantas» | escalera (13) → ventana en arco (40) | column | `rise`: la columna sube un nivel (losa «Planta alta») |
+| 05 | La vista · «Desde el balcón» | vista desde el balcón (41) | stage | `through`: el arco del ventanal |
+| 06 | Exterior · «Galería y piscina» | piscina de día desde la galería (28) | stage | `widen`: la composición se abre |
+| 07 | De noche · «Casa en Club de Campo El Tipal» | piscina de noche (32) | close | `dusk` (misma vista de noche) + se asienta sobre papel con «Ver la propiedad» (ficha real) y «Explorar propiedades» |
+
+**Datos y respaldo.** `ArchitecturalHero` (server) pide `getSiteJourneyProperty` (caché del sitio, etiqueta
+`site:properties`): la propiedad se usa solo si está publicada, **disponible** y conserva todas las fotos del recorrido
+(por URL de origen). Si no, `pickJourney` devuelve el **recorrido de respaldo**: oficina modular → oficina/escritorio →
+trabajo con planos → equipo, con textos de marca y sin link a ninguna ficha. Los datos del cierre (dormitorios, baños,
+m²) salen de la base, nunca del copy.
+
+**Sistema.** `hero-journey.ts` es la configuración pura (escenas con id, label, título, frase, fotos con alt real,
+foco, abertura, encuadre, transición, niveles, `static`/`mobile`, código de propiedad): otro edificio o desarrollo se
+arma con otra configuración (niveles reales en `levels`), sin tocar el motor. Componentes: `ArchitecturalHero` (datos)
+→ `HeroJourney` (portada, HTML del servidor) → `JourneyScenes` (isla cliente diferida) → `HeroScenes` (lista `ol` de
+`HeroScene` + `HeroMedia`, `HeroProgress`, «Saltar recorrido», cierre). `motion/journey.ts` arma la línea de tiempo
+leyendo solo el marcado (`data-transition`, `data-aperture`).
+
+**Presentaciones.**
+
+- **Desktop** (≥ 1024 px, puntero fino, sin movimiento reducido, motor cargado en idle): `.jr[data-pinned]`, escenario
+  sticky de 100svh y ~33svh de scroll por unidad de la línea (≈ 450svh en 1440 × 900). Solo `transform`, `opacity` y
+  `clip-path` (interpolado sobre un objeto: el navegador normaliza `inset(... round 0px)`). Profundidad: numeral
+  gigante al fondo, foto, texto y detalle (línea de agrimensura, losa de nivel) a velocidades distintas. Indicador
+  `01 / 07` + barra + nombre de escena; cabecera transparente mientras el recorrido está oscuro. `gsap.matchMedia`
+  revierte todo al salir de desktop o pasar a movimiento reducido; `invalidateOnRefresh` recalcula aberturas al
+  cambiar el tamaño; refresh tras cargar fotos; foco con teclado en una escena → se lleva el scroll a esa escena;
+  recarga a mitad de página → se compensa el cambio de alto.
+- **Tablet y touch** (sin motor): las escenas como láminas que se apilan (sticky) y se abren con
+  `animation-timeline: view()` (sin soporte: quietas y completas).
+- **Mobile** (≤ 767 px): lo mismo, solo las escenas `mobile` (portada → acceso → planta baja → exterior → cierre). Sin
+  GSAP ni Lenis.
+- **Movimiento reducido**: portada + fila editorial estable de las escenas `static` con el acceso a la ficha.
+- **Sin JS**: la portada completa (titular, CTA, buscador); la fila de escenas es opcional y no se reserva espacio.
+
+**Performance (regla aprendida).** Cada KB de HTML o de CSS bloqueante en el home se paga en FCP/LCP mobile (Lighthouse
+simula 4G lento): con las escenas en el HTML del servidor (+5 KB gzip) y su CSS en el bloqueante (+1,7 KB) el FCP mobile
+subió 300 ms. Por eso las escenas son una isla cliente (`next/dynamic`, `ssr: false`) con su CSS en el mismo chunk; en
+`home.css` queda solo lo que afecta al layout inicial (`.jr`, `.jr-slot`, `.jr-end`). Las fotos del recorrido usan el
+optimizador de next/image con un `srcset` corto, `loading="lazy"`, `fetchpriority="low"` y esperan a que su escena se
+acerque (`data-armed`): en la carga inicial no compiten con la portada.
+
+Lighthouse local (build de producción, `next start`, base `llf_dev_hero`, 5 corridas alternando `main` y la rama,
+mediana; sept. 2026):
+
+| | LCP | FCP | TBT | CLS | Speed Index | Peso |
+| --- | --- | --- | --- | --- | --- | --- |
+| Mobile `main` | 3364 ms | 1054 ms | 4 ms | 0 | 1055 ms | 443 KB |
+| Mobile rama | 3215 ms | 1054 ms | 5 ms | 0 | 1054 ms | 376 KB |
+| Desktop `main` | 703 ms | 285 ms | 0 ms | 0 | 422 ms | 575 KB |
+| Desktop rama | 683 ms | 285 ms | 0 ms | 0 | 586 ms | 532 KB |
+
+El LCP mobile es bimodal en ambos (≈ 2,7 s o ≈ 3,2–3,4 s según la corrida). El Speed Index desktop sube porque la lámina
+de la portada es más ancha (60 vw) y su entrada (escala 1,06 → 1) ocupa más píxeles.
+
+**QA.** `node scripts/site/journey-shots.mjs [anchos desktop] [anchos flujo]` (capturas al 0–100 % del recorrido con
+el motor activo y del modo flujo). E2E: portada y LCP sin opacity 0, avance e indicador, ficha real, resize, recarga y
+volver atrás sin duplicar disparadores (`data-scroll-triggers`), teclado y «Saltar recorrido», respaldo sin la 2605,
+movimiento reducido, sin JS y mobile sin GSAP ni desborde.
+
 ## 5. Movimiento (jerarquía)
 
 | Nivel | Dónde | Qué |
 | --- | --- | --- |
-| 1 Hero | portada | entrada ≈1.8 s en CSS (foto que asienta su escala → cabecera → titular por líneas → bajada → CTA → buscador), profundidad ≤ 6 px con el puntero solo desktop, transformación al scroll mientras la cubre el manifiesto |
+| 1 Hero | portada + recorrido | entrada ≈1.8 s en CSS (foto que asienta su escala → cabecera → titular por líneas → bajada → CTA → buscador), profundidad ≤ 6 px con el puntero solo desktop; al scroll, recorrido arquitectónico (§4.1) |
 | 2 Story | manifiesto, "qué hacemos" | sticky con progreso ligado al scroll, reveals por línea |
 | 3 Secciones | resto del home | reveals moderados al entrar (opacity/translate), stagger corto |
 | 4 UI | botones, cards, filtros | microinteracciones consistentes (flecha, fondo, 2–4 px) |
@@ -88,7 +168,8 @@ Reglas técnicas: solo `transform`/`opacity`; contenido visible sin JS (lo que s
 `(hover: hover) and (pointer: fine)`; cero librerías de animación en el bundle inicial: Lenis + GSAP/ScrollTrigger se
 importan con `import()` en idle, solo en desktop con puntero fino y fuera de las rutas calmas
 (`components/experience/motion/smooth-scroll.ts` y `scenes.ts`); limpieza de observers/listeners/ScrollTriggers al
-desmontar; CLS = 0; el LCP (foto de la portada) nunca parte de opacity 0. Tokens de duración: `--motion-fast`,
+desmontar; CLS = 0; el LCP (foto de la portada) nunca parte de opacity 0; nada que no sea la portada en el HTML ni en el
+CSS bloqueante del home si puede llegar diferido (§4.1). Tokens de duración: `--motion-fast`,
 `--motion-ui`, `--motion-reveal`, `--motion-editorial`, `--motion-cinematic` (dos curvas: `--ease-out`, `--ease-in-out`).
 Mobile: sin GSAP ni Lenis; revelados por IntersectionObserver y CSS.
 
