@@ -4,7 +4,7 @@ import { ArrowUpRight } from "lucide-react";
 import type { PublicPropertyCard } from "@/server/properties/public";
 import { OPERATION_NOUN } from "@/server/properties/public-helpers";
 import { Monogram } from "@/components/experience/Monogram";
-import { PriceBlock, Specs, StatusBadge } from "./property-bits";
+import { PriceBlock, Specs, StatusBadge, TourBadge } from "./property-bits";
 import { CompareToggle } from "./sales/CompareControls";
 
 /**
@@ -45,6 +45,7 @@ export function PropertyCard({
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           {op ? <span className="rounded-full bg-paper/95 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-ink">{OPERATION_NOUN[op]}</span> : null}
           <StatusBadge status={p.status} />
+          <TourBadge hasTour={p.hasTour} />
         </div>
         {compare ? <CompareToggle code={p.code} label={p.headline} className="compare-toggle-card" /> : null}
         <span aria-hidden className="card-arrow absolute bottom-3 right-3 grid size-10 place-items-center rounded-full bg-paper text-ink">

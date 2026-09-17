@@ -195,7 +195,7 @@ export default async function PropertyPage({ params }: PageProps<"/propiedades/[
             fallbackCoverUrl={p.cover?.url ?? null}
             propertyCode={p.code}
             operation={main?.operation}
-            shareUrl={url}
+            shareUrl={`${url}#tour`}
             whatsappUrl={closed ? null : whatsappHref(waNumber, `Hola, estoy viendo el tour 360° de la propiedad Cód. ${p.code} (${p.headline}): ${url}`)}
             isDemo={false}
             guide={

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { ArrowUpRight, Rotate3d } from "lucide-react";
 import { PROVIDER_LABEL, type PublicTour } from "@/server/tours/model";
 import type { TourContext } from "./TourExperience";
@@ -22,6 +22,8 @@ type Props = Omit<TourContext, "entry" | "analytics"> & {
   headline: string;
   fallbackCoverUrl: string | null;
   onShowPhotos?: () => void;
+  /** Link directo (`…/propiedades/x#tour`): abre el tour solo, una vez, al montar. */
+  autoOpen?: boolean;
 };
 
 const ENTER_MS = 560;
@@ -30,10 +32,12 @@ const ENTER_MS = 560;
  * Portada del tour en la ficha: foto, título, bajada y «Entrar al tour 360°». Al entrar, la foto escala, la UI se retira
  * y aparece la capa inmersiva (que continúa la transición). Al salir, el foco vuelve al botón y la ficha queda donde estaba.
  */
-export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, ...ctx }: Props) {
+export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, autoOpen = false, ...ctx }: Props) {
   const [Experience, setExperience] = useState<ComponentType<ExperienceProps> | null>(null);
   const [entering, setEntering] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  /** De dónde se entró al tour, para la analítica: la portada o un link directo. */
+  const [entry, setEntry] = useState<"cover" | "direct">("cover");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const cover = tour.coverUrl ?? fallbackCoverUrl;
   const provider = tour.kind === "external" ? PROVIDER_LABEL[tour.provider] : null;
@@ -41,8 +45,9 @@ export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, .
     loadTourExperience().catch((e: unknown) => console.warn("[tour] no se pudo precargar el tour", e));
   }, []);
 
-  const open = async () => {
+  const open = async (from: "cover" | "direct" = "cover") => {
     if (entering || Experience) return;
+    setEntry(from);
     setLoadError(false);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setEntering(!reduced);
@@ -61,6 +66,15 @@ export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, .
     setEntering(false);
     requestAnimationFrame(() => buttonRef.current?.focus({ preventScroll: true }));
   }, []);
+
+  const opened = useRef(false);
+  // Link directo: se abre después de hidratar (no en el servidor), una sola vez. Cerrar el tour no lo vuelve a abrir.
+  useEffect(() => {
+    if (!autoOpen || opened.current) return;
+    opened.current = true;
+    void open("direct");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `open` cambia en cada render; el guard `opened` alcanza
+  }, [autoOpen]);
 
   return (
     <div className="tour-launch group relative isolate overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface-ink)] text-paper" data-entering={entering || undefined}>
@@ -90,7 +104,7 @@ export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, .
             <button
               ref={buttonRef}
               type="button"
-              onClick={open}
+              onClick={() => void open("cover")}
               onPointerEnter={prefetch}
               onFocus={prefetch}
               onTouchStart={prefetch}
@@ -107,7 +121,7 @@ export function TourLauncher({ tour, headline, fallbackCoverUrl, onShowPhotos, .
           </div>
         </div>
       </div>
-      {Experience ? <Experience {...ctx} tour={tour} analytics entry="cover" onClose={close} onShowPhotos={onShowPhotos} /> : null}
+      {Experience ? <Experience {...ctx} tour={tour} analytics entry={entry} onClose={close} onShowPhotos={onShowPhotos} /> : null}
     </div>
   );
 }

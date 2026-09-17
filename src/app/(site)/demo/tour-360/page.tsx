@@ -86,7 +86,7 @@ export default async function DemoTourPage() {
           headline={`${p.title} · ${p.typeName} ficticia de ${tour.scenes.length} ambientes recorribles`}
           fallbackCoverUrl={null}
           propertyCode={null}
-          shareUrl={url}
+          shareUrl={`${url}#tour`}
           whatsappUrl={null}
           isDemo
           guide={

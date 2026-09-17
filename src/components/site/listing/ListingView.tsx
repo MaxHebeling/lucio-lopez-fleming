@@ -12,7 +12,7 @@ import {
   type SortKey,
 } from "@/server/properties/public-helpers";
 import { PropertyCard } from "../PropertyCard";
-import { PriceBlock, Specs, StatusBadge } from "../property-bits";
+import { PriceBlock, Specs, StatusBadge, TourBadge } from "../property-bits";
 import { JsonLd } from "../JsonLd";
 import { siteUrl } from "../seo";
 import { FilterPanel } from "./FilterPanel";
@@ -60,6 +60,8 @@ function chipLabel(k: keyof SearchFilters, f: SearchFilters, names: { type: stri
       return f.superficie_max !== undefined ? `Hasta ${money(f.superficie_max)} m²` : null;
     case "credito":
       return f.credito ? "Apto crédito" : null;
+    case "tour":
+      return f.tour ? "Con tour 360°" : null;
     default:
       return null;
   }
@@ -70,7 +72,10 @@ function ListRow({ p, preload = false }: { p: PublicPropertyCard; preload?: bool
     <article className="card grid gap-4 border-b border-line pb-6 sm:grid-cols-[minmax(0,17rem)_1fr] sm:gap-6">
       <div className="media-frame relative aspect-[4/3] overflow-hidden rounded-[var(--radius-lg)] bg-paper-2">
         {p.cover ? <Image src={p.cover.url} alt={p.cover.alt} fill sizes="(min-width: 640px) 17rem, 90vw" className="card-img object-cover" loading={preload ? "eager" : "lazy"} fetchPriority={preload ? "high" : undefined} /> : null}
-        <StatusBadge status={p.status} className="absolute left-3 top-3" />
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          <StatusBadge status={p.status} />
+          <TourBadge hasTour={p.hasTour} />
+        </div>
       </div>
       <div className="flex flex-col">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-2">{p.zone.label ?? p.typeName}</p>
@@ -113,7 +118,7 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
   };
   const viewExtra = view === "lista" ? { vista: "lista" } : ({} as Record<string, string>);
   const nActive = activeFilterCount(f, omit);
-  const chipKeys: Array<keyof SearchFilters> = ["q", "operacion", "tipo", "zona", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras", "superficie_min", "superficie_max", "credito"];
+  const chipKeys: Array<keyof SearchFilters> = ["q", "operacion", "tipo", "zona", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras", "superficie_min", "superficie_max", "credito", "tour"];
   const names = { type: type?.plural ?? null, zone: zoneName, area: areaName };
   const chips = chipKeys
     .filter((k) => !omit.includes(k))
@@ -226,7 +231,7 @@ export async function ListingView({ filters: f, preset, view }: { filters: Searc
             <ul className="mt-5 flex flex-wrap gap-2" aria-label="Filtros activos">
               {chips.map((c) => (
                 <li key={c.k}>
-                  <Link href={href({ [c.k]: c.k === "credito" ? false : undefined, pagina: 1, ...(c.k === "zona" ? { barrio: undefined } : {}) } as Partial<SearchFilters>, viewExtra)} className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-paper-2 px-3 text-sm hover:bg-line">
+                  <Link href={href({ [c.k]: c.k === "credito" || c.k === "tour" ? false : undefined, pagina: 1, ...(c.k === "zona" ? { barrio: undefined } : {}) } as Partial<SearchFilters>, viewExtra)} className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-paper-2 px-3 text-sm hover:bg-line">
                     {c.label}
                     <X aria-hidden className="size-3.5" />
                     <span className="sr-only">(quitar filtro)</span>

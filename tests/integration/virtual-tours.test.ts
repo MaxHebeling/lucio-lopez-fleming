@@ -244,6 +244,46 @@ describe("servicio de tours propios", () => {
   });
 });
 
+describe("descubrir el tour desde el listado", () => {
+  it("la tarjeta trae hasTour, el filtro «con tour» lo aísla y la faceta lo cuenta; con el flag apagado nada de eso existe", async () => {
+    const db = testDb();
+    const conTour = await publishedProperty(db, admin);
+    const sinTour = await publishedProperty(db, admin);
+    const t = await createTour(db, agent, conTour.id, { kind: "external", provider: "kuula", externalUrl: "https://kuula.co/share/listado" });
+
+    // Tour en borrador: todavía no cuenta como "con tour".
+    const draft = await searchPublicProperties(db, parseSearchFilters({}), 500);
+    expect(draft.items.find((i) => i.code === conTour.code)?.hasTour).toBe(false);
+    expect((await getPublicFacets(db)).tours).toBe(0);
+
+    await publishTour(db, admin, t.id);
+    const all = await searchPublicProperties(db, parseSearchFilters({}), 500);
+    expect(all.items.find((i) => i.code === conTour.code)?.hasTour).toBe(true);
+    expect(all.items.find((i) => i.code === sinTour.code)?.hasTour).toBe(false);
+    expect((await getPublicFacets(db)).tours).toBeGreaterThanOrEqual(1);
+
+    // El filtro deja solo las que tienen tour.
+    const filtradas = await searchPublicProperties(db, parseSearchFilters({ tour: "1" }), 500);
+    expect(filtradas.items.every((i) => i.hasTour)).toBe(true);
+    expect(filtradas.items.some((i) => i.code === conTour.code)).toBe(true);
+    expect(filtradas.items.some((i) => i.code === sinTour.code)).toBe(false);
+    expect(filtradas.total).toBeLessThan(all.total);
+
+    // La ficha, las similares, el home y las recientes también saben del tour.
+    const found = await getPublicPropertyBySlug(db, conTour.slug);
+    expect(found.kind === "found" && found.property.hasTour).toBe(true);
+    expect((await getRecentProperties(db, 500)).find((i) => i.code === conTour.code)?.hasTour).toBe(true);
+
+    // Flag apagado: el sitio no muestra tours, así que no hay insignia, ni faceta, ni filtro (la URL vieja no vacía el listado).
+    await setFlag(db, "virtual_tours", false);
+    const off = await searchPublicProperties(db, parseSearchFilters({}), 500);
+    expect(off.items.every((i) => !i.hasTour)).toBe(true);
+    expect((await getPublicFacets(db)).tours).toBe(0);
+    expect((await searchPublicProperties(db, parseSearchFilters({ tour: "1" }), 500)).total).toBe(off.total);
+    await setFlag(db, "virtual_tours", true);
+  });
+});
+
 describe("tours externos", () => {
   it("valida https y solo embebe hosts permitidos; URLs maliciosas rechazadas", async () => {
     const db = testDb();

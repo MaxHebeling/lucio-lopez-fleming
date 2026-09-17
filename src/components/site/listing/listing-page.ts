@@ -63,7 +63,7 @@ export function canonicalListingFilters(f: SearchFilters, lock: Array<keyof Sear
 function hasRefinements(f: SearchFilters, lock: Array<keyof SearchFilters>): boolean {
   const keys: Array<keyof SearchFilters> = ["q", "barrio", "moneda", "precio_min", "precio_max", "dormitorios", "banos", "cocheras", "superficie_min", "superficie_max", "orden"];
   if (!lock.includes("operacion") && f.operacion) return true;
-  return f.credito || f.caracteristicas.length > 0 || keys.some((k) => f[k] !== undefined && !(k === "orden" && f.orden === "recientes"));
+  return f.credito || f.tour || f.caracteristicas.length > 0 || keys.some((k) => f[k] !== undefined && !(k === "orden" && f.orden === "recientes"));
 }
 
 /**

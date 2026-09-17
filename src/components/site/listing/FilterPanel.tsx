@@ -156,6 +156,14 @@ export function FilterPanel({ facets, filters: f, selected, action, lockOperatio
         Apto crédito
       </label>
 
+      {/* Solo si hay tours publicados (facets.tours = 0 con el flag `virtual_tours` apagado): no se ofrece un filtro vacío. */}
+      {facets.tours > 0 ? (
+        <label className="flex min-h-11 items-center gap-3 text-[0.95rem]">
+          <input type="checkbox" name="tour" value="1" defaultChecked={f.tour} className="size-5 accent-[var(--ink)]" />
+          Con tour 360° <span className="text-ink-2">({facets.tours})</span>
+        </label>
+      ) : null}
+
       {facets.features.length ? (
         <details className="group border-t border-line pt-4" open={f.caracteristicas.length > 0}>
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between font-semibold">
