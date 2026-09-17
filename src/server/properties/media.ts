@@ -285,14 +285,12 @@ export const PUBLIC_MEDIA_REMOVAL_BATCH = 25;
  * files.storage_removed_at). Solo archivos públicos de property_media sin ninguna otra referencia viva.
  */
 export async function removeDeletedPublicMedia(db: Database, limit = PUBLIC_MEDIA_REMOVAL_BATCH): Promise<{ removed: number; failed: number }> {
-  const driver = storage();
   const pending = await db
     .selectFrom("files as f")
     .select(["f.id", "f.bucket", "f.storage_key", "f.storage_driver"])
     .where("f.deleted_at", "is not", null)
     .where("f.visibility", "=", "public")
     .where("f.storage_removed_at", "is", null)
-    .where("f.storage_driver", "=", driver.name)
     .where(({ exists, selectFrom }) => exists(selectFrom("property_media as m").select("m.id").whereRef("m.file_id", "=", "f.id")))
     .where(({ not, exists, selectFrom }) => not(exists(selectFrom("property_media as m").select("m.id").whereRef("m.file_id", "=", "f.id").where("m.deleted_at", "is", null))))
     .orderBy("f.deleted_at", "desc")
@@ -300,7 +298,11 @@ export async function removeDeletedPublicMedia(db: Database, limit = PUBLIC_MEDI
     .execute();
   let removed = 0;
   let failed = 0;
+  // Sin pendientes no se toca el storage: la tarea periódica no debe fallar (ni alertar) si el storage aún no está configurado.
+  if (!pending.length) return { removed, failed };
+  const driver = storage();
   for (const f of pending) {
+    if (f.storage_driver !== driver.name) continue;
     try {
       await driver.remove(f.bucket, f.storage_key);
       await db.updateTable("files").set({ storage_removed_at: new Date() }).where("id", "=", f.id).where("storage_removed_at", "is", null).execute();
