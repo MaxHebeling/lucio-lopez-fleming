@@ -186,8 +186,16 @@ Server Actions: `src/app/crm/(panel)/mis-visitas/actions.ts` (todas con `runActi
 
 ## 11. Puntos de extensión (fase de IA y siguientes)
 
-`src/server/visits/ai-extension.ts` define `structureVisitReport(text)`, `buildVisitBrief({ appointmentId })` y
-`draftThankYouMessage(...)` con implementación nula (`registerVisitAi` para conectar la real). La UI ya los consulta:
+**Implementado en la Fase 4b (docs/ai/VISITS_AI.md)**: el contrato recibe `{ db, actor }` (autorización con `loadVisit`
+antes de leer o llamar a la IA) y suma `suggestFollowUp`. La implementación vive en `src/server/ai/visits` y se registra
+importando `@/server/ai/visits/register`; sin registrar sigue la implementación nula. Brief determinista con «NO
+REGISTRADO» (flag `ai_visit_brief`), seguimiento sugerido con motivo (flag `ai_followup`) y, con clave, propuesta de
+informe y variante de agradecimiento a pedido. En el centro operativo, la columna «Brief / cierre».
+
+Contrato original (se mantiene la UI):
+
+`src/server/visits/ai-extension.ts` define `structureVisitReport`, `buildVisitBrief` y
+`draftThankYouMessage` (`registerVisitAi` para conectar la real). La UI los consulta:
 
 - detalle de la visita: tarjeta «Antes de la visita» si `buildVisitBrief` devuelve algo;
 - informe en borrador: panel «Revisá y confirmá» (`ProposalReview`) si `structureVisitReport` devuelve una propuesta; el

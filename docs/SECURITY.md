@@ -99,6 +99,28 @@ Detalle y tests en `docs/ai/GOVERNANCE.md`. Resumen:
 - **Integridad**: transiciones validadas en servidor y por trigger; timeline append-only; idempotencia en transiciones,
   check-ins (clave por intento), seguimiento (clave determinística) y links (índice único de link activo).
 
+## AI Property e IA de visitas (2026-09, Fases 3 y 4b)
+
+Detalle en `docs/ai/PROPERTY.md` y `docs/ai/VISITS_AI.md`. Resumen:
+
+- **Nada se modifica solo**: el informe de calidad, las etiquetas sugeridas, el orden sugerido, los borradores, el brief
+  y las propuestas de informe son lecturas o propuestas. Aplicar orden, aceptar sugerencias, aplicar SEO y crear la
+  tarea de seguimiento exigen acción humana con permiso (`properties.manage_media`, `marketing.create` +
+  `properties.update`, `visits.operate` + `tasks.manage`) y quedan auditados.
+- **Alcance y organización**: toda lectura filtra por organización; visitas con `loadVisit` (agente solo las suyas);
+  propiedades de otra organización devuelven 404. Tests con datos de otra organización mezclados a propósito.
+- **Descargas**: el análisis de imágenes solo lee archivos de nuestro storage; nunca descarga del CDN del sitio anterior.
+- **Endpoints públicos nuevos**: `POST /api/site/tour-guide` (mismo origen, ≤ 1 KB, rate limit por IP con hash, flag,
+  presupuesto; devuelve solo una intención validada contra el tour) y `POST /api/site/propietarios/fotos` (mismo origen,
+  ≤ 4 MB, rate limit, firma real del archivo, sharp sin EXIF/GPS, bucket privado, token aleatorio guardado como SHA-256,
+  vencimiento 24 h con purga; solo con S3 configurado y flag `owner_capture_photos`). Las fotos solo las sirve
+  `/api/files` a quien ve todos los leads o al agente asignado.
+- **Prompt injection**: descripciones, notas, mensajes de clientes, comentarios de agentes y preguntas del tour viajan
+  como datos delimitados; guardas en código descartan cifras/links no respaldados por campos estructurados, atributos
+  no registrados y superlativos (marketing), ids de hechos inexistentes (brief) y escenas/datos inventados (tour).
+- **PII**: `redactForModel` antes del proveedor; `ai_interactions` sin prompts ni respuestas; eventos sin datos
+  personales. `visit_ai_outputs` guarda el brief (datos internos ya visibles para el agente de la visita).
+
 ## Reportar una vulnerabilidad
 
 Escribir a la dirección técnica del proyecto (no abrir issue público). Se responde en 72 h.
