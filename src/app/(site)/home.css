@@ -261,7 +261,8 @@
     .cover-credit {
       position: absolute;
       right: var(--gutter);
-      bottom: 3rem;
+      /* En el espacio bajo la barra del buscador (padding-bottom 3rem), sin superponerse al botón «Buscar». */
+      bottom: 0.85rem;
       margin: 0;
       line-height: 1.5;
     }
