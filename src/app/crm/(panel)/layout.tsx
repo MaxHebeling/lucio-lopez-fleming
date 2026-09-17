@@ -9,7 +9,7 @@ import { MobileNav } from "@/components/crm/mobile-nav";
 export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
   const actor = await requireStaffPage();
   const items = CRM_NAV.filter((i) => can(actor, i.permission) || (NAV_PERMISSION_ALIASES[i.permission] ?? []).some((p) => can(actor, p))).map(
-    ({ href, label, group }) => ({ href, label, group }),
+    ({ href, label, icon, group }) => ({ href, label, icon, group }),
   );
   const unread = await getDb()
     .selectFrom("notifications")
@@ -19,7 +19,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/crm">) {
     .executeTakeFirst();
 
   return (
-    <div className="min-h-svh bg-paper lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="min-h-svh bg-paper lg:grid lg:grid-cols-[260px_1fr]">
       <aside className="sticky top-0 hidden h-svh overflow-y-auto border-r border-line bg-paper px-3 py-5 lg:block">
         <Link href="/crm" className="mb-6 block px-3">
           <span className="font-display text-2xl leading-none">Lucio López Fleming</span>

@@ -33,7 +33,9 @@ describe("tareas periódicas de alquileres", () => {
   it("registra las tareas diarias y el cron repetido no duplica jobs", async () => {
     const db = testDb();
     await sql`delete from jobs`.execute(db);
-    const now = new Date();
+    // Hora fija (12:00 de Salta): las tareas diarias se encolan recién desde las 06:00 locales, y un
+    // `new Date()` hacía fallar el test si CI corría de madrugada en Argentina.
+    const now = new Date("2026-09-16T15:00:00Z");
     const first = await enqueueScheduled(db, now);
     const second = await enqueueScheduled(db, now);
     expect(second).toBe(0);
