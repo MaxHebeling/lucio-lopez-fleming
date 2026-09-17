@@ -67,6 +67,21 @@ en revisión, fallidas, advertencias por severidad, fotos verificadas). Código 
 - Exportación desde Adinco de propietarios, interesados/consultas, visitas y contratos (no son públicos).
 - Confirmar qué vendedores siguen activos antes de invitarlos al CRM (se importaron sin acceso).
 
-## Resultado de la corrida de desarrollo
+## Resultado de la corrida real (base de desarrollo, 2026-09-16)
 
-Se completa al final del proyecto con las cifras reales (ver `docs/audit/`).
+| Etapa / dato | Cantidad |
+| --- | --- |
+| Descubiertas / extraídas | 366 / 366 |
+| Publicadas | 355 |
+| En revisión (advertencias de severidad error) | 11 |
+| Fallidas | 0 |
+| Agentes importados (sin acceso hasta invitarlos) | 11 |
+| Oficinas vinculadas | 2 |
+| Fotos | 3.840 (3.432 verificadas · 408 sin verificar por bloqueo del CDN, no rotas) |
+| Advertencias abiertas | 14 error · 17 warning · 236 info |
+
+Incidente durante la migración: el CDN de Adinco (CloudFront) bloqueó la IP tras miles de verificaciones de fotos y la
+segunda corrida marcó 408 fotos válidas como rotas (43 fichas despublicadas). Se corrigió el importador (403/429/5xx =
+no concluyente, circuit breaker) y se repararon los datos con registro en `audit_logs` (`MIGRATION_DATA_REPAIRED`).
+**Para producción**: correr la importación con `--verify-media` una sola vez y lejos de otras corridas; la copia de
+fotos a storage propio (`media.copy`) debe ir en lotes chicos.
