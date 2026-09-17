@@ -15,6 +15,14 @@ import { agendaScope } from "../crm/access";
 import { loadAppointment, loadContact, loadLead, loadOpportunity } from "../crm/entities";
 import { isLocalDateTime, localToUtc } from "../crm/time";
 import { advanceOpportunityForVisit } from "../opportunities/service";
+import { isEnabled } from "../flags";
+import { canTransition } from "../visits/state";
+import { recordVisitEvent } from "../visits/timeline";
+
+/** Con el núcleo operativo de visitas encendido, la Agenda también escribe el timeline y los eventos appointment.*. */
+async function visitOps(trx: Tx, kind: string): Promise<boolean> {
+  return kind === "visit" && (await isEnabled(trx, "visits_operations"));
+}
 
 export const APPOINTMENT_KINDS = ["visit", "call", "meeting", "follow_up"] as const;
 export const KIND_LABEL: Record<(typeof APPOINTMENT_KINDS)[number], string> = { visit: "Visita", call: "Llamada", meeting: "Reunión", follow_up: "Seguimiento" };
@@ -134,6 +142,13 @@ export async function createAppointment(db: Database, actor: Actor, raw: SchemaI
         if (input.opportunityId) {
           opportunityAdvanced = await advanceOpportunityForVisit(trx, actor, input.opportunityId, "visita_programada", "Visita agendada");
         }
+        if (await visitOps(trx, input.kind)) {
+          const payload = { assignedUserId: assignee, propertyId, contactId, startsAt: startsAt.toISOString(), link: `/crm/mis-visitas/${row.id}`, summary: title };
+          await recordVisitEvent(trx, actor, row.id, "scheduled", { startsAt: startsAt.toISOString() });
+          await recordVisitEvent(trx, actor, row.id, "assigned", { assignedUserId: assignee });
+          await emitEvent(trx, actor, { type: "appointment.created", aggregateType: "appointment", aggregateId: row.id, payload, dedupeKey: `appointment.created:${row.id}` });
+          await emitEvent(trx, actor, { type: "appointment.assigned", aggregateType: "appointment", aggregateId: row.id, payload, dedupeKey: `appointment.assigned:${row.id}:${assignee}` });
+        }
       }
       if (assignee !== actorUserId(actor)) {
         await notifyUser(trx, assignee, { kind: "appointment.assigned", title: `${KIND_LABEL[input.kind]} agendada para vos`, body: title, link: `/crm/agenda/${row.id}`, entityType: "appointment", entityId: row.id, dedupeKey: `appointment.assigned:${row.id}` });
@@ -169,6 +184,48 @@ async function transition(
 
 const ACTIVE = new Set(["scheduled", "confirmed"]);
 
+/**
+ * Efectos de negocio de una visita realizada (Agenda o portal de visitas): evento visit.completed, actividad en el
+ * contacto y avance de la oportunidad. `followUpMode: "manual"` = el seguimiento lo confirma una persona desde el
+ * portal (la automatización visit_followup no crea la tarea automática).
+ */
+export async function applyVisitCompleted(
+  trx: Tx,
+  actor: Actor,
+  a: { id: string; assigned_user_id: string; property_id: string | null; contact_id: string | null; opportunity_id: string | null; title: string },
+  opts: { result: string | null; followUpMode?: "manual" },
+): Promise<boolean> {
+  await emitEvent(trx, actor, {
+    type: "visit.completed",
+    aggregateType: "appointment",
+    aggregateId: a.id,
+    payload: {
+      assignedUserId: a.assigned_user_id,
+      propertyId: a.property_id,
+      contactId: a.contact_id,
+      opportunityId: a.opportunity_id,
+      link: opts.followUpMode === "manual" ? `/crm/mis-visitas/${a.id}` : `/crm/agenda/${a.id}`,
+      summary: a.title,
+      ...(opts.followUpMode ? { followUpMode: opts.followUpMode } : {}),
+    },
+    dedupeKey: `visit.completed:${a.id}`,
+  });
+  if (a.contact_id) {
+    await trx
+      .insertInto("activities")
+      .values({
+        entity_type: "contact",
+        entity_id: a.contact_id,
+        kind: "visit_completed",
+        summary: (opts.result ? `Visita realizada: ${opts.result}` : "Visita realizada").slice(0, 500),
+        actor_user_id: actorUserId(actor),
+        metadata: JSON.stringify({ appointmentId: a.id, propertyId: a.property_id }),
+      })
+      .execute();
+  }
+  return a.opportunity_id ? advanceOpportunityForVisit(trx, actor, a.opportunity_id, "visita_realizada", "Visita realizada") : false;
+}
+
 export async function confirmAppointment(db: Database, actor: Actor, raw: SchemaIn<typeof appointmentActionSchema>) {
   const input = appointmentActionSchema.parse(raw);
   return transition(db, actor, input.appointmentId, async (trx, a) => {
@@ -176,6 +233,7 @@ export async function confirmAppointment(db: Database, actor: Actor, raw: Schema
     if (a.status !== "scheduled") throw conflict("Solo se confirman citas programadas");
     await trx.updateTable("appointments").set({ status: "confirmed" }).where("id", "=", a.id).execute();
     await audit(trx, actor, { action: "APPOINTMENT_CONFIRMED", entityType: "appointment", entityId: a.id, before: { status: a.status }, after: { status: "confirmed" } });
+    if (await visitOps(trx, a.kind)) await recordVisitEvent(trx, actor, a.id, "confirmed");
     return { changed: true };
   });
 }
@@ -185,26 +243,22 @@ export async function completeAppointment(db: Database, actor: Actor, raw: Schem
   if (!input.result || input.result.length < 3) throw invalid("Contá cómo fue", { result: ["El resultado es obligatorio"] });
   return transition(db, actor, input.appointmentId, async (trx, a) => {
     if (a.status === "completed") return { changed: false };
-    if (!ACTIVE.has(a.status)) throw conflict("La cita no está activa");
+    if (!canTransition(a.status, "completed")) throw conflict("La cita no está activa");
     if (a.starts_at.getTime() > Date.now()) throw invalid("La cita todavía no empezó", { result: ["No se puede completar una cita futura"] });
-    await trx.updateTable("appointments").set({ status: "completed", result: input.result }).where("id", "=", a.id).execute();
+    const ops = await visitOps(trx, a.kind);
+    await trx
+      .updateTable("appointments")
+      .set({ status: "completed", result: input.result, ...(ops ? { finished_at: new Date() } : {}) })
+      .where("id", "=", a.id)
+      .execute();
     await audit(trx, actor, { action: "APPOINTMENT_COMPLETED", entityType: "appointment", entityId: a.id, before: { status: a.status }, after: { status: "completed", result: input.result } });
     let opportunityAdvanced = false;
     if (a.kind === "visit") {
-      await emitEvent(trx, actor, {
-        type: "visit.completed",
-        aggregateType: "appointment",
-        aggregateId: a.id,
-        payload: { assignedUserId: a.assigned_user_id, propertyId: a.property_id, contactId: a.contact_id, opportunityId: a.opportunity_id, link: `/crm/agenda/${a.id}`, summary: a.title },
-        dedupeKey: `visit.completed:${a.id}`,
-      });
-      if (a.contact_id) {
-        await trx
-          .insertInto("activities")
-          .values({ entity_type: "contact", entity_id: a.contact_id, kind: "visit_completed", summary: `Visita realizada: ${input.result}`.slice(0, 500), actor_user_id: actorUserId(actor), metadata: JSON.stringify({ appointmentId: a.id, propertyId: a.property_id }) })
-          .execute();
+      opportunityAdvanced = await applyVisitCompleted(trx, actor, a, { result: input.result });
+      if (ops) {
+        await recordVisitEvent(trx, actor, a.id, "finished", { from: a.status, via: "agenda" });
+        await emitEvent(trx, actor, { type: "appointment.finished", aggregateType: "appointment", aggregateId: a.id, payload: { assignedUserId: a.assigned_user_id, link: `/crm/mis-visitas/${a.id}`, summary: a.title }, dedupeKey: `appointment.finished:${a.id}` });
       }
-      if (a.opportunity_id) opportunityAdvanced = await advanceOpportunityForVisit(trx, actor, a.opportunity_id, "visita_realizada", "Visita realizada");
     }
     return { changed: true, opportunityAdvanced };
   });
@@ -215,9 +269,13 @@ export async function cancelAppointment(db: Database, actor: Actor, raw: SchemaI
   if (!input.reason || input.reason.length < 3) throw invalid("Indicá el motivo", { reason: ["El motivo es obligatorio"] });
   return transition(db, actor, input.appointmentId, async (trx, a) => {
     if (a.status === "cancelled") return { changed: false };
-    if (!ACTIVE.has(a.status)) throw conflict("La cita no está activa");
+    if (!canTransition(a.status, "cancelled")) throw conflict("La cita no está activa");
     await trx.updateTable("appointments").set({ status: "cancelled", cancel_reason: input.reason }).where("id", "=", a.id).execute();
     await audit(trx, actor, { action: "APPOINTMENT_CANCELLED", entityType: "appointment", entityId: a.id, before: { status: a.status }, after: { status: "cancelled", reason: input.reason } });
+    if (await visitOps(trx, a.kind)) {
+      await recordVisitEvent(trx, actor, a.id, "cancelled", { from: a.status });
+      await emitEvent(trx, actor, { type: "appointment.cancelled", aggregateType: "appointment", aggregateId: a.id, payload: { assignedUserId: a.assigned_user_id, link: `/crm/mis-visitas/${a.id}`, summary: a.title }, dedupeKey: `appointment.cancelled:${a.id}` });
+    }
     return { changed: true };
   });
 }
@@ -226,10 +284,14 @@ export async function markNoShow(db: Database, actor: Actor, raw: SchemaIn<typeo
   const input = appointmentActionSchema.parse(raw);
   return transition(db, actor, input.appointmentId, async (trx, a) => {
     if (a.status === "no_show") return { changed: false };
-    if (!ACTIVE.has(a.status)) throw conflict("La cita no está activa");
+    if (!canTransition(a.status, "no_show")) throw conflict("La cita no está activa");
     if (a.starts_at.getTime() > Date.now()) throw invalid("La cita todavía no empezó");
     await trx.updateTable("appointments").set({ status: "no_show", result: input.result }).where("id", "=", a.id).execute();
     await audit(trx, actor, { action: "APPOINTMENT_NO_SHOW", entityType: "appointment", entityId: a.id, before: { status: a.status }, after: { status: "no_show", note: input.result } });
+    if (await visitOps(trx, a.kind)) {
+      await recordVisitEvent(trx, actor, a.id, "no_show", { from: a.status });
+      await emitEvent(trx, actor, { type: "appointment.no_show", aggregateType: "appointment", aggregateId: a.id, payload: { assignedUserId: a.assigned_user_id, link: `/crm/mis-visitas/${a.id}`, summary: a.title }, dedupeKey: `appointment.no_show:${a.id}` });
+    }
     return { changed: true };
   });
 }
@@ -246,7 +308,8 @@ export async function rescheduleAppointment(db: Database, actor: Actor, raw: Sch
   const input = rescheduleSchema.parse(raw);
   const scope = agendaScope(actor);
   return transition(db, actor, input.appointmentId, async (trx, a) => {
-    if (!ACTIVE.has(a.status)) throw conflict("Solo se reprograman citas activas");
+    // Se reprograma lo que todavía no empezó: programada, confirmada o con el agente en camino.
+    if (!ACTIVE.has(a.status) && a.status !== "en_route") throw conflict("Solo se reprograman citas que todavía no empezaron");
     const startsAt = localToUtc(input.startsAt);
     const endsAt = new Date(startsAt.getTime() + input.durationMinutes * 60_000);
     const assignee = input.assignedUserId ?? a.assigned_user_id;
@@ -256,7 +319,11 @@ export async function rescheduleAppointment(db: Database, actor: Actor, raw: Sch
     }
     if (startsAt.getTime() === a.starts_at.getTime() && endsAt.getTime() === a.ends_at.getTime() && assignee === a.assigned_user_id) return { changed: false };
     // Reprogramar vuelve la cita a "programada": la confirmación era para el horario anterior.
-    await trx.updateTable("appointments").set({ starts_at: startsAt, ends_at: endsAt, assigned_user_id: assignee, status: "scheduled" }).where("id", "=", a.id).execute();
+    await trx
+      .updateTable("appointments")
+      .set({ starts_at: startsAt, ends_at: endsAt, assigned_user_id: assignee, status: "scheduled", ...(a.status === "en_route" ? { en_route_at: null } : {}) })
+      .where("id", "=", a.id)
+      .execute();
     await audit(trx, actor, {
       action: "APPOINTMENT_RESCHEDULED",
       entityType: "appointment",
@@ -264,6 +331,20 @@ export async function rescheduleAppointment(db: Database, actor: Actor, raw: Sch
       before: { startsAt: a.starts_at.toISOString(), endsAt: a.ends_at.toISOString(), assignedUserId: a.assigned_user_id, status: a.status },
       after: { startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), assignedUserId: assignee, status: "scheduled", reason: input.reason },
     });
+    if (await visitOps(trx, a.kind)) {
+      if (startsAt.getTime() !== a.starts_at.getTime() || endsAt.getTime() !== a.ends_at.getTime()) {
+        await recordVisitEvent(trx, actor, a.id, "rescheduled", { fromStartsAt: a.starts_at.toISOString(), startsAt: startsAt.toISOString(), reason: input.reason });
+      }
+      if (assignee !== a.assigned_user_id) {
+        await recordVisitEvent(trx, actor, a.id, "reassigned", { fromUserId: a.assigned_user_id, assignedUserId: assignee });
+        await emitEvent(trx, actor, {
+          type: "appointment.assigned",
+          aggregateType: "appointment",
+          aggregateId: a.id,
+          payload: { assignedUserId: assignee, previousUserId: a.assigned_user_id, link: `/crm/mis-visitas/${a.id}`, summary: a.title },
+        });
+      }
+    }
     if (assignee !== actorUserId(actor)) {
       await notifyUser(trx, assignee, { kind: "appointment.rescheduled", title: "Cita reprogramada", body: a.title, link: `/crm/agenda/${a.id}`, entityType: "appointment", entityId: a.id, dedupeKey: `appointment.rescheduled:${a.id}:${startsAt.toISOString()}:${assignee}` });
     }

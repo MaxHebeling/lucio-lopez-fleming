@@ -22,7 +22,8 @@ describe("tareas periódicas", () => {
     const types = await sql<{ type: string }>`select type from jobs where status = 'queued'`.execute(db);
     expect(types.rows).toHaveLength(0);
     const nextHour = await enqueueScheduled(db, new Date("2026-09-16T16:00:00Z"));
-    const hourly = listScheduledTasks().filter((t) => t.every === "hourly").length;
+    // En una hora nueva vuelven las horarias y las de cada 5 minutos (bloque nuevo); la diaria no.
+    const hourly = listScheduledTasks().filter((t) => t.every === "hourly" || t.every === "every_5_minutes").length;
     expect(first).toBe(listScheduledTasks().length);
     expect(nextHour).toBe(hourly);
   });

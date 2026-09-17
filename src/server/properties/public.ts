@@ -131,6 +131,12 @@ function zoneOf(idx: LocationIndex, locationId: string | null): PublicZone {
   return zone;
 }
 
+/** Zona pública legible («Tres Cerritos, Salta») de una ubicación. La usa también el link del cliente de visitas. */
+export async function publicZoneLabel(db: Executor, locationId: string | null): Promise<string | null> {
+  if (!locationId) return null;
+  return zoneOf(await locationIndex(db), locationId).label;
+}
+
 function descendantIds(idx: LocationIndex, rootIds: string[]): string[] {
   const out = new Set<string>();
   const stack = [...rootIds];

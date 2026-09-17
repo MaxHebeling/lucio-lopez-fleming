@@ -2,6 +2,7 @@
  * Tareas periódicas. El cron llama a `enqueueScheduled`, que encola con dedupe por período:
  * aunque el cron corra varias veces, cada tarea diaria se ejecuta una sola vez por día.
  *
+ * - Cada 5 minutos: período = hora UTC + bloque de 5 minutos (alertas operativas que no pueden esperar una hora).
  * - Horarias: período = hora UTC (Salta no tiene horario de verano: la hora coincide con la local).
  * - Diarias: período = FECHA DE SALTA y se encolan recién desde las 06:00 de Salta (antes, con la fecha UTC, la tarea
  *   "del día" salía a las 21:00 del día anterior en Salta).
@@ -12,7 +13,7 @@ import { registerJobHandler } from "./registry";
 import { purgeRateLimits } from "../rate-limit";
 import { sql } from "../db";
 
-type Scheduled = { type: string; every: "hourly" | "daily"; timeoutMs?: number };
+type Scheduled = { type: string; every: "every_5_minutes" | "hourly" | "daily"; timeoutMs?: number };
 
 export const SCHEDULE_TIME_ZONE = "America/Argentina/Salta";
 /** Hora local de Salta desde la que se encolan las tareas diarias. */
@@ -41,10 +42,11 @@ export function saltaDateHour(now: Date): { date: string; hour: number } {
 export async function enqueueScheduled(db: Database, now = new Date()): Promise<number> {
   let n = 0;
   const hour = now.toISOString().slice(0, 13);
+  const fiveMinutes = `${hour}:${String(Math.floor(now.getUTCMinutes() / 5) * 5).padStart(2, "0")}`;
   const salta = saltaDateHour(now);
   for (const s of schedule) {
     if (s.every === "daily" && salta.hour < DAILY_START_HOUR) continue;
-    const period = s.every === "hourly" ? hour : salta.date;
+    const period = s.every === "every_5_minutes" ? fiveMinutes : s.every === "hourly" ? hour : salta.date;
     const dedupeKey = `scheduled:${s.type}:${period}`;
     // El índice único de jobs solo cubre jobs vivos: sin este chequeo, una tarea ya terminada se reencolaría en cada
     // pasada del cron. Usa el índice jobs_dedupe_key (0360).
