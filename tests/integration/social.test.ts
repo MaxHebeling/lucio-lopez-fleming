@@ -109,6 +109,25 @@ describe("motor de contenido y redes", () => {
     expect(note).toHaveLength(1);
   });
 
+  it("borrador que quedó sin fotos (corte entre post y assets): el reintento de la automatización las rehidrata", async () => {
+    const db = testDb();
+    const p = await publishedProperty(db, admin);
+    await drain();
+    const ev = await db.selectFrom("domain_events").select("id").where("aggregate_id", "=", p.id).where("event_type", "=", "property.published").executeTakeFirstOrThrow();
+    const posts = await postsFor(p.id);
+    expect(posts).toHaveLength(2);
+    // Estado que dejaba la versión anterior si el proceso moría entre el insert del post y el de sus fotos
+    await sql`delete from social_assets where social_post_id in (select id from social_posts where property_id = ${p.id})`.execute(db);
+    const auto = await db.selectFrom("automation_definitions").select("id").where("key", "=", "property_social_drafts").executeTakeFirstOrThrow();
+    await sql`update automation_runs set status = 'failed' where automation_id = ${auto.id} and trigger_event_id = ${ev.id}`.execute(db);
+    await db.insertInto("jobs").values({ type: "automation.run", payload: JSON.stringify({ automationId: auto.id, eventId: ev.id }) }).execute();
+    await runJobs(db, { budgetMs: 300_000 });
+    expect(await postsFor(p.id)).toHaveLength(2);
+    for (const post of posts) {
+      expect(await db.selectFrom("social_assets").select("id").where("social_post_id", "=", post.id).execute()).toHaveLength(2);
+    }
+  });
+
   it("flag social_drafts apagado → no hay borradores", async () => {
     const db = testDb();
     await setFlag(db, "social_drafts", false);
