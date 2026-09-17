@@ -237,3 +237,20 @@ Q&A registrado/no registrado/dirección oculta/inyección, comparador, allowlist
 `ai-sales-crm` (perfil y RBAC/otra organización, compatibles, match inverso idempotente sin contacto, automatización sin
 loops, siguiente acción aceptar/posponer/descartar, calificación con y sin IA, «Ponme al día», memoria de cliente). E2E:
 `sales.spec.ts` (1440) y `sales.mobile.spec.ts` (390) con axe y consola limpia.
+
+## Verificación final (2026-09-17, rama `feat/ai-sales`)
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm lint` | OK, 0 errores / 0 avisos |
+| `pnpm typecheck` | OK |
+| `pnpm db:codegen:verify` | OK (tipos al día con 0510–0511) |
+| `pnpm test` | **59 archivos, 588 tests OK** (línea base 54 / 522: +5 archivos, +66 tests) |
+| `pnpm build` | OK; `/` sigue estática con ISR, fichas ISR, `/propiedades/comparar` dinámica |
+| `E2E_PORT=3115 E2E_DB=llf_e2e_sales E2E_TEMPLATE_DB=llf_dev_sales bash scripts/e2e.sh` | **41/41** (3 nuevos: sitio 1440, CRM 1440, sitio 390; axe sin violaciones serias en lo nuevo, consola limpia). En una corrida intermedia falló `tour.spec.ts › demo 1440` por el «Failed to fetch» del beacon del tour ya documentado en la Fase 1; aislado y en la corrida final pasa |
+| Lighthouse mobile `/` después (3 corridas) | Performance 92 / 92 / 96 · a11y 100 · BP 100 · LCP 3,37 / 3,37 / 2,78 s (misma distribución bimodal que la línea base: 3,37 / 2,71 / 2,71) · TBT ≤ 5 ms · CLS 0 · JS 168 KB (+3 KB) |
+| Lighthouse mobile ficha después | Performance 96 / 92 / 94 · a11y 100 · BP 100 · LCP 2,71 / 3,36 / 3,14 s · TBT 4 ms · CLS 0 (una primera medición dio 0,026 por el botón «Comparar» montado al hidratar: se reservó su lugar) · JS 185 KB (+7 KB) |
+
+Lo nuevo del sitio son islas cliente chicas sin librerías: el formulario del concierge funciona sin JS, «Preguntale a esta
+propiedad» monta su contenido recién al hidratar dentro de un `<details>` cerrado y los botones «Comparar» no existen sin
+JS (lugar reservado). La analítica usa `sendBeacon`.
