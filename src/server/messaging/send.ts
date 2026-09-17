@@ -15,7 +15,7 @@ import { addScheduledTask } from "../jobs/scheduled";
 import { NotConfiguredError, PermanentIntegrationError } from "../integrations/http";
 import { reflectIntegrationConfig } from "../integrations/status";
 import { RESEND_INTEGRATION_KEY, resendConfig, sendEmailViaResend } from "../integrations/email/resend";
-import { TemplateError, redactSensitive, renderEmail, type RenderedEmail } from "./templates";
+import { TemplateError, redactSensitive, renderEmail, renderWhatsApp, type RenderedEmail } from "./templates";
 import { getWhatsAppTemplateSender } from "./whatsapp-bridge";
 
 const SENDING_LEASE_MS = 5 * 60_000;
@@ -69,13 +69,13 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       return { kind: "done", result: { outcome: "awaiting_credentials", reason: ready.reason } };
     }
     let rendered: RenderedEmail | undefined;
-    if (m.channel === "email") {
-      try {
-        rendered = renderEmail(m.template_key, payload);
-      } catch (e) {
-        if (e instanceof TemplateError) return { kind: "invalid", error: e.message };
-        throw e;
-      }
+    let sendPayload = payload;
+    try {
+      if (m.channel === "email") rendered = renderEmail(m.template_key, payload);
+      else sendPayload = { ...payload, whatsappTemplate: renderWhatsApp(m.template_key, payload) };
+    } catch (e) {
+      if (e instanceof TemplateError) return { kind: "invalid", error: e.message };
+      throw e;
     }
     await trx
       .updateTable("outbound_messages")
@@ -84,7 +84,7 @@ export async function sendQueuedMessage(db: Database, messageId: string): Promis
       .execute();
     return m.channel === "email"
       ? { kind: "send_email", to: m.to_address, rendered: rendered!, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload, entityType: m.entity_type, entityId: m.entity_id }
-      : { kind: "send_whatsapp", to: m.to_address, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload };
+      : { kind: "send_whatsapp", to: m.to_address, dedupeKey: m.dedupe_key, templateKey: m.template_key, payload: sendPayload };
   });
 
   if (decision.kind === "done") return decision.result;

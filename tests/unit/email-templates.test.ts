@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EMAIL_TEMPLATES, TemplateError, appLink, escapeHtml, redactSensitive, renderEmail } from "@/server/messaging/templates";
+import { EMAIL_TEMPLATES, TemplateError, appLink, buildWhatsAppTemplate, escapeHtml, redactSensitive, renderEmail, renderWhatsApp } from "@/server/messaging/templates";
 
 const XSS = `<script>alert("x")</script><img src=x onerror=alert(1)>`;
 
@@ -62,6 +62,18 @@ describe("plantillas de email", () => {
   it("plantilla desconocida o payload inválido → TemplateError (permanente)", () => {
     expect(() => renderEmail("no_existe", {})).toThrow(TemplateError);
     expect(() => renderEmail("rent_due_reminder", { recipientName: "Ana" })).toThrow(/Payload inválido/);
+  });
+
+  it("WhatsApp: parámetros en el orden documentado; lo guardado debe coincidir con el payload", () => {
+    const base = { recipientName: "Ana", propertyLabel: "Dpto. Balcarce 100", dueDate: "2026-10-10", amount: "1200.5", currency: "USD" };
+    const spec = buildWhatsAppTemplate("rent_due_reminder", base);
+    expect(spec).toEqual({ name: "rent_due_reminder", bodyParameters: ["Ana", "Dpto. Balcarce 100", "10 de octubre de 2026", "USD 1.200,50"] });
+    expect(renderWhatsApp("rent_due_reminder", { ...base, whatsappTemplate: spec })).toEqual(spec);
+    expect(() => renderWhatsApp("rent_due_reminder", { ...base, whatsappTemplate: { ...spec, bodyParameters: ["Otra"] } })).toThrow(/no coincide/);
+    expect(() => renderWhatsApp("rent_due_reminder", { propertyTitle: "x" })).toThrow(/Payload inválido/);
+    expect(() => buildWhatsAppTemplate("owner_invite", {})).toThrow(TemplateError);
+    expect(renderWhatsApp("aviso_sin_parametros", {})).toEqual({ name: "aviso_sin_parametros", bodyParameters: [] });
+    expect(() => renderWhatsApp("aviso_x", { whatsappTemplate: { bodyParameters: [1] } })).toThrow(TemplateError);
   });
 
   it("redacta datos de un solo uso después del envío", () => {

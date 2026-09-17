@@ -3,7 +3,10 @@
  * - Todo contenido dinámico se escapa (escapeHtml) antes de entrar al HTML.
  * - Los links solo pueden apuntar a APP_URL (paths relativos o URLs absolutas del mismo origen).
  * - Cada plantilla valida su payload con zod: payload inválido o plantilla desconocida = error permanente.
- * - `sensitiveKeys`: datos de un solo uso que se borran del payload después de enviar (p. ej. links de reseteo).
+ * - `sensitiveKeys`: datos de un solo uso que se borran del payload cuando el mensaje sale de la cola (enviado, fallido
+ *   definitivo o cancelado). `ONE_TIME_KEYS` se redacta siempre, aunque la plantilla no lo declare.
+ * - WhatsApp (`WHATSAPP_TEMPLATES`): mismo payload validado con el esquema de la plantilla de email, más los parámetros del
+ *   cuerpo de la plantilla aprobada en Meta, en el orden documentado en cada entrada.
  */
 import { z } from "zod";
 
@@ -297,10 +300,78 @@ export function renderEmail(key: string, payload: unknown): RenderedEmail {
   return def.render(parsed.data);
 }
 
-/** Payload sin los datos sensibles de un solo uso (se guarda así después del envío). */
+/** Claves que SIEMPRE son de un solo uso (links con token), sea cual sea la plantilla. */
+export const ONE_TIME_KEYS = ["resetUrl", "inviteUrl", "token"] as const;
+export const REDACTED = "[redactado tras el envío]";
+
+/** Payload sin los datos sensibles de un solo uso (se guarda así cuando el mensaje sale de la cola). */
 export function redactSensitive(key: string, payload: Record<string, unknown>): Record<string, unknown> {
-  if (!isEmailTemplate(key)) return payload;
   const out = { ...payload };
-  for (const k of EMAIL_TEMPLATES[key].sensitiveKeys) if (k in out) out[k] = "[redactado tras el envío]";
+  const keys = new Set<string>([...ONE_TIME_KEYS, ...(isEmailTemplate(key) ? EMAIL_TEMPLATES[key].sensitiveKeys : [])]);
+  for (const k of keys) if (k in out && out[k] !== null && out[k] !== undefined) out[k] = REDACTED;
   return out;
+}
+
+// ───────────── WhatsApp ─────────────
+
+export type WhatsAppTemplateSpec = { name: string; language?: string; bodyParameters: string[] };
+
+type WhatsAppDefinition<K extends EmailTemplateKey> = {
+  /** Nombre de la plantilla aprobada en Meta. */
+  name: string;
+  /** Parámetros del cuerpo ({{1}}, {{2}}, ...) en orden. */
+  bodyParameters: (p: z.infer<(typeof EMAIL_TEMPLATES)[K]["schema"]>) => string[];
+};
+
+/**
+ * Plantillas de WhatsApp con parámetros. La plantilla aprobada en Meta debe tener EXACTAMENTE estos parámetros:
+ * - rent_due_reminder: {{1}} nombre del destinatario, {{2}} propiedad, {{3}} fecha de vencimiento ("10 de octubre de 2026"),
+ *   {{4}} importe pendiente ("$ 350.000" / "USD 1.200").
+ */
+export const WHATSAPP_TEMPLATES: { [K in EmailTemplateKey]?: WhatsAppDefinition<K> } = {
+  rent_due_reminder: {
+    name: "rent_due_reminder",
+    bodyParameters: (p) => [p.recipientName, p.propertyLabel, LONG_DATE(p.dueDate), MONEY(p.amount, p.currency)],
+  },
+};
+
+/**
+ * Arma la plantilla de WhatsApp desde el payload de negocio (validado con el esquema de la plantilla).
+ * Plantilla sin definición de WhatsApp o payload inválido → TemplateError (permanente).
+ */
+export function buildWhatsAppTemplate(key: string, payload: unknown): WhatsAppTemplateSpec {
+  if (!isEmailTemplate(key) || !WHATSAPP_TEMPLATES[key]) throw new TemplateError(`Plantilla de WhatsApp desconocida: ${key}`);
+  const def = WHATSAPP_TEMPLATES[key] as WhatsAppDefinition<EmailTemplateKey>;
+  const parsed = (EMAIL_TEMPLATES[key] as Definition<z.ZodType>).schema.safeParse(payload);
+  if (!parsed.success) {
+    const fields = parsed.error.issues.map((i) => i.path.join(".") || "_").slice(0, 10);
+    throw new TemplateError(`Payload inválido para ${key}: ${fields.join(", ")}`);
+  }
+  const bodyParameters = def.bodyParameters(parsed.data as never).map((v) => String(v).trim());
+  if (bodyParameters.some((v) => !v || v.length > 1024)) throw new TemplateError(`Parámetro vacío o demasiado largo en la plantilla de WhatsApp ${key}`);
+  return { name: def.name, bodyParameters };
+}
+
+/**
+ * "Render" de un mensaje de WhatsApp encolado: para plantillas conocidas recalcula los parámetros desde el payload de negocio
+ * (la fuente de verdad) y exige que `whatsappTemplate` guardado coincida. Para plantillas sin parámetros definidos acá
+ * acepta un `whatsappTemplate` explícito bien formado.
+ */
+export function renderWhatsApp(key: string, payload: Record<string, unknown>): WhatsAppTemplateSpec {
+  const stored = payload.whatsappTemplate as { name?: unknown; language?: unknown; bodyParameters?: unknown } | undefined;
+  if (isEmailTemplate(key) && WHATSAPP_TEMPLATES[key]) {
+    const spec = buildWhatsAppTemplate(key, payload);
+    if (stored !== undefined) {
+      const sameParams = Array.isArray(stored.bodyParameters) && JSON.stringify(stored.bodyParameters) === JSON.stringify(spec.bodyParameters);
+      if (stored.name !== spec.name || !sameParams) throw new TemplateError(`whatsappTemplate no coincide con el payload de ${key}`);
+    }
+    return typeof stored?.language === "string" ? { ...spec, language: stored.language } : spec;
+  }
+  if (stored === undefined) return { name: key, bodyParameters: [] };
+  if (typeof stored !== "object" || stored === null) throw new TemplateError(`whatsappTemplate inválido para ${key}`);
+  const params = stored.bodyParameters ?? [];
+  if (!Array.isArray(params) || params.some((p) => typeof p !== "string" || !p.trim())) throw new TemplateError(`bodyParameters inválidos para ${key}`);
+  const name = typeof stored.name === "string" ? stored.name : key;
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw new TemplateError(`Nombre de plantilla de WhatsApp inválido: ${name}`);
+  return { name, bodyParameters: params as string[], ...(typeof stored.language === "string" ? { language: stored.language } : {}) };
 }

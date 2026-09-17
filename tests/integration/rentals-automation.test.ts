@@ -130,6 +130,6 @@ describe("tareas periódicas de alquileres", () => {
     const messages = await db.selectFrom("outbound_messages").select(["to_address", "template_key", "payload"]).where("entity_id", "=", c.id).execute();
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ to_address: "recordatorio@test.local", template_key: "rent_due_reminder" });
-    expect(messages[0]!.payload).toMatchObject({ dueDate: tomorrow, contractCode: c.code, currency: "ARS" });
+    expect(messages[0]!.payload).toMatchObject({ dueDate: tomorrow, propertyLabel: `Propiedad de prueba ${property.code}`, amount: "450000.00", currency: "ARS" });
   });
 });

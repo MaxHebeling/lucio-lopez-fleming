@@ -9,7 +9,7 @@ import { audit } from "../audit";
 import { actorUserId, requirePermission, type Actor } from "../auth/actor";
 import { conflict, invalid, notFound } from "../errors";
 import { queueMessage } from "../messaging/outbound";
-import { isIsoDate } from "../rentals/dates";
+import { firstOfMonth, isIsoDate, lastOfMonth, monthLabel } from "../rentals/dates";
 
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
@@ -262,6 +262,14 @@ export async function generateOwnerReport(db: Database, actor: Actor, raw: unkno
   });
 }
 
+const SHORT_DATE = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+/** "septiembre 2026" si el período es un mes calendario completo; si no, "01/09/2026 al 15/09/2026". */
+export function reportPeriodLabel(start: string, end: string): string {
+  if (start === firstOfMonth(start) && end === lastOfMonth(start)) return monthLabel(start);
+  return start === end ? SHORT_DATE(start) : `${SHORT_DATE(start)} al ${SHORT_DATE(end)}`;
+}
+
 /** Encola el email `owner_report_ready` con link al portal. Requiere que el propietario tenga acceso al portal. */
 export async function sendOwnerReport(db: Database, actor: Actor, reportId: string): Promise<{ messageId: string | null }> {
   requirePermission(actor, "reports.generate");
@@ -289,7 +297,8 @@ export async function sendOwnerReport(db: Database, actor: Actor, reportId: stri
       channel: "email",
       to: user.email,
       templateKey: "owner_report_ready",
-      payload: { recipientName: user.full_name, periodStart: r.period_start, periodEnd: r.period_end, link: `${appUrl}/propietarios/informes/${r.id}` },
+      // Contrato de la plantilla owner_report_ready (src/server/messaging/templates.ts).
+      payload: { fullName: user.full_name, periodLabel: reportPeriodLabel(r.period_start, r.period_end), reportUrl: `${appUrl}/propietarios/informes/${r.id}` },
       dedupeKey: `owner_report_ready:${r.id}:${attempts?.n ?? 0}`,
       entityType: "owner_report",
       entityId: r.id,

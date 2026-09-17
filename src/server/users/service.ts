@@ -105,7 +105,14 @@ async function issueInvite(trx: Tx, user: { id: string; email: string; full_name
       channel: "email",
       to: user.email,
       templateKey: "staff_invite",
-      payload: { inviteUrl, resetUrl: inviteUrl, fullName: user.full_name, invitedBy, expiresInHours: INVITE_TTL_HOURS },
+      // Contrato de la plantilla staff_invite (src/server/messaging/templates.ts): invitedBy es opcional, nunca null.
+      payload: {
+        fullName: user.full_name,
+        inviteUrl,
+        ...(invitedBy ? { invitedBy } : {}),
+        expiresHours: INVITE_TTL_HOURS,
+        expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000).toISOString(),
+      },
       dedupeKey: `staff_invite:${row.id}`,
       entityType: "user",
       entityId: user.id,

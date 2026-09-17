@@ -132,7 +132,7 @@ describe("invitación y recuperación de acceso", () => {
     expect(user).toEqual({ kind: "owner", contact_id: contact, password_hash: null });
     const msg1 = await db.selectFrom("outbound_messages").select(["template_key", "payload", "to_address"]).where("entity_id", "=", first.userId).executeTakeFirstOrThrow();
     expect(msg1.template_key).toBe("owner_invite");
-    const token1 = new URL(String((msg1.payload as { link: string }).link)).searchParams.get("token")!;
+    const token1 = new URL(String((msg1.payload as { inviteUrl: string }).inviteUrl)).searchParams.get("token")!;
     const tok = await db.selectFrom("password_reset_tokens").select(["expires_at"]).where("token_hash", "=", hashToken(token1)).executeTakeFirstOrThrow();
     const hours = (tok.expires_at.getTime() - Date.now()) / 3_600_000;
     expect(hours).toBeGreaterThan(71.9);
@@ -142,7 +142,7 @@ describe("invitación y recuperación de acceso", () => {
     expect(second).toMatchObject({ userId: first.userId, created: false });
     expect(await isResetTokenValid(db, token1)).toBe(false);
     const msgs = await db.selectFrom("outbound_messages").select("payload").where("entity_id", "=", first.userId).orderBy("created_at", "desc").execute();
-    const token2 = new URL(String((msgs[0]!.payload as { link: string }).link)).searchParams.get("token")!;
+    const token2 = new URL(String((msgs[0]!.payload as { inviteUrl: string }).inviteUrl)).searchParams.get("token")!;
     expect(await isResetTokenValid(db, token2)).toBe(true);
     expect(await consumePasswordReset(db, token2, "Clave-propietaria-2026")).toBe(true);
     expect((await login(db, { email: "elena.nueva@test.local", password: "Clave-propietaria-2026", area: "owner" })).ok).toBe(true);
@@ -217,7 +217,7 @@ describe("informes a propietarios", () => {
     expect(queued.status).toBe("queued");
     const msg = await db.selectFrom("outbound_messages").select(["id", "template_key", "payload"]).where("entity_id", "=", r1.id).executeTakeFirstOrThrow();
     expect(msg.template_key).toBe("owner_report_ready");
-    expect((msg.payload as { link: string }).link).toMatch(new RegExp(`/propietarios/informes/${r1.id}$`));
+    expect((msg.payload as { reportUrl: string }).reportUrl).toMatch(new RegExp(`/propietarios/informes/${r1.id}$`));
 
     await sql`update outbound_messages set status = 'failed', last_error = 'rebotado' where id = ${msg.id}`.execute(db);
     expect((await syncReportDeliveryStatus(db)).updated).toBeGreaterThanOrEqual(1);

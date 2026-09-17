@@ -6,12 +6,14 @@ import { z } from "zod";
 import { sql, type Database } from "../db";
 import type { Actor } from "../auth/actor";
 import { emitEvent } from "../events";
-import { registerJobHandler } from "../jobs/registry";
+import { PermanentJobError, registerJobHandler } from "../jobs/registry";
 import { addScheduledTask } from "../jobs/scheduled";
-import { registerAction } from "../automation/actions";
+import { registerAction, type ActionContext } from "../automation/actions";
 import { queueMessage } from "../messaging/outbound";
+import { buildWhatsAppTemplate } from "../messaging/templates";
 import { log } from "../log";
-import { addDays, todayInSalta } from "./dates";
+import { addDays, monthLabel, todayInSalta } from "./dates";
+import { centsToString, toCents } from "./decimal";
 import { generateMissingObligations } from "./contracts";
 import { markOverdue } from "./obligations";
 import { contractsWithAdjustmentDue, proposeRentAdjustment, retryPendingAdjustments } from "./adjustments";
@@ -156,23 +158,63 @@ const queueMessageParams = z.object({
   channel: z.enum(["auto", "email", "whatsapp"]).default("auto"),
 });
 
+type Recipient = { contact_id: string; display_name: string; email: string | null; whatsapp: string | null };
+
+/**
+ * Datos de negocio de cada plantilla que puede encolar esta acción (contrato en src/server/messaging/templates.ts).
+ * Se leen de la base al ejecutar la acción, no del evento: si la cuota se pagó en el medio, no se avisa o se avisa el saldo real.
+ * `dedupeKey` es de negocio (cuota + vencimiento): otro evento o una corrida a otra hora no duplican el aviso.
+ */
+type Prepared = { skipped: string } | { entityType: string; entityId: string; payload: (r: Recipient) => Record<string, unknown>; dedupeKey: (r: Recipient, channel: string) => string };
+
+const PAYLOAD_BUILDERS: Record<string, (ctx: ActionContext) => Promise<Prepared>> = {
+  rent_due_reminder: async (ctx) => {
+    if (ctx.event.aggregateType !== "rent_obligation") throw new PermanentJobError("rent_due_reminder necesita un evento de cuota (rent.due)");
+    const o = await ctx.db
+      .selectFrom("rent_obligations as o")
+      .innerJoin("rental_contracts as c", "c.id", "o.contract_id")
+      .innerJoin("properties as p", "p.id", "c.property_id")
+      .select(["o.id", "o.contract_id", "o.status", "o.amount", "o.paid_amount", "o.currency", "o.due_date", "o.period_start", "c.status as contract_status", "p.title as property_title"])
+      .where("o.id", "=", ctx.event.aggregateId)
+      .executeTakeFirst();
+    if (!o) return { skipped: "cuota inexistente" };
+    if (o.contract_status !== "active") return { skipped: "el contrato no está vigente" };
+    if (!["pending", "partially_paid", "overdue"].includes(o.status)) return { skipped: `la cuota está ${o.status}` };
+    const pending = toCents(o.amount) - toCents(o.paid_amount);
+    if (pending <= 0n) return { skipped: "la cuota no tiene saldo pendiente" };
+    const fields = {
+      propertyLabel: o.property_title.slice(0, 200),
+      dueDate: o.due_date,
+      amount: centsToString(pending),
+      currency: o.currency,
+      periodLabel: monthLabel(o.period_start),
+    };
+    return {
+      entityType: "rental_contract",
+      entityId: o.contract_id,
+      payload: (r) => {
+        const base = { recipientName: r.display_name.slice(0, 200), ...fields };
+        return { ...base, whatsappTemplate: buildWhatsAppTemplate("rent_due_reminder", base) };
+      },
+      dedupeKey: (r, channel) => `rent_due_reminder:${o.id}:${o.due_date}:${r.contact_id}:${channel}`,
+    };
+  },
+};
+
 /**
  * Encola un mensaje a los inquilinos (o propietarios) del contrato del evento, con la plantilla indicada.
- * Dedupe por evento + destinatario + canal: reintentar el job nunca duplica el aviso.
- * Sin email ni WhatsApp del contacto no se inventa destino: se informa en el resultado.
+ * Solo plantillas con datos definidos en PAYLOAD_BUILDERS (otra → error permanente visible en la corrida: nunca se encola
+ * un mensaje que no puede renderizarse). Sin email ni WhatsApp del contacto no se inventa destino: se informa en el resultado.
  */
 registerAction("queue_message", async (raw, ctx) => {
   const p = queueMessageParams.parse(raw);
+  const builder = PAYLOAD_BUILDERS[p.template];
+  if (!builder) throw new PermanentJobError(`queue_message: la plantilla ${p.template} no tiene datos definidos para esta acción`);
   const contractId = contractIdFromEvent(ctx.event);
   if (!contractId) return { skipped: "evento sin contrato" };
-  const contract = await ctx.db
-    .selectFrom("rental_contracts as c")
-    .innerJoin("properties as pr", "pr.id", "c.property_id")
-    .select(["c.id", "c.code", "c.status", "pr.title as property_title"])
-    .where("c.id", "=", contractId)
-    .executeTakeFirst();
-  if (!contract) return { skipped: "contrato inexistente" };
-  const recipients = await sql<{ contact_id: string; display_name: string; email: string | null; whatsapp: string | null }>`
+  const prepared = await builder(ctx);
+  if ("skipped" in prepared) return prepared;
+  const recipients = await sql<Recipient>`
     select ct.id as contact_id, ct.display_name,
       (select e.email_normalized from contact_emails e where e.contact_id = ct.id order by e.is_primary desc, e.created_at limit 1) as email,
       (select ph.phone_e164 from contact_phones ph where ph.contact_id = ct.id and ph.is_whatsapp and ph.phone_e164 is not null
@@ -193,20 +235,10 @@ registerAction("queue_message", async (raw, ctx) => {
       channel,
       to,
       templateKey: p.template,
-      payload: {
-        recipientName: r.display_name,
-        contractCode: contract.code,
-        propertyTitle: contract.property_title,
-        dueDate: ctx.event.payload.dueDate ?? null,
-        periodStart: ctx.event.payload.periodStart ?? null,
-        amount: ctx.event.payload.amount ?? null,
-        paidAmount: ctx.event.payload.paidAmount ?? null,
-        currency: ctx.event.payload.currency ?? null,
-        endDate: ctx.event.payload.endDate ?? null,
-      },
-      dedupeKey: `${ctx.dedupeBase}:${r.contact_id}:${channel}`,
-      entityType: "rental_contract",
-      entityId: contractId,
+      payload: prepared.payload(r),
+      dedupeKey: prepared.dedupeKey(r, channel),
+      entityType: prepared.entityType,
+      entityId: prepared.entityId,
     });
     if (id) queued.push(id);
   }

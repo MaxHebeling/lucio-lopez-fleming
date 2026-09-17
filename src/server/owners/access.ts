@@ -90,10 +90,12 @@ export async function inviteOwner(db: Database, actor: Actor, raw: unknown): Pro
         channel: "email",
         to: user.email,
         templateKey: "owner_invite",
+        // Contrato de la plantilla owner_invite (src/server/messaging/templates.ts).
         payload: {
-          recipientName: contact.display_name,
-          link: `${appUrl()}/propietarios/restablecer?token=${token}&invitacion=1`,
-          expiresInHours: INVITE_TTL_HOURS,
+          fullName: contact.display_name.slice(0, 200),
+          inviteUrl: `${appUrl()}/propietarios/restablecer?token=${token}&invitacion=1`,
+          expiresHours: INVITE_TTL_HOURS,
+          expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000).toISOString(),
         },
         dedupeKey: `owner_invite:${user.id}:${hashToken(token).slice(0, 16)}`,
         entityType: "user",
@@ -141,7 +143,13 @@ export async function requestOwnerPasswordReset(db: Database, emailRaw: string):
       channel: "email",
       to: user.email,
       templateKey: "owner_password_reset",
-      payload: { recipientName: user.full_name, link: `${appUrl()}/propietarios/restablecer?token=${token}`, expiresInHours: RESET_TTL_HOURS },
+      // Contrato de la plantilla owner_password_reset (src/server/messaging/templates.ts).
+      payload: {
+        fullName: user.full_name,
+        resetUrl: `${appUrl()}/propietarios/restablecer?token=${token}`,
+        expiresMinutes: RESET_TTL_HOURS * 60,
+        expiresAt: new Date(Date.now() + RESET_TTL_HOURS * 3_600_000).toISOString(),
+      },
       dedupeKey: `owner_password_reset:${user.id}:${hashToken(token).slice(0, 16)}`,
       entityType: "user",
       entityId: user.id,

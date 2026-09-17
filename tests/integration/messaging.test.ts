@@ -26,6 +26,8 @@ async function message(dedupe: string, over: Partial<Parameters<typeof queueMess
   return id!;
 }
 
+const waReminder = { recipientName: "Ana", propertyLabel: "Dpto. Balcarce 100", dueDate: "2026-10-10", amount: "700000", currency: "ARS" };
+
 describe("mensajería saliente (email)", () => {
   beforeAll(async () => {
     await loadIntegrationReferenceData(testDb());
@@ -149,19 +151,27 @@ describe("mensajería saliente (email)", () => {
   it("WhatsApp sin sendWhatsAppTemplate registrado → awaiting_credentials (no se simula); con sender → sent", async () => {
     const db = testDb();
     await setFlag(db, "outbound_whatsapp", true);
-    const id = await message("t:wa", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: { x: 1 } });
+    const id = await message("t:wa", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: waReminder });
     expect((await sendQueuedMessage(db, id)).outcome).toBe("awaiting_credentials");
     expect((await db.selectFrom("outbound_messages").select("last_error").where("id", "=", id).executeTakeFirstOrThrow()).last_error).toMatch(/sendWhatsAppTemplate/);
 
     let calls = 0;
-    registerWhatsAppTemplateSender(async () => {
+    let sentPayload: Record<string, unknown> | undefined;
+    registerWhatsAppTemplateSender(async (_db, m) => {
       calls++;
+      sentPayload = m.payload;
       return { status: "sent", providerMessageId: "wamid.1" };
     });
     expect(await resumeAwaitingMessages(db)).toMatchObject({ requeued: expect.any(Number) });
     await runJobs(db, { budgetMs: 300_000 });
     expect(calls).toBe(1);
+    expect(sentPayload?.whatsappTemplate).toEqual({ name: "rent_due_reminder", bodyParameters: ["Ana", "Dpto. Balcarce 100", "10 de octubre de 2026", "$ 700.000"] });
     expect((await db.selectFrom("outbound_messages").select(["status", "provider_message_id"]).where("id", "=", id).executeTakeFirstOrThrow())).toEqual({ status: "sent", provider_message_id: "wamid.1" });
+    // Payload que no cumple el contrato de la plantilla → falla permanente, nunca llega al sender
+    const bad = await message("t:wa-bad", { channel: "whatsapp", to: "+5493875551234", templateKey: "rent_due_reminder", payload: { x: 1 } });
+    await expect(sendQueuedMessage(db, bad)).rejects.toBeInstanceOf(PermanentJobError);
+    expect(calls).toBe(1);
+    expect((await db.selectFrom("outbound_messages").select(["status", "last_error"]).where("id", "=", bad).executeTakeFirstOrThrow())).toMatchObject({ status: "failed", last_error: expect.stringMatching(/Payload inválido/) });
     await setFlag(db, "outbound_whatsapp", false);
   });
 
