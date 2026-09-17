@@ -142,13 +142,17 @@ mediana; sept. 2026):
 
 | | LCP | FCP | TBT | CLS | Speed Index | Peso |
 | --- | --- | --- | --- | --- | --- | --- |
-| Mobile `main` | 3364 ms | 1054 ms | 4 ms | 0 | 1055 ms | 443 KB |
-| Mobile rama | 3215 ms | 1054 ms | 5 ms | 0 | 1054 ms | 376 KB |
-| Desktop `main` | 703 ms | 285 ms | 0 ms | 0 | 422 ms | 575 KB |
-| Desktop rama | 683 ms | 285 ms | 0 ms | 0 | 586 ms | 532 KB |
+| Mobile `main` | 3366 ms | 1054 ms | 5 ms | 0 | 1054 ms | 442 KB |
+| Mobile rama | 3215 ms | 1054 ms | 5 ms | 0 | 1054 ms | 374 KB |
+| Desktop `main` | 702 ms | 284 ms | 0 ms | 0 | 420 ms | 573 KB |
+| Desktop rama | 682 ms | 284 ms | 0 ms | 0 | 590 ms | 530 KB |
 
 El LCP mobile es bimodal en ambos (≈ 2,7 s o ≈ 3,2–3,4 s según la corrida). El Speed Index desktop sube porque la lámina
 de la portada es más ancha (60 vw) y su entrada (escala 1,06 → 1) ocupa más píxeles.
+
+Peso de las fotos del recorrido (AVIF del optimizador, q 65): desktop 1440 ≈ 250 KB las 7 (1080 px en los encuadres
+grandes, 640 en la columna), tope ≈ 285 KB con DPR 2; mobile, las 4 escenas ≈ 66 KB a 640 px y ≈ 175 KB a 1080 px
+(DPR 3). Nunca se descargan juntas: cada una cuando su escena se acerca.
 
 **QA.** `node scripts/site/journey-shots.mjs [anchos desktop] [anchos flujo]` (capturas al 0–100 % del recorrido con
 el motor activo y del modo flujo). E2E: portada y LCP sin opacity 0, avance e indicador, ficha real, resize, recarga y
