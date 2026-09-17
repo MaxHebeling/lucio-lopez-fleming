@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { sql } from "@/server/db";
 import { inviteUser, resendInvite, setUserActive, setUserBranches, setUserRoles, updateUserProfile } from "@/server/users/service";
 import { getUserDetail, listUsers, userFormOptions } from "@/server/users/queries";
@@ -125,6 +125,13 @@ describe("usuarios del equipo", () => {
 
 describe("cuenta y recuperación", () => {
   it("recuperar: misma respuesta para emails inexistentes, solo staff activo, encola password_reset, rate limit por email e IP", async () => {
+    // Los rate limits usan ventanas fijas alineadas al reloj y cada pedido tarda al menos RESET_MIN_RESPONSE_MS:
+    // se fija la fecha a mitad de ventana para que la prueba no cruce un borde (solo Date; los timers son reales).
+    const windowMs = 900_000;
+    vi.useFakeTimers({ toFake: ["Date"], now: Math.floor(Date.now() / windowMs) * windowMs + windowMs / 2 });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const db = testDb();
     const staff = await createStaff(db, ["agente"]);
     expect(await requestPasswordReset(db, { email: "nadie@test.local", ip: "10.0.0.1" })).toBe("unknown_email");
