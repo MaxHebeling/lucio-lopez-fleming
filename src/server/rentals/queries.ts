@@ -122,7 +122,7 @@ export async function getContractDetail(db: Database, actor: Actor, id: string) 
     db
       .selectFrom("users as u")
       .innerJoin("rental_contract_parties as rp", "rp.contact_id", "u.contact_id")
-      .select(["u.contact_id", "u.email", "u.is_active", "u.last_login_at", sql<boolean>`u.password_hash is not null`.as("has_password")])
+      .select(["u.id", "u.contact_id", "u.email", "u.is_active", "u.last_login_at", sql<boolean>`u.password_hash is not null`.as("has_password")])
       .where("rp.contract_id", "=", id)
       .where("rp.role", "=", "owner")
       .where("u.kind", "=", "owner")

@@ -23,7 +23,9 @@ import {
   documentVisibilityAction,
   endContractAction,
   generateSettlementAction,
+  changeOwnerEmailAction,
   inviteOwnerAction,
+  setOwnerAccessAction,
   paySettlementAction,
   proposeAdjustmentAction,
   rejectAdjustmentAction,
@@ -84,6 +86,7 @@ export default async function ContractPage({ params, searchParams }: PageProps<"
   const canGenerate = can(actor, "settlements.generate");
   const canApprove = can(actor, "settlements.approve");
   const canInvite = canAny(actor, ["users.manage", "reports.generate"]);
+  const canManageAccess = can(actor, "users.manage");
   const owners = parties.filter((p) => p.role === "owner");
   const hasProposed = adjustments.some((a) => a.status === "proposed");
   const due = obligations.filter((o) => ["pending", "partially_paid", "overdue"].includes(o.status));
@@ -193,17 +196,74 @@ export default async function ContractPage({ params, searchParams }: PageProps<"
                     <div className="mt-2 text-xs">
                       {portal ? (
                         <p className="text-ink-2">
-                          Portal: {portal.email} · {portal.has_password ? (portal.last_login_at ? `último ingreso ${formatDateTime(portal.last_login_at)}` : "sin ingresos") : "invitación pendiente"}
+                          Portal: {portal.email} ·{" "}
+                          {!portal.is_active ? (
+                            <Badge tone="danger">Acceso desactivado</Badge>
+                          ) : portal.has_password ? (
+                            portal.last_login_at ? (
+                              `último ingreso ${formatDateTime(portal.last_login_at)}`
+                            ) : (
+                              "sin ingresos"
+                            )
+                          ) : (
+                            "invitación pendiente"
+                          )}
                         </p>
                       ) : (
                         <p className="text-stone">Sin acceso al portal</p>
                       )}
-                      {canInvite ? (
+                      {canInvite && !portal ? (
                         <div className="mt-2">
-                          <ActionForm action={inviteOwnerAction} submitLabel={portal ? "Reenviar invitación" : "Invitar al portal"} size="sm" variant="secondary" inline>
+                          <Disclosure summary="Invitar al portal">
+                            <ActionForm action={inviteOwnerAction} submitLabel="Enviar invitación" size="sm" variant="secondary">
+                              <input type="hidden" name="contactId" value={p.contact_id} />
+                              <p className="text-xs text-stone">Escribí el email con el que va a ingresar. Verificalo con el propietario: no se toma de la ficha del contacto.</p>
+                              <Field label="Email de acceso" htmlFor={`invite-email-${p.contact_id}`}>
+                                <Input id={`invite-email-${p.contact_id}`} name="email" type="email" autoComplete="off" required className="h-8" />
+                              </Field>
+                              <Field label="Repetí el email" htmlFor={`invite-confirm-${p.contact_id}`}>
+                                <Input id={`invite-confirm-${p.contact_id}`} name="confirmEmail" type="email" autoComplete="off" required className="h-8" />
+                              </Field>
+                            </ActionForm>
+                          </Disclosure>
+                        </div>
+                      ) : null}
+                      {canInvite && portal?.is_active ? (
+                        <div className="mt-2">
+                          <ActionForm action={inviteOwnerAction} submitLabel={`Reenviar invitación a ${portal.email}`} size="sm" variant="secondary" inline>
                             <input type="hidden" name="contactId" value={p.contact_id} />
-                            {!portal && !p.email ? <Input name="email" type="email" placeholder="Email del propietario" className="h-8 w-56" aria-label="Email del propietario" /> : null}
                           </ActionForm>
+                        </div>
+                      ) : null}
+                      {canManageAccess && portal ? (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {portal.is_active ? (
+                            <Disclosure summary="Desactivar acceso al portal">
+                              <ActionForm action={setOwnerAccessAction} submitLabel="Desactivar acceso" size="sm" variant="danger" confirm="¿Desactivar el acceso? Se cierran sus sesiones y los links pendientes dejan de servir.">
+                                <input type="hidden" name="userId" value={portal.id} />
+                                <input type="hidden" name="active" value="false" />
+                                <Field label="Motivo (opcional)" htmlFor={`access-reason-${portal.id}`}>
+                                  <Input id={`access-reason-${portal.id}`} name="reason" maxLength={500} className="h-8" />
+                                </Field>
+                              </ActionForm>
+                            </Disclosure>
+                          ) : (
+                            <ActionForm action={setOwnerAccessAction} submitLabel="Reactivar acceso" size="sm" variant="secondary" inline confirm="¿Reactivar el acceso al portal de este propietario?">
+                              <input type="hidden" name="userId" value={portal.id} />
+                              <input type="hidden" name="active" value="true" />
+                            </ActionForm>
+                          )}
+                          <Disclosure summary="Cambiar email de acceso">
+                            <ActionForm action={changeOwnerEmailAction} submitLabel="Cambiar email" size="sm" variant="secondary" confirm="¿Cambiar el email de acceso? Se cierran sus sesiones abiertas.">
+                              <input type="hidden" name="userId" value={portal.id} />
+                              <Field label="Email nuevo" htmlFor={`owner-email-${portal.id}`}>
+                                <Input id={`owner-email-${portal.id}`} name="email" type="email" autoComplete="off" required className="h-8" />
+                              </Field>
+                              <Field label="Repetí el email nuevo" htmlFor={`owner-email-confirm-${portal.id}`}>
+                                <Input id={`owner-email-confirm-${portal.id}`} name="confirmEmail" type="email" autoComplete="off" required className="h-8" />
+                              </Field>
+                            </ActionForm>
+                          </Disclosure>
                         </div>
                       ) : null}
                     </div>

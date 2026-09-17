@@ -6,7 +6,7 @@ import { can, canAny } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getReport, type ReportData } from "@/server/reports/service";
-import { Alert, PageHeader, formatDateTime } from "@/components/ui";
+import { Alert, Input, PageHeader, formatDateTime } from "@/components/ui";
 import { ActionForm } from "@/components/rentals/action-form";
 import { PrintButton } from "@/components/rentals/print-button";
 import { ReportView } from "@/components/rentals/report-view";
@@ -63,11 +63,17 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/c
               </ActionForm>
             ) : (
               <Alert tone="warning">
-                <span className="block">El propietario no tiene acceso al portal: invitalo para poder enviarle el informe.</span>
-                {canInvite ? (
+                <span className="block">
+                  {report.portalUser
+                    ? "El acceso al portal de este propietario está desactivado: reactivalo desde la ficha del contrato para enviarle el informe."
+                    : "El propietario no tiene acceso al portal: invitalo para poder enviarle el informe."}
+                </span>
+                {canInvite && !report.portalUser ? (
                   <span className="mt-2 block">
                     <ActionForm action={inviteOwnerAction} submitLabel="Invitar al portal" size="sm" inline>
                       <input type="hidden" name="contactId" value={report.owner_contact_id} />
+                      <Input name="email" type="email" autoComplete="off" required placeholder="Email de acceso" aria-label="Email de acceso" className="h-8 w-56" />
+                      <Input name="confirmEmail" type="email" autoComplete="off" required placeholder="Repetí el email" aria-label="Repetí el email de acceso" className="h-8 w-56" />
                     </ActionForm>
                   </span>
                 ) : null}

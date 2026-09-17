@@ -126,7 +126,7 @@ describe("invitación y recuperación de acceso", () => {
     await createTestProperty(db, { ownerContactIds: [{ id: contact }] });
     await expect(inviteOwner(db, agent, { contactId: contact })).rejects.toMatchObject({ code: "forbidden" });
 
-    const first = await inviteOwner(db, staff, { contactId: contact });
+    const first = await inviteOwner(db, staff, { contactId: contact, email: "elena.nueva@test.local", confirmEmail: "elena.nueva@test.local" });
     expect(first).toMatchObject({ email: "elena.nueva@test.local", created: true });
     const user = await db.selectFrom("users").select(["kind", "contact_id", "password_hash"]).where("id", "=", first.userId).executeTakeFirstOrThrow();
     expect(user).toEqual({ kind: "owner", contact_id: contact, password_hash: null });
