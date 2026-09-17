@@ -133,3 +133,27 @@ export async function listListingCombinations(db: Executor): Promise<ListingComb
       updatedAt: new Date(x.updated_at).toISOString(),
     }));
 }
+
+export type JourneyProperty = { code: number; slug: string; bedrooms: number | null; bathrooms: number | null; coveredAreaM2: number | null };
+
+/**
+ * Propiedad protagonista del recorrido de la portada (docs/WEB_EXPERIENCE.md §4.1). Solo si hoy está publicada y
+ * **disponible** (no reservada, vendida ni alquilada) y si todas las fotos que usa el recorrido siguen en su
+ * publicación (no borradas ni fallidas, comparadas por URL de origen). Si no, null: la portada usa el recorrido de
+ * respaldo con fotos de marca, sin link a la ficha. Nunca se muestra una propiedad que ya no se ofrece.
+ */
+export async function getJourneyProperty(db: Executor, code: number, photoSourceUrls: string[]): Promise<JourneyProperty | null> {
+  const urls = [...new Set(photoSourceUrls)];
+  const r = await sql<{ code: number; slug: string; bedrooms: number | null; bathrooms: number | null; covered_area_m2: string | null; photos: number }>`
+    select p.code, p.slug, p.bedrooms, p.bathrooms, p.covered_area_m2,
+      (select count(distinct m.source_url)::int from property_media m
+        where m.property_id = p.id and m.deleted_at is null and m.kind = 'image' and m.status <> 'failed'
+          and m.source_url = any(${urls}::text[])) as photos
+    from properties p
+    where p.code = ${code} and p.is_published and not p.is_demo and p.deleted_at is null and p.status = 'available'
+    limit 1`.execute(db);
+  const row = r.rows[0];
+  if (!row || row.photos < urls.length) return null;
+  const covered = row.covered_area_m2 === null ? null : Number(row.covered_area_m2);
+  return { code: row.code, slug: row.slug, bedrooms: row.bedrooms, bathrooms: row.bathrooms, coveredAreaM2: Number.isFinite(covered) && covered ? covered : null };
+}

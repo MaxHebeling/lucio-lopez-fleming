@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { cleanupE2eContact, e2ePool } from "./db";
 
 const pool = e2ePool();
@@ -258,8 +258,17 @@ test("reduced motion: todo visible y sin atributo de movimiento activo", async (
   expect(hidden).toBe(0);
   // Sin movimiento: la portada no queda fija debajo, no se carga el motor de scroll y el manifiesto no se atenúa.
   expect(await page.locator("[data-hero]").evaluate((el) => getComputedStyle(el).position)).not.toBe("sticky");
+  // Recorrido en versión estable: nunca fijado; fila editorial de 3–4 escenas con su texto y el acceso a la ficha.
+  const journey = page.locator("[data-journey]");
+  await expect(journey.locator(".jr-scene").first()).toBeAttached();
+  await expect(journey).not.toHaveAttribute("data-pinned", "");
+  const shown = await journey.locator(".jr-scene").evaluateAll((els) => els.filter((e) => getComputedStyle(e).display !== "none").length);
+  expect(shown).toBeGreaterThanOrEqual(3);
+  expect(shown).toBeLessThanOrEqual(4);
+  await expect(journey.getByRole("link", { name: /Ver la propiedad|Explorar propiedades/ }).first()).toBeVisible();
   await page.waitForTimeout(3500);
   expect(await page.evaluate(() => document.documentElement.classList.contains("lenis"))).toBe(false);
+  await expect(journey).not.toHaveAttribute("data-pinned", "");
   expect(await page.evaluate(() => Array.from(document.querySelectorAll(".word")).every((w) => getComputedStyle(w).opacity === "1"))).toBe(true);
   await ctx.close();
 });
@@ -270,6 +279,9 @@ test("sin JavaScript el contenido y el buscador siguen ahí", async ({ browser }
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: /Buenos negocios/ })).toBeVisible();
   await expect(page.getByRole("search", { name: "Buscar propiedades" })).toBeVisible();
+  // Recorrido de la portada: sin JS queda la portada completa (las escenas son una isla cliente) y sin espacio reservado.
+  await expect(page.locator("[data-journey] .jr-scene")).toHaveCount(0);
+  expect(await page.locator("[data-journey] .jr-slot").evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
   // Servicios: sin JS se leen todos los paneles; la captación de propietarios sigue siendo un formulario usable.
   for (const name of ["Venta de inmuebles y lotes", "Alquileres", "Administración de alquileres", "Tasaciones"]) {
     await expect(page.getByRole("region", { name, exact: true })).toBeVisible();
@@ -309,6 +321,17 @@ test("home: portada con la foto de la oficina (explícita y con prioridad alta),
   expect(await cover.getAttribute("alt")).toMatch(/Oficina modular/);
   expect(await cover.getAttribute("fetchpriority")).toBe("high");
   expect(await cover.getAttribute("loading")).not.toBe("lazy");
+  // LCP: ni la foto ni ningún contenedor parten de opacity 0 (la entrada solo escala).
+  const opacities = await cover.evaluate((img) => {
+    const out: number[] = [];
+    for (let el: Element | null = img; el && el !== document.body; el = el.parentElement) out.push(Number(getComputedStyle(el).opacity));
+    return out;
+  });
+  expect(Math.min(...opacities)).toBe(1);
+  // Las fotos del recorrido nunca compiten con la portada.
+  const journeyImgs = page.locator("[data-journey] .jr-img");
+  await expect(journeyImgs.first()).toBeAttached();
+  expect(await journeyImgs.evaluateAll((imgs) => imgs.every((i) => i.getAttribute("loading") === "lazy" && i.getAttribute("fetchpriority") !== "high"))).toBe(true);
 
   const featured = page.getByRole("region", { name: /Propiedades para mirar dos veces/ }).or(page.locator('section[aria-labelledby="destacadas-title"]'));
   await expect(featured).toBeVisible();
@@ -418,14 +441,172 @@ test("tasación: el formulario de /tasaciones crea un lead web_appraisal", async
   }
 });
 
-test("motor de escenas desktop: Lenis y la portada fija se activan sin romper anclas ni el foco", async ({ page }) => {
+test("motor de escenas desktop: Lenis y el recorrido fijado se activan sin romper anclas ni el foco", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains("lenis")), { timeout: 8000 }).toBe(true);
-  expect(await page.locator("[data-hero]").evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
-  // Ancla interna: el enlace de la portada lleva a la captación.
+  await expect(page.locator("[data-journey]")).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  expect(await page.locator("[data-jr-stage]").evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+  // Ancla interna: el enlace de la portada lleva a la captación (atraviesa el recorrido).
   await page.getByRole("link", { name: "Quiero vender mi propiedad" }).first().click();
   await expect.poll(() => page.locator("#vender").evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBeLessThan(200);
-  // Volver con teclado al buscador de la portada lo deja a la vista (no queda tapado por la escena siguiente).
+  // Volver con teclado al buscador de la portada lo deja a la vista (no queda tapado por el recorrido).
   await page.getByRole("search", { name: "Buscar propiedades" }).getByLabel("Operación").focus();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(50);
+});
+
+/** Lleva el scroll a una fracción del recorrido fijado de la portada. */
+async function scrollJourney(page: Page, fraction: number) {
+  await page.evaluate((f) => {
+    const root = document.querySelector<HTMLElement>("[data-journey]")!;
+    const top = root.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, Math.round(top + (root.offsetHeight - window.innerHeight) * f));
+  }, fraction);
+}
+
+test("recorrido desktop: avanza con el scroll, el indicador cambia y el cierre lleva a la ficha real de la 2605", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(String(e)));
+  const property = (await pool.query<{ slug: string; available: boolean }>("select slug, (is_published and status = 'available' and deleted_at is null) as available from properties where code = 2605")).rows[0];
+  test.skip(!property?.available, "la base e2e no tiene la Cód. 2605 disponible");
+  await page.goto("/");
+  const journey = page.locator("[data-journey]");
+  await expect(journey).toHaveAttribute("data-journey", "property");
+  await expect(journey).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  const count = page.locator("[data-jr-count]");
+  await expect(count).toHaveText("01");
+  await expect(page.locator('[data-jr-step][aria-current="step"]')).toHaveText("Portada");
+
+  // Scroll lento: el indicador avanza escena por escena.
+  const seen = new Set<string>();
+  for (const f of [0.05, 0.15, 0.3, 0.45, 0.6, 0.75]) {
+    await scrollJourney(page, f);
+    await page.waitForTimeout(450);
+    seen.add((await count.textContent()) ?? "");
+  }
+  expect(seen.size).toBeGreaterThanOrEqual(4);
+  await expect(page.locator('[data-jr-step][aria-current="step"]')).not.toHaveText("Portada");
+
+  // Salto rápido al final: cierre sobre papel con la ficha real.
+  await scrollJourney(page, 1);
+  await expect(count).toHaveText("07", { timeout: 5000 });
+  const cta = journey.getByRole("link", { name: /Ver la propiedad/ });
+  await expect(cta).toHaveAttribute("href", `/propiedades/${property!.slug}`);
+  // La propiedad del recorrido no se repite en destacadas ni recientes: un único link a su ficha en el home.
+  await expect(page.locator(`a[href="/propiedades/${property!.slug}"]`)).toHaveCount(1);
+  await expect.poll(() => cta.evaluate((el) => Number(getComputedStyle(el.closest(".jr-caption")!).opacity))).toBeGreaterThan(0.95);
+  expect((await page.request.get(`/propiedades/${property!.slug}`)).status()).toBe(200);
+
+  // Salto rápido al inicio: vuelve la portada.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(count).toHaveText("01", { timeout: 5000 });
+  expect(problems).toEqual([]);
+});
+
+test("recorrido desktop: resize y recarga a mitad mantienen un estado coherente; volver a la home no duplica disparadores", async ({ page }) => {
+  await page.goto("/");
+  const journey = page.locator("[data-journey]");
+  await expect(journey).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute("data-scroll-triggers"))).not.toBeNull();
+  const triggers = await page.evaluate(() => document.documentElement.getAttribute("data-scroll-triggers"));
+
+  await scrollJourney(page, 0.5);
+  await expect.poll(() => journey.getAttribute("data-active-index")).not.toBe("0");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(800);
+  await expect(journey).toHaveAttribute("data-pinned", "");
+  const afterResize = Number(await journey.getAttribute("data-active-index"));
+  expect(afterResize).toBeGreaterThan(0);
+  expect(afterResize).toBeLessThan(7);
+
+  // Recarga a mitad del recorrido: el navegador restaura el scroll y el recorrido retoma en esa escena.
+  await page.reload();
+  await expect(journey).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  await expect.poll(() => journey.getAttribute("data-active-index"), { timeout: 5000 }).not.toBe("0");
+
+  // Debajo del umbral de desktop el recorrido vuelve al modo liviano (sin fijar) y regresa al volver a agrandar.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(journey).not.toHaveAttribute("data-pinned", "");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(journey).toHaveAttribute("data-pinned", "");
+
+  // Navegar a otra página y volver atrás: mismos disparadores, un único recorrido fijado.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByRole("navigation", { name: "Principal" }).getByRole("link").first().click();
+  await expect(page).not.toHaveURL(/\/$/);
+  await page.goBack();
+  await expect(journey).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute("data-scroll-triggers"))).toBe(triggers);
+  await expect(page.locator("[data-journey][data-pinned]")).toHaveCount(1);
+});
+
+test("recorrido desktop: con teclado se puede saltar la secuencia y el foco trae a la vista la escena enfocada", async ({ page }) => {
+  await page.goto("/");
+  const journey = page.locator("[data-journey]");
+  await expect(journey).toHaveAttribute("data-pinned", "", { timeout: 8000 });
+  const skip = page.getByRole("link", { name: /Saltar recorrido/ });
+  await skip.focus();
+  await page.keyboard.press("Tab");
+  const closing = journey.locator(".jr-scene").last().getByRole("link").first();
+  await expect(closing).toBeFocused();
+  await expect(page.locator("[data-jr-count]")).toHaveText("07", { timeout: 5000 });
+  await expect
+    .poll(() =>
+      closing.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= window.innerHeight && Number(getComputedStyle(el.closest(".jr-caption")!).opacity) > 0.95;
+      }),
+    )
+    .toBe(true);
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(skip).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.locator("#manifesto-title").evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBeLessThan(700);
+  await expect.poll(() => page.locator("#manifesto-title").evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBeGreaterThan(-50);
+});
+
+test.describe("recorrido: respaldo sin la propiedad", () => {
+  test.describe.configure({ mode: "serial" });
+  const revalidate = (page: Page) =>
+    page.request.post("/api/site/revalidate", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` }, data: { tags: ["site:properties"], reason: "e2e-journey-fallback" } });
+
+  test("si la Cód. 2605 deja de estar publicada, la portada usa fotos de marca, sin su link ni sus fotos", async ({ page }) => {
+    test.skip(!process.env.CRON_SECRET, "requiere CRON_SECRET compartido con el servidor (scripts/e2e.sh)");
+    const before = (await pool.query<{ slug: string; is_published: boolean }>("select slug, is_published from properties where code = 2605")).rows[0];
+    test.skip(!before?.is_published, "la base e2e no tiene la Cód. 2605 publicada");
+    try {
+      await pool.query("update properties set is_published = false where code = 2605");
+      expect((await revalidate(page)).status()).toBe(200);
+      // Otro worker puede regenerar el home en paralelo con datos previos: se reintenta invalidar hasta ver el respaldo.
+      const journey = page.locator("[data-journey]");
+      await expect
+        .poll(
+          async () => {
+            await revalidate(page);
+            await page.goto("/");
+            return journey.getAttribute("data-journey");
+          },
+          { timeout: 20_000 },
+        )
+        .toBe("brand");
+      await expect(page.locator(`a[href="/propiedades/${before!.slug}"]`)).toHaveCount(0);
+      expect(await page.content()).not.toContain("el-tipal-2605");
+      await expect(journey.getByRole("list", { name: "Recorrido por la inmobiliaria" })).toBeAttached();
+      await expect(page.getByRole("heading", { level: 1, name: /Buenos negocios/ })).toBeVisible();
+    } finally {
+      await pool.query("update properties set is_published = true where code = 2605");
+      await revalidate(page);
+    }
+    await expect
+      .poll(
+        async () => {
+          await revalidate(page);
+          await page.goto("/");
+          return page.locator("[data-journey]").getAttribute("data-journey");
+        },
+        { timeout: 20_000 },
+      )
+      .toBe("property");
+  });
 });

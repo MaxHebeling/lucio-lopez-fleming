@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { plural, telHref } from "@/server/properties/public-helpers";
 import { getSiteInfo } from "@/server/site/info";
-import { getSiteFacets, getSiteOwnerCapture, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
-import { CoverHero } from "@/components/experience/CoverHero";
+import { getSiteFacets, getSiteJourneyProperty, getSiteOwnerCapture, getSiteRecent, getSiteShowcase, getSiteZoneShowcase } from "@/server/site/public-data";
+import { PROPERTY_JOURNEY, PROPERTY_JOURNEY_PHOTOS } from "@/components/experience/hero/hero-journey";
+import { ArchitecturalHero } from "@/components/experience/hero/ArchitecturalHero";
 import { EditorialManifesto } from "@/components/experience/EditorialManifesto";
 import { FeaturedEditorial } from "@/components/experience/FeaturedEditorial";
 import { TerritorySalta, pickTerritoryFeature } from "@/components/experience/TerritorySalta";
@@ -37,8 +38,19 @@ const ZONES = 6;
  * últimas dos propiedades en alquiler (fotos reales de los servicios de alquileres y administración).
  */
 const loadHome = cache(async () => {
-  const [info, facets, saleFacets, featured, rentals, conciergeOn] = await Promise.all([getSiteInfo(), getSiteFacets(), getSiteFacets("sale"), getSiteShowcase(FEATURED), getSiteRecent(2, [], "rent"), getSiteFlag("ai_concierge")]);
-  const exclude = featured.map((p) => p.code);
+  const journeyCode = PROPERTY_JOURNEY.propertyCode;
+  const [info, facets, saleFacets, showcase, rentals, conciergeOn, journeyProperty] = await Promise.all([
+    getSiteInfo(),
+    getSiteFacets(),
+    getSiteFacets("sale"),
+    getSiteShowcase(FEATURED + 1),
+    getSiteRecent(2, [], "rent"),
+    getSiteFlag("ai_concierge"),
+    journeyCode ? getSiteJourneyProperty(journeyCode, PROPERTY_JOURNEY_PHOTOS) : Promise.resolve(null),
+  ]);
+  // La propiedad del recorrido de la portada no se repite en las destacadas.
+  const featured = showcase.filter((p) => p.code !== journeyProperty?.code).slice(0, FEATURED);
+  const exclude = [...featured.map((p) => p.code), ...(journeyProperty ? [journeyProperty.code] : [])];
   const [zones, recent] = await Promise.all([getSiteZoneShowcase(facets.zones, ZONES), getSiteRecent(10, exclude)]);
   return { info, facets, saleFacets, featured, zones, recent, rentals, conciergeOn };
 });
@@ -101,10 +113,8 @@ export default async function HomePage() {
 
   return (
     <>
-      <CoverHero
-        photo={coverPhoto}
-        photoAlt="Oficina modular de Lucio López Fleming, con su cartel y estructura roja, al atardecer"
-        caption="Nuestra oficina modular, al atardecer"
+      <ArchitecturalHero
+        coverPhoto={coverPhoto}
         kicker="Inmobiliaria en Salta"
         titleLines={["Buenos", "negocios,", <em key="y">{year ? `desde ${year}.` : "en Salta."}</em>]}
         lede="Comercialización de inmuebles y lotes, alquileres, administración y tasación de propiedades en la provincia de Salta y el país."

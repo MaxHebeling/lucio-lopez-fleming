@@ -8,8 +8,7 @@ import type { Engine } from "./smooth-scroll";
  * (las animaciones CSS con fill ganan a los estilos inline).
  *
  * Marcado:
- *  [data-scene="cover"]   portada: [data-cover-plate] se reduce y baja, [data-cover-copy] sube, [data-cover-ghost]
- *                         se desplaza, [data-cover-shade] oscurece mientras la escena siguiente la cubre.
+ * La portada (recorrido arquitectónico) tiene su propia línea de tiempo: motion/journey.ts.
  *  [data-scene="words"]   las `.word` pasan de 0.5 a 1 de opacidad con el scroll (texto display ≥ 24 px: AA en todo momento).
  *  [data-parallax-y="28"] capa interna de una foto: ±28 px mientras cruza el viewport.
  *  [data-drift="4"]       tipografía gigante: ±4 % en X mientras cruza el viewport.
@@ -17,18 +16,6 @@ import type { Engine } from "./smooth-scroll";
  */
 export function initScenes({ gsap, ScrollTrigger }: Engine): () => void {
   const ctx = gsap.context(() => {
-    for (const cover of gsap.utils.toArray<HTMLElement>('[data-scene="cover"]')) {
-      const tl = gsap.timeline({ defaults: { ease: "none" }, scrollTrigger: { trigger: cover, start: "top top", end: "bottom top", scrub: true } });
-      const plate = cover.querySelector("[data-cover-plate]");
-      const copy = cover.querySelector("[data-cover-copy]");
-      const ghost = cover.querySelector("[data-cover-ghost]");
-      const shade = cover.querySelector("[data-cover-shade]");
-      if (plate) tl.to(plate, { scale: 0.9, yPercent: 7, transformOrigin: "100% 0%" }, 0);
-      if (copy) tl.to(copy, { yPercent: -22 }, 0);
-      if (ghost) tl.to(ghost, { xPercent: -8 }, 0);
-      if (shade) tl.to(shade, { opacity: 0.6 }, 0);
-    }
-
     for (const el of gsap.utils.toArray<HTMLElement>('[data-scene="words"]')) {
       const words = el.querySelectorAll(".word");
       if (!words.length) continue;

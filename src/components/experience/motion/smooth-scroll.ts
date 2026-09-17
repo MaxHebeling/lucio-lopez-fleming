@@ -15,6 +15,38 @@ let engine: Engine | null = null;
 let loading: Promise<Engine | null> | null = null;
 let tick: ((time: number) => void) | null = null;
 
+/**
+ * Último ancla de la misma página pedida con un clic (Lenis la anima con `anchors: true`). Si el layout cambia durante
+ * ese scroll suave (el recorrido de la portada cambia de alto al montar escenas o fijarse), `reaimAnchor()` vuelve a
+ * apuntar al elemento. Se registra junto con Lenis para no perder clics hechos antes de que carguen las escenas.
+ */
+let pendingAnchor: { el: HTMLElement; until: number } | null = null;
+const ANCHOR_WINDOW_MS = 5000;
+const onAnchorClick = (e: MouseEvent) => {
+  const link = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[href*="#"]') : null;
+  if (!link) return;
+  const url = new URL(link.href, location.href);
+  if (url.pathname !== location.pathname || url.hash.length < 2) return;
+  const el = document.getElementById(decodeURIComponent(url.hash.slice(1)));
+  pendingAnchor = el ? { el, until: performance.now() + ANCHOR_WINDOW_MS } : null;
+};
+const cancelAnchor = () => {
+  pendingAnchor = null;
+};
+const ANCHOR_CANCEL_EVENTS = ["wheel", "touchstart", "keydown"] as const;
+
+export function reaimAnchor(): void {
+  if (!engine || !pendingAnchor) return;
+  if (performance.now() > pendingAnchor.until || !pendingAnchor.el.isConnected) {
+    pendingAnchor = null;
+    return;
+  }
+  // Posición real (window.scrollY): tras un refresh, el scroll interno de Lenis puede estar desfasado.
+  const margin = Number.parseFloat(getComputedStyle(pendingAnchor.el).scrollMarginTop) || 0;
+  engine.lenis.resize();
+  engine.lenis.scrollTo(Math.max(0, pendingAnchor.el.getBoundingClientRect().top + window.scrollY - margin), { force: true });
+}
+
 export function initSmoothScroll(): Promise<Engine | null> {
   if (engine) return Promise.resolve(engine);
   if (loading) return loading;
@@ -29,6 +61,8 @@ export function initSmoothScroll(): Promise<Engine | null> {
       gsap.ticker.add(tick);
       gsap.ticker.lagSmoothing(0);
       engine = { lenis, gsap, ScrollTrigger };
+      document.addEventListener("click", onAnchorClick, true);
+      for (const type of ANCHOR_CANCEL_EVENTS) window.addEventListener(type, cancelAnchor, { passive: true });
       // Las fuentes y las fotos cambian alturas: se recalculan los disparadores cuando terminan de cargar.
       void document.fonts?.ready.then(() => ScrollTrigger.refresh());
       if (document.readyState !== "complete") window.addEventListener("load", () => ScrollTrigger.refresh(), { once: true });
@@ -46,6 +80,9 @@ export function initSmoothScroll(): Promise<Engine | null> {
 
 export function destroySmoothScroll(): void {
   if (!engine) return;
+  document.removeEventListener("click", onAnchorClick, true);
+  for (const type of ANCHOR_CANCEL_EVENTS) window.removeEventListener(type, cancelAnchor);
+  pendingAnchor = null;
   if (tick) engine.gsap.ticker.remove(tick);
   tick = null;
   engine.lenis.destroy();
@@ -58,19 +95,4 @@ export function pauseSmoothScroll(): void {
 
 export function resumeSmoothScroll(): void {
   engine?.lenis.start();
-}
-
-/**
- * Portada fija (sticky) cubierta por la escena siguiente: si el foco de teclado vuelve a un control de la portada
- * (Shift+Tab desde el manifiesto, por ejemplo) se sube hasta arriba para que el foco nunca quede tapado (WCAG 2.4.11).
- */
-export function initCoverFocus(cover: HTMLElement): () => void {
-  const onFocusIn = (e: FocusEvent) => {
-    if (window.scrollY <= 0 || getComputedStyle(cover).position !== "sticky") return;
-    if (e.target instanceof Element && !e.target.matches(":focus-visible")) return;
-    if (engine) engine.lenis.scrollTo(0, { immediate: true, force: true });
-    else window.scrollTo(0, 0);
-  };
-  cover.addEventListener("focusin", onFocusIn);
-  return () => cover.removeEventListener("focusin", onFocusIn);
 }

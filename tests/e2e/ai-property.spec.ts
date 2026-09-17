@@ -15,6 +15,15 @@ test.afterAll(async () => {
 test.describe.configure({ mode: "serial" });
 
 async function axeIn(page: Page, selector: string) {
+  // Con carga en paralelo las transiciones CSS tardan más: el contraste se mide con las animaciones finitas terminadas.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   const r = await new AxeBuilder({ page }).include(selector).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   return r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${selector}: ${v.id} ${v.nodes.map((n) => n.target.join(" ")).slice(0, 2).join(" | ")}`);
 }

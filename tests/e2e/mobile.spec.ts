@@ -85,6 +85,37 @@ test("mobile 390: portada, servicios en acordeón y sin desborde", async ({ page
   expect(await page.evaluate(() => document.documentElement.classList.contains("lenis"))).toBe(false);
 });
 
+test("mobile 390: recorrido liviano de la portada (4–5 momentos, sin GSAP, sin desborde) con acceso a la ficha", async ({ page }) => {
+  const bodies: Array<Promise<string>> = [];
+  page.on("response", (r) => {
+    if (r.request().resourceType() === "script") bodies.push(r.text().catch(() => ""));
+  });
+  await page.goto("/");
+  const journey = page.locator("[data-journey]");
+  await expect(journey.locator(".jr-scene").first()).toBeAttached();
+  const shown = await journey.locator(".jr-scene").evaluateAll((els) => els.filter((e) => getComputedStyle(e).display !== "none").length);
+  // Portada + 3–4 escenas.
+  expect(shown + 1).toBeGreaterThanOrEqual(4);
+  expect(shown + 1).toBeLessThanOrEqual(5);
+  // Las fotos esperan a que su escena se acerque: al cargar, a lo sumo la de la primera escena.
+  expect(await journey.locator(".jr-img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).currentSrc).length)).toBeLessThanOrEqual(1);
+  const last = journey.locator(".jr-scene").last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last.getByRole("link").first()).toBeVisible();
+  await expect.poll(() => last.locator(".jr-img").evaluate((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0)).toBe(true);
+  // Las escenas que no son de mobile no descargan su foto.
+  expect(await journey.locator(".jr-scene:not([data-mobile]) .jr-img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).currentSrc).length)).toBe(0);
+  await page.waitForTimeout(3000);
+  await expect(journey).not.toHaveAttribute("data-pinned", "");
+  expect(await page.evaluate(() => document.documentElement.classList.contains("lenis"))).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  // Ni GSAP/ScrollTrigger ni Lenis se descargan (API interna de cada librería, ausente del código propio).
+  expect(await page.evaluate(() => document.documentElement.hasAttribute("data-scroll-triggers"))).toBe(false);
+  const js = await Promise.all(bodies);
+  expect(js.length).toBeGreaterThan(0);
+  expect(js.some((b) => b.includes("scrollerProxy") || b.includes("lenis-smooth"))).toBe(false);
+});
+
 test("mobile 390: accesibilidad (axe) de home, listado, ficha, contacto, tasaciones y empresa", async ({ page }) => {
   test.setTimeout(150_000);
   const { default: AxeBuilder } = await import("@axe-core/playwright");

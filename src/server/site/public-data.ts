@@ -25,7 +25,7 @@ import {
   type PublicPropertyDetail,
   type ZoneCount,
 } from "../properties/public";
-import { getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "../properties/public-home";
+import { getJourneyProperty, getZoneShowcase, listListingCombinations, resolveLegacyTarget } from "../properties/public-home";
 import type { PublicOperation } from "../properties/public-helpers";
 import { SITE_CACHE_TAGS, SITE_REVALIDATE_SECONDS } from "./revalidate";
 import { loadSiteDemoShowcase, loadSitePropertyMediaExtras } from "../tours/queries";
@@ -88,6 +88,10 @@ export const getSiteRecent = (limit: number, excludeCodes: number[] = [], operat
 const zonesCached = unstable_cache(async (top: ZoneCount[]) => getZoneShowcase(getDb(), { zones: top }, top.length), ["site", "zones", "v3"], PROPERTIES);
 /** Portadas por zona a partir de las facetas ya leídas (no se recuentan). */
 export const getSiteZoneShowcase = (zones: ZoneCount[], limit: number) => readPublic(() => zonesCached(zones.slice(0, limit)));
+
+const journeyCached = unstable_cache(async (code: number, urls: string[]) => getJourneyProperty(getDb(), code, urls), ["site", "journey-property", "v1"], PROPERTIES);
+/** Propiedad del recorrido de la portada: null si dejó de estar publicada/disponible o le faltan fotos (→ respaldo de marca). */
+export const getSiteJourneyProperty = cache((code: number, photoSourceUrls: string[]) => readPublic(() => journeyCached(code, [...photoSourceUrls].sort())));
 
 // ───────── Ficha ─────────
 
