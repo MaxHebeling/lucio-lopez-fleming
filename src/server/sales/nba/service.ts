@@ -238,6 +238,26 @@ export async function snoozeRecommendation(db: Database, actor: Actor, raw: unkn
   return { until };
 }
 
+/**
+ * Bandeja de leads: la propuesta abierta de mayor prioridad que registró el sistema al calificar cada consulta (sin
+ * decisión todavía). Es la foto al llegar el lead; el detalle recalcula con los hechos actuales.
+ */
+export async function openProposalsForContacts(db: Executor, organizationId: string, contactIds: string[]): Promise<Map<string, { title: string; priority: "high" | "medium" | "low" }>> {
+  if (!contactIds.length) return new Map();
+  const rows = await db
+    .selectFrom("sales_recommendations")
+    .select(["contact_id", "title", "priority", "created_at"])
+    .where("organization_id", "=", organizationId)
+    .where("contact_id", "in", contactIds)
+    .where("status", "=", "open")
+    .orderBy(sql`case priority when 'high' then 0 when 'medium' then 1 else 2 end`)
+    .orderBy("created_at", "desc")
+    .execute();
+  const out = new Map<string, { title: string; priority: "high" | "medium" | "low" }>();
+  for (const r of rows) if (!out.has(r.contact_id)) out.set(r.contact_id, { title: r.title, priority: r.priority as "high" | "medium" | "low" });
+  return out;
+}
+
 /** Job (lead.created): deja registradas las propuestas del sistema (`open`) y emite recommendation.created. */
 export async function proposeRecommendations(db: Database, system: SystemActor, input: { organizationId: string; contactId: string; leadId: string | null }, now = new Date()): Promise<RecommendationRule[]> {
   const facts = await gatherNbaFacts(db, input.organizationId, { contactId: input.contactId, leadId: input.leadId, opportunityId: null, scopeUserId: null }, now);

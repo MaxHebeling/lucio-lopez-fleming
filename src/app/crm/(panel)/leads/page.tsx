@@ -10,6 +10,8 @@ import { Badge, ButtonLink, EmptyState, Input, PageHeader, Select, buttonClass, 
 import { INTEREST_LABEL, LEAD_STATUS_LABEL, LEAD_STATUS_TONE, PRIORITY_LABEL, PRIORITY_TONE } from "@/components/crm/labels";
 import { Pagination, flatParams } from "@/components/crm/pagination";
 import { requireScope } from "../_shared/load";
+import { isEnabled } from "@/server/flags";
+import { openProposalsForContacts } from "@/server/sales/nba/service";
 
 export const metadata: Metadata = { title: "Leads" };
 
@@ -26,7 +28,9 @@ export default async function LeadsPage({ searchParams }: PageProps<"/crm/leads"
   requireScope(leadScope, actor);
   const sp = flatParams(await searchParams);
   const db = getDb();
-  const [result, sources, users] = await Promise.all([listLeads(db, actor, sp), listLeadSources(db, actor), listStaffUsers(db, actor)]);
+  const [result, sources, users, matchingOn] = await Promise.all([listLeads(db, actor, sp), listLeadSources(db, actor), listStaffUsers(db, actor), isEnabled(db, "ai_matching")]);
+  // Sugerencia registrada al calificar cada consulta (solo contactos de las filas visibles, ya filtradas por alcance).
+  const proposals = matchingOn ? await openProposalsForContacts(db, actor.organizationId, [...new Set(result.rows.map((r) => r.contact_id))]) : new Map();
   const f = result.filters;
   const hasFilters = Boolean(f.status || f.source || f.assigned || f.priority || f.unanswered || f.property || f.from || f.to || f.q);
   return (
@@ -132,6 +136,11 @@ export default async function LeadsPage({ searchParams }: PageProps<"/crm/leads"
                       {l.priority !== "normal" ? <Badge tone={PRIORITY_TONE[l.priority]}>{PRIORITY_LABEL[l.priority]}</Badge> : null}
                     </span>
                     {l.message ? <span className="mt-0.5 block truncate text-sm text-stone">{l.message}</span> : null}
+                    {proposals.get(l.contact_id) ? (
+                      <span className="mt-0.5 block truncate text-xs font-semibold text-ink-2">
+                        Siguiente acción sugerida: {proposals.get(l.contact_id)!.title}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-sm text-ink-2">
                     {l.source_name}
