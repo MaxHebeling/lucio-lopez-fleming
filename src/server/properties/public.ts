@@ -445,13 +445,15 @@ export async function getShowcaseProperties(db: Executor, limit = 6, opts: { pre
   return rows.rows.map((r) => mapCard(idx, r));
 }
 
-export async function getRecentProperties(db: Executor, limit = 10, excludeCodes: number[] = []): Promise<PublicPropertyCard[]> {
+/** Últimas publicadas disponibles. `operation` las limita a una operación (p. ej. la foto real de "Alquileres" en el home). */
+export async function getRecentProperties(db: Executor, limit = 10, excludeCodes: number[] = [], operation?: PublicOperation): Promise<PublicPropertyCard[]> {
   const idx = await locationIndex(db);
   const rows = await sql<CardRow>`
     select ${cardSelect}
     from properties p join property_types t on t.key = p.type_key
     where ${publishedWhere} and p.status in ('available', 'reserved')
       ${excludeCodes.length ? sql`and not (p.code = any(${excludeCodes}::int[]))` : sql``}
+      ${operation ? sql`and exists (select 1 from property_operations o where o.property_id = p.id and o.is_active and o.operation = ${operation})` : sql``}
     order by p.published_at desc nulls last, p.code desc
     limit ${limit}`.execute(db);
   return rows.rows.map((r) => mapCard(idx, r));

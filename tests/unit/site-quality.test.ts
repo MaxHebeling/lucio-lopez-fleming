@@ -73,3 +73,14 @@ describe("invalidación del sitio fuera de una petición de Next", () => {
     await expect(revalidatePublicSite("prueba")).resolves.toEqual({ via: "none" });
   });
 });
+
+describe("home: foto del territorio elegida por datos", () => {
+  const zone = (name: string, slug: string, count: number, url: string | null) => ({ name, slug, count, areas: [], cover: url ? { url, width: null, height: null, alt: "" } : null });
+  it("la zona con más propiedades fuera de la ciudad de la casa central; si no hay, la primera con portada", async () => {
+    const { pickTerritoryFeature } = await import("@/components/experience/territory");
+    const zones = [zone("Salta", "salta", 275, "https://x/salta.jpg"), zone("Villa San Lorenzo", "villa-san-lorenzo", 44, "https://x/vsl.jpg"), zone("Castellanos", "castellanos", 8, "https://x/c.jpg")];
+    expect(pickTerritoryFeature(zones, "Salta")).toEqual({ zoneName: "Villa San Lorenzo", zoneSlug: "villa-san-lorenzo", url: "https://x/vsl.jpg" });
+    expect(pickTerritoryFeature([zones[0]!, zone("Cerrillos", "cerrillos", 5, null)], "salta")).toEqual({ zoneName: "Salta", zoneSlug: "salta", url: "https://x/salta.jpg" });
+    expect(pickTerritoryFeature([], "Salta")).toBeNull();
+  });
+});

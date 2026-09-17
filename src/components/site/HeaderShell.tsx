@@ -87,7 +87,7 @@ export function HeaderShell({ phone, whatsappHref }: Props) {
     <header className="site-header" data-tone={tone} data-scrolled={scrolled ? "true" : "false"} data-menu-open={open ? "true" : "false"}>
       <div className="container-site flex h-full items-center justify-between gap-6">
         <Logo />
-        <nav aria-label="Principal" className="header-nav header-enter hidden items-center gap-7 text-[0.9rem] font-medium lg:flex">
+        <nav aria-label="Principal" className="header-nav header-enter hidden items-center gap-5 whitespace-nowrap text-[0.875rem] font-medium lg:flex xl:gap-7 xl:text-[0.9rem]">
           {SITE_NAV.map((item) => (
             <Link key={item.href} href={item.href} aria-current={isCurrent(pathname, item.href) ? "page" : undefined}>
               {item.label}
@@ -100,8 +100,8 @@ export function HeaderShell({ phone, whatsappHref }: Props) {
               <WhatsAppIcon className="size-4" /> WhatsApp
             </a>
           ) : phone ? (
-            <a href={phone.href} className="btn btn-outline hidden min-h-11 px-4 text-sm sm:inline-flex">
-              <Phone aria-hidden className="size-4" /> {phone.label}
+            <a href={phone.href} className="btn btn-outline hidden min-h-11 px-4 text-sm sm:inline-flex lg:px-3 xl:px-4">
+              <Phone aria-hidden className="size-4" /> <span className="lg:max-xl:sr-only">{phone.label}</span>
             </a>
           ) : null}
           <button
@@ -142,6 +142,9 @@ export function HeaderShell({ phone, whatsappHref }: Props) {
               ))}
             </ul>
             <div className="menu-item mt-8 flex flex-col gap-3" style={{ "--i": 8 } as React.CSSProperties}>
+              <Link href="/#vender" onClick={() => setOpen(false)} className="btn btn-light">
+                Quiero vender mi propiedad
+              </Link>
               {whatsappHref ? (
                 <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
                   <WhatsAppIcon className="size-5" /> Escribinos por WhatsApp

@@ -48,3 +48,24 @@ export function TextReveal({ as: Tag = "h2", lines, className, delay, id }: { as
 export function SurveyLine({ className, delay }: { className?: string; delay?: number }) {
   return <span aria-hidden data-reveal="line" className={`survey-line ${className ?? ""}`} style={delay ? ({ "--reveal-delay": `${delay}ms` } as CSSProperties) : undefined} />;
 }
+
+/**
+ * Texto partido en palabras (`.word`) para el revelado ligado al scroll (motion/scenes.ts, `data-scene="words"`).
+ * Es el mismo texto para lectores de pantalla y buscadores: solo se envuelve cada palabra en un span.
+ */
+export function Words({ text }: { text: string }) {
+  const parts = text.split(/(\s+)/);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^\s+$/.test(part) ? (
+          part
+        ) : (
+          <span key={i} className="word">
+            {part}
+          </span>
+        ),
+      )}
+    </>
+  );
+}

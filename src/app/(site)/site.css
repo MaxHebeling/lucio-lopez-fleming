@@ -307,71 +307,9 @@
     transition: transform 1.1s var(--ease-in-out) var(--reveal-delay, 0ms);
   }
 
-  /* ── Nivel 1 · Hero cinematográfico ── */
-  .hero {
-    position: relative;
-    isolation: isolate;
-    min-height: min(100svh, 980px);
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    color: var(--paper);
-    background: var(--ink);
-  }
-  @media (max-height: 620px) and (orientation: landscape) {
-    .hero {
-      min-height: 640px;
-    }
-  }
-  html[data-motion] .hero {
-    padding-top: var(--header-h);
-  }
-  .hero-media,
-  .hero-zoom {
-    position: absolute;
-    inset: -12px;
-    z-index: -2;
-  }
-  .hero-img {
-    object-fit: cover;
-  }
-  .hero-veil {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background:
-      linear-gradient(180deg, rgb(20 19 18 / 0.55) 0%, rgb(20 19 18 / 0.08) 26%, rgb(20 19 18 / 0.18) 48%, rgb(20 19 18 / 0.86) 100%),
-      linear-gradient(90deg, rgb(20 19 18 / 0.45) 0%, transparent 60%);
-  }
-  html[data-motion="on"] .hero-img {
-    animation: hero-img-in var(--motion-cinematic) var(--ease-out) both;
-  }
-  html[data-motion="on"] .hero-line {
-    animation: hero-line-up 1s var(--ease-out) both;
-    animation-delay: calc(360ms + var(--l, 0) * 110ms);
-  }
-  html[data-motion="on"] .hero-enter {
-    animation: fade-up 0.8s var(--ease-out) both;
-    animation-delay: var(--d, 700ms);
-  }
+  /* Entradas compartidas (portada, menú mobile) */
   html[data-motion="on"] body:has([data-hero]) .header-enter {
-    animation: fade-down 0.6s var(--ease-out) 1s both;
-  }
-  @keyframes hero-img-in {
-    from {
-      transform: scale(1.1);
-    }
-    to {
-      transform: none;
-    }
-  }
-  @keyframes hero-line-up {
-    from {
-      transform: translate3d(0, 0.4em, 0);
-    }
-    to {
-      transform: none;
-    }
+    animation: fade-down var(--motion-reveal) var(--ease-out) 200ms both;
   }
   @keyframes fade-up {
     from {
@@ -393,39 +331,8 @@
       transform: none;
     }
   }
-  .hero-title {
-    font-size: var(--text-hero);
-    line-height: 0.9;
-    letter-spacing: -0.035em;
-  }
-  .hero-line {
-    display: block;
-  }
   [data-depth] {
     will-change: transform;
-  }
-
-  /* Escala lenta del hero ligada al scroll (desktop, navegadores con scroll-driven animations) */
-  @keyframes hero-scroll-zoom {
-    to {
-      transform: scale(1.08);
-    }
-  }
-  @supports (animation-timeline: view()) {
-    @media (min-width: 1024px) {
-      html[data-motion="on"] .hero-zoom {
-        animation: hero-scroll-zoom linear both;
-        animation-timeline: view();
-        animation-range: exit 0% exit 100%;
-      }
-    }
-  }
-
-  .hero-search {
-    background: color-mix(in srgb, var(--paper) 97%, transparent);
-    color: var(--ink);
-    border-radius: 20px;
-    box-shadow: 0 24px 60px rgb(0 0 0 / 0.25);
   }
 
   /* ── Nivel 3 · Revelados de sección ── */
@@ -502,68 +409,6 @@
     transition-delay: calc(var(--reveal-delay, 0ms) + var(--l, 0) * 90ms);
   }
 
-  /* ── Nivel 2 · Manifiesto con 1974 ── */
-  .numeral {
-    font-family: var(--font-display), serif;
-    font-size: clamp(7rem, 26vw, 26rem);
-    line-height: 0.78;
-    letter-spacing: -0.05em;
-  }
-
-  /* ── Sticky story «Qué hacemos» ── */
-  .story-media {
-    position: relative;
-  }
-  .story-photo {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    transition: opacity 0.7s var(--ease-out);
-  }
-  .story-photo[data-idx="0"] {
-    opacity: 1;
-  }
-  [data-story][data-active] .story-photo {
-    opacity: 0;
-  }
-  [data-story][data-active="0"] .story-photo[data-idx="0"],
-  [data-story][data-active="1"] .story-photo[data-idx="1"],
-  [data-story][data-active="2"] .story-photo[data-idx="2"] {
-    opacity: 1;
-  }
-  .story-photo img {
-    transition: transform 1.6s var(--ease-out);
-    transform: scale(1.06);
-  }
-  [data-story]:not([data-active]) .story-photo[data-idx="0"] img,
-  [data-story][data-active="0"] .story-photo[data-idx="0"] img,
-  [data-story][data-active="1"] .story-photo[data-idx="1"] img,
-  [data-story][data-active="2"] .story-photo[data-idx="2"] img {
-    transform: none;
-  }
-  /* Paso activo: número en ladrillo y leve avance; el texto nunca pierde contraste (se lee siempre completo). */
-  .story-step .story-num {
-    transition: transform 0.5s var(--ease-out);
-  }
-  @media (min-width: 1024px) {
-    [data-story][data-active="0"] .story-step[data-story-step="0"] .story-num,
-    [data-story][data-active="1"] .story-step[data-story-step="1"] .story-num,
-    [data-story][data-active="2"] .story-step[data-story-step="2"] .story-num {
-      transform: translateX(6px);
-    }
-  }
-  .story-progress {
-    transform-origin: top;
-    transform: scaleY(0.3333);
-    transition: transform 0.6s var(--ease-out);
-  }
-  [data-story][data-active="1"] .story-progress {
-    transform: scaleY(0.6666);
-  }
-  [data-story][data-active="2"] .story-progress {
-    transform: scaleY(1);
-  }
-
   /* ── Tarjetas de propiedad ── */
   .card {
     position: relative;
@@ -579,7 +424,7 @@
   }
   @media (hover: hover) and (pointer: fine) {
     .card:hover .card-img {
-      scale: 1.04;
+      scale: 1.03;
     }
     .card:hover .card-arrow {
       transform: translate(2px, -2px);
@@ -769,6 +614,133 @@
   /* Un ancestro con backdrop-filter se vuelve contenedor de los `position: fixed`: con el menú abierto se quita. */
   .site-header[data-menu-open="true"] {
     backdrop-filter: none;
+  }
+
+  /* ── Sistema compartido del sitio (home y páginas internas) ── */
+  .btn-light {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .btn-light:hover {
+    background: var(--white);
+  }
+  .btn-lg {
+    min-height: 56px;
+    padding: 0 1.75rem;
+    font-size: 1rem;
+  }
+  .field-control.field-lg {
+    min-height: 56px;
+    padding: 0.8rem 1rem;
+    font-size: 1.0625rem;
+  }
+  textarea.field-control.field-lg {
+    min-height: 7rem;
+  }
+
+  /* Opciones segmentadas (radio): áreas táctiles de 56 px, foco visible, estado elegido en tinta */
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .segmented-option {
+    position: relative;
+    display: block;
+  }
+  .segmented-option input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .segmented-option span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--white);
+    font-weight: 600;
+    transition:
+      background-color var(--motion-fast),
+      border-color var(--motion-fast),
+      color var(--motion-fast);
+  }
+  .segmented-option input:hover + span {
+    border-color: var(--ink-2);
+  }
+  .segmented-option input:checked + span {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+  .segmented-option input:focus-visible + span {
+    outline: 2px solid var(--brick);
+    outline-offset: 2px;
+  }
+
+  /* Contacto flotante: aparece tras la portada, se esconde si hay otro contacto a la vista o se está escribiendo */
+  .float-contact {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    z-index: var(--z-float);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-width: 52px;
+    min-height: 52px;
+    padding: 0 1.15rem 0 1rem;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: var(--shadow-float);
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.96);
+    pointer-events: none;
+    transition:
+      opacity var(--motion-ui) var(--ease-out),
+      transform var(--motion-ui) var(--ease-out),
+      background-color var(--motion-fast);
+  }
+  .float-contact[data-shown] {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+  .float-contact:hover {
+    background: var(--brick);
+  }
+  .float-contact-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* Desde 640 px la cabecera fija ya muestra el contacto: el flotante sería redundante y taparía contenido. */
+  @media (min-width: 640px) {
+    .float-contact {
+      display: none;
+    }
+  }
+  .float-contact {
+    width: 52px;
+    padding: 0;
+  }
+  .float-contact-label {
+    display: none;
+  }
+
+  /* Escena: bloque opaco que cubre a la anterior (la portada queda debajo en desktop) */
+  .scene {
+    position: relative;
+    z-index: 1;
+    background: var(--paper);
   }
 }
 
