@@ -10,6 +10,7 @@ import { Card, EmptyState, Field, Input, PageHeader, Select, Table, buttonClass,
 import { ActionForm } from "@/components/rentals/action-form";
 import { SettlementStatus } from "@/components/rentals/status";
 import { approveSettlementAction, generateSettlementAction, paySettlementAction } from "../actions";
+import { ListLimitNotice } from "@/components/crm/list-limit-notice";
 
 export const metadata: Metadata = { title: "Liquidaciones" };
 
@@ -84,7 +85,9 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/crm/
       {rows.length === 0 ? (
         <EmptyState title="No hay liquidaciones" description="Generalas por contrato y mes cuando haya cobros registrados." />
       ) : (
-        <Table label="Liquidaciones">
+        <>
+          <ListLimitNotice shown={rows.length} limit={300} noun="liquidaciones" />
+          <Table label="Liquidaciones">
           <thead>
             <tr>
               <th>Mes</th>
@@ -129,7 +132,8 @@ export default async function SettlementsPage({ searchParams }: PageProps<"/crm/
               </tr>
             ))}
           </tbody>
-        </Table>
+          </Table>
+        </>
       )}
     </>
   );
