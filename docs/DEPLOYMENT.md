@@ -15,6 +15,8 @@ rama feat/* → PR → CI verde (lint, migraciones, tipos, tests, build, secreto
 
 1. Backup previo si hay migraciones: `DATABASE_URL=<prod> scripts/backup.sh` (o correr el workflow "Backup nocturno" a mano).
 2. Migraciones **antes** de que el código nuevo reciba tráfico: `DATABASE_URL=<prod> DATABASE_SSL=require pnpm db:migrate`.
+   Si cambió `knowledge/` (guía del Asistente IA): `DATABASE_URL=<prod> DATABASE_SSL=require pnpm ai:knowledge:ingest`
+   (idempotente; si se omite, el job diario `ai.knowledge_ingest` la actualiza).
    Las migraciones son aditivas y compatibles hacia atrás (expand → migrate → contract en PRs separados), de modo que
    el código anterior sigue funcionando si hay que volver atrás.
 3. Merge a `main` → Vercel construye y publica.

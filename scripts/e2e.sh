@@ -18,6 +18,8 @@ psql -qd postgres -c "drop database if exists ${E2E_DB} with (force)" -c "create
 # la base recién copiada y no datos de una corrida anterior.
 rm -rf .next/cache/fetch-cache
 pnpm db:migrate >/dev/null
+# Guía del CRM para el «✦ Asistente IA» (idempotente): la necesita tests/e2e/copilot.spec.ts.
+pnpm ai:knowledge:ingest >/dev/null
 # Demo del tour 360° (idempotente): la necesitan tests/e2e/tour*.spec.ts.
 pnpm seed:demo-tour >/dev/null 2>&1
 pnpm exec playwright test "$@"

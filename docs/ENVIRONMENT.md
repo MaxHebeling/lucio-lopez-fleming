@@ -22,6 +22,10 @@ Variables: ver `.env.example` (cada una documentada). Reglas:
 - `CRON_STALE_MINUTES` (opcional, 10 por defecto): con `APP_ENV=production`, `/api/ready` responde 503 si el cron no
   corrió en ese lapso.
 - Integraciones sin credenciales quedan en `awaiting_credentials` (visible en CRM → Integraciones), no fallan en silencio.
+- **IA** (`ANTHROPIC_API_KEY`, opcional): sin la clave el «✦ Asistente IA» del CRM igual funciona con la guía y consultas
+  directas y lo avisa; el asistente de WhatsApp deriva a personas. No hay variables nuevas para el AI Core: modelos por
+  tarea, límite por usuario y retención se configuran en `settings` (ver `docs/ai/AI_CORE.md`). `AI_MODEL` sigue
+  aplicando solo al asistente de WhatsApp. Usar claves distintas por entorno y límite de gasto en la consola del proveedor.
 
 Mínimo para que producción funcione: `DATABASE_URL`, `DATABASE_SSL`, `APP_URL`, `APP_ENV=production`, `CRON_SECRET`,
 `STORAGE_*` (driver s3), `UPLOAD_SIGNING_SECRET`. Recomendado desde el día 1: `HEALTH_TOKEN`, `SENTRY_DSN`, `RESEND_API_KEY` + `EMAIL_FROM` +

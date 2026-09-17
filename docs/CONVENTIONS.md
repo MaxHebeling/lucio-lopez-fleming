@@ -50,7 +50,9 @@ tests/e2e           Playwright
 ## Migraciones
 
 - Numeración por bloque para evitar choques entre ramas: núcleo `0001–0099`, CRM `0100–0199`, alquileres/portal `0200–0299`,
-  integraciones `0300–0399`, sitio público `0400–0499`.
+  integraciones `0300–0399`, sitio público `0400–0499`, IA `0500–0599`.
+- IA: toda función con modelo pasa por `src/server/ai/core` (proveedor, ruteo, registro de herramientas con permiso y
+  capability, prompts versionados en `src/server/ai/prompts`). Ver `docs/ai/AI_CORE.md` y `docs/ai/GOVERNANCE.md`.
 - Tras crear una migración: `pnpm db:migrate && pnpm db:codegen` y versionar `src/server/db/generated.ts`.
 - `db/_post_migrate.sql` corre siempre: activa RLS y revoca a `anon`/`authenticated` (Supabase).
 
