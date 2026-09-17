@@ -1,6 +1,7 @@
 "use server";
 
 import { getDb } from "@/server/db";
+import { headers } from "next/headers";
 import { getActor, getRequestMeta } from "@/server/next/context";
 import { formToObject } from "@/server/next/action";
 import { submitPublicLead } from "@/server/site/leads";
@@ -52,7 +53,10 @@ export async function submitLeadAction(_prev: LeadFormState, fd: FormData): Prom
   };
   try {
     const actor = await getActor();
-    const res = await submitPublicLead(getDb(), actor, meta.ip, { ...raw, utm });
+    const h = await headers();
+    // Do Not Track / Global Privacy Control: la sesión del sitio no se vincula al contacto.
+    const privacySignal = h.get("dnt") === "1" || h.get("sec-gpc") === "1";
+    const res = await submitPublicLead(getDb(), actor, meta.ip, { ...raw, utm }, { privacySignal });
     switch (res.status) {
       case "sent":
         return {
