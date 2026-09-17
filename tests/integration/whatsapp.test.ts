@@ -211,6 +211,8 @@ describe("envío y estados", () => {
     await processInboundMessage(db, actor, eventFrom(inboundTextPayload({ waId, text: "Hola", timestamp: ts }).body));
     const conv = await db.selectFrom("conversations").select("id").where("external_thread_id", "=", waId).executeTakeFirstOrThrow();
     const agent = await createStaff(db, ["agente"]);
+    // Derivada sin asignar (bot apagado): se le asigna al agente para que esté en su alcance
+    await db.updateTable("conversations").set({ assigned_user_id: agent.userId }).where("id", "=", conv.id).execute();
     const reply = await replyAsHuman(db, agent, { conversationId: conv.id, body: "Hola, ¿en qué te ayudo?", idempotencyKey: `k-${waId}` });
     return { db, waId, conversationId: conv.id, messageId: reply.messageId, agent };
   }
@@ -360,6 +362,68 @@ describe("acciones del equipo sobre conversaciones", () => {
     await processInboundMessage(db, actor, eventFrom(inboundTextPayload({ waId, text: "Volví" }).body));
     const reopened = await db.selectFrom("conversations").select("mode").where("id", "=", conv.id).executeTakeFirstOrThrow();
     expect(reopened.mode).toBe("bot");
+  });
+});
+
+describe("alcance de conversaciones (IDOR)", () => {
+  it("un agente sin leads.read_all solo ve y opera conversaciones suyas, sin asignar en modo bot o de sus leads", async () => {
+    const db = testDb();
+    const org = (await testSystemActor(db)).organizationId;
+    const admin = await createStaff(db, ["administrador"]);
+    const agentA = await createStaff(db, ["agente"]);
+    const agentB = await createStaff(db, ["agente"]);
+    const contact = async (name: string) => (await db.insertInto("contacts").values({ organization_id: org, display_name: name }).returning("id").executeTakeFirstOrThrow()).id;
+    const conversation = async (mode: string, assigned: string | null, name: string) =>
+      (
+        await db
+          .insertInto("conversations")
+          .values({ channel: "whatsapp", external_thread_id: newWaId(), contact_id: await contact(name), mode, assigned_user_id: assigned, last_inbound_at: new Date(), last_message_at: new Date() })
+          .returning(["id", "contact_id"])
+          .executeTakeFirstOrThrow()
+      );
+    const ofA = await conversation("human", agentA.userId, "Conversación de A");
+    const botFree = await conversation("bot", null, "Bot sin asignar");
+    const leadOfB = await conversation("human", null, "Lead de B");
+    await db.insertInto("leads").values({ organization_id: org, contact_id: leadOfB.contact_id!, source_key: "whatsapp", conversation_id: leadOfB.id, assigned_user_id: agentB.userId }).execute();
+    const handedOff = await conversation("human", null, "Derivada a administración");
+    const msg = await db
+      .insertInto("conversation_messages")
+      .values({ conversation_id: ofA.id, direction: "outbound", sender_kind: "user", body: "hola", kind: "text", status: "failed" })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    const seen = async (actor: typeof agentB) => {
+      const ids = new Set<string>();
+      for (const view of ["open", "bot", "human", "closed"]) for (const i of (await listConversations(db, actor, { view })).items) ids.add(i.id);
+      return ids;
+    };
+    const b = await seen(agentB);
+    expect(b.has(botFree.id)).toBe(true);
+    expect(b.has(leadOfB.id)).toBe(true);
+    expect(b.has(ofA.id)).toBe(false);
+    expect(b.has(handedOff.id)).toBe(false);
+    const all = await seen(admin);
+    for (const c of [ofA, botFree, leadOfB, handedOff]) expect(all.has(c.id)).toBe(true);
+
+    // Lectura y todas las acciones sobre una conversación ajena → 404
+    await expect(getConversation(db, agentB, ofA.id)).rejects.toThrow(/no encontrad/);
+    await expect(replyAsHuman(db, agentB, { conversationId: ofA.id, body: "me meto", idempotencyKey: "idor-reply-1" })).rejects.toThrow(/no encontrad/);
+    await expect(takeConversation(db, agentB, ofA.id)).rejects.toThrow(/no encontrad/);
+    await expect(takeConversation(db, agentB, handedOff.id)).rejects.toThrow(/no encontrad/);
+    await expect(returnToBot(db, agentB, ofA.id)).rejects.toThrow(/no encontrad/);
+    await expect(closeConversation(db, agentB, ofA.id)).rejects.toThrow(/no encontrad/);
+    await expect(retryOutboundMessage(db, agentB, msg.id)).rejects.toThrow(/no encontrad/);
+    const row = await db.selectFrom("conversations").select(["mode", "assigned_user_id"]).where("id", "=", ofA.id).executeTakeFirstOrThrow();
+    expect(row).toEqual({ mode: "human", assigned_user_id: agentA.userId });
+    expect(await db.selectFrom("conversation_messages").select("id").where("conversation_id", "=", ofA.id).execute()).toHaveLength(1);
+
+    // Dentro de alcance sí puede: su lead y la conversación del bot sin asignar
+    expect((await getConversation(db, agentB, leadOfB.id)).conversation.id).toBe(leadOfB.id);
+    await replyAsHuman(db, agentB, { conversationId: leadOfB.id, body: "Hola", idempotencyKey: "idor-ok-1" });
+    await takeConversation(db, agentB, botFree.id);
+    // El dueño y el administrador siguen operando
+    await replyAsHuman(db, agentA, { conversationId: ofA.id, body: "Sigo yo", idempotencyKey: "idor-owner-1" });
+    await takeConversation(db, admin, handedOff.id);
   });
 });
 

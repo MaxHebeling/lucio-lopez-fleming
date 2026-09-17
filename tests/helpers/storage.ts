@@ -15,6 +15,10 @@ export class MemoryStorage implements StorageDriver {
     if (!o) throw new Error("no existe");
     return o.body;
   }
+  async head(bucket: string, key: string) {
+    const o = this.objects.get(`${bucket}/${key}`);
+    return o ? { size: o.body.byteLength, contentType: o.contentType } : null;
+  }
   async remove(bucket: string, key: string) {
     this.objects.delete(`${bucket}/${key}`);
   }

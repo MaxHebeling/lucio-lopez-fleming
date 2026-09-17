@@ -364,6 +364,7 @@ export interface Files {
   size_bytes: Int8;
   storage_driver: string;
   storage_key: string;
+  storage_removed_at: Timestamp | null;
   uploaded_by: string | null;
   visibility: string;
   width: number | null;
@@ -461,6 +462,8 @@ export interface Leads {
   property_id: string | null;
   source_key: string;
   status: Generated<string>;
+  submitted_email: string | null;
+  submitted_phone: string | null;
   updated_at: Generated<Timestamp>;
   utm: Generated<Json>;
 }

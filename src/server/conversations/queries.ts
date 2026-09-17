@@ -1,9 +1,10 @@
-/** Lecturas de la bandeja de conversaciones (permiso conversations.read). Columnas explícitas. */
+/** Lecturas de la bandeja de conversaciones (permiso conversations.read + alcance de ./scope). Columnas explícitas. */
 import { z } from "zod";
 import { sql, type Database } from "../db";
 import { requirePermission, requireStaff, type Actor } from "../auth/actor";
 import { notFound } from "../errors";
 import { isEnabled } from "../flags";
+import { conversationInScopeSql, conversationScopeUserId } from "./scope";
 import { reengagementTemplate, isWindowOpen, CUSTOMER_SERVICE_WINDOW_MS, whatsappSendConfig } from "../integrations/whatsapp/config";
 
 export const inboxFilterSchema = z.object({
@@ -77,6 +78,8 @@ export async function listConversations(db: Database, actor: Actor, raw: unknown
     ])
     .where("c.channel", "=", "whatsapp");
 
+  const scopeUserId = conversationScopeUserId(actor);
+  if (scopeUserId) q = q.where(conversationInScopeSql(scopeUserId));
   if (filter.view === "open") q = q.where("c.mode", "in", ["bot", "human"]);
   else q = q.where("c.mode", "=", filter.view);
   if (filter.mine) q = q.where("c.assigned_user_id", "=", actor.userId);
@@ -170,6 +173,7 @@ export async function getConversation(db: Database, actor: Actor, id: string) {
       "u.full_name as assigned_name",
     ])
     .where("c.id", "=", parsedId.data)
+    .$if(conversationScopeUserId(actor) !== null, (qb) => qb.where(conversationInScopeSql(conversationScopeUserId(actor)!)))
     .executeTakeFirst();
   if (!conv) throw notFound("Conversación");
 

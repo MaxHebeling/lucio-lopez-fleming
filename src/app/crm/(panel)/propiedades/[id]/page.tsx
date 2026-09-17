@@ -7,6 +7,7 @@ import { can } from "@/server/auth/actor";
 import { getDb } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getPropertyDetail, propertyFormOptions } from "@/server/properties/queries";
+import { addressLeakInText } from "@/server/properties/address-leak";
 import { OPERATION_LABEL, STATUS_LABEL, STATUS_TRANSITIONS, type Operation, type PropertyStatus } from "@/server/properties/schema";
 import { Alert, Badge, ButtonLink, Card, formatArea, formatDate, formatDateTime, formatMoney, PageHeader, Table } from "@/components/ui";
 import { ActionButton } from "@/components/crm/action-button";
@@ -70,10 +71,13 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
   const canPublish = can(actor, "properties.publish");
   const canMedia = can(actor, "properties.manage_media");
   const canPrivate = can(actor, "properties.read_private");
-  const staff = canUpdate ? (await propertyFormOptions(db, actor)).staff : [];
+  const canAssignAgents = can(actor, "properties.assign_agents");
+  const staff = canAssignAgents ? (await propertyFormOptions(db, actor)).staff : [];
   const status = p.status as PropertyStatus;
   const transitions = STATUS_TRANSITIONS[status] ?? [];
   const leadAgent = d.agents.find((a) => a.role === "lead");
+  const addressLeak = p.hide_exact_address ? addressLeakInText({ street: p.address_street, title: p.title, description: p.description }) : null;
+  const addressLeakWhere = addressLeak && addressLeakInText({ street: p.address_street, title: p.title, description: null }) ? "título" : "texto de la descripción";
 
   const sections = [
     ["datos", "Datos"],
@@ -134,6 +138,12 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
         {sp.creada ? <Alert tone="success">Propiedad creada como borrador.</Alert> : null}
         {sp.guardada ? <Alert tone="success">Cambios guardados.</Alert> : null}
         {sp.duplicada ? <Alert tone="success">Copia creada. Revisá los datos, cargá fotos y cambiá el estado cuando esté lista.</Alert> : null}
+        {p.hide_exact_address && addressLeak ? (
+          <Alert tone="warning">
+            <span className="font-semibold">La dirección está oculta en el sitio, pero el {addressLeakWhere} la menciona:</span> «{addressLeak}».
+            {canUpdate ? " Editá el texto para no publicar la altura." : " Avisale a quien pueda editar la propiedad."}
+          </Alert>
+        ) : null}
         {!p.is_published && d.blockers.length ? (
           <Alert tone="warning">
             <span className="font-semibold">Para publicar falta:</span>
@@ -344,7 +354,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
 
         <section id="agentes" className="scroll-mt-28">
           <Card title="Agentes">
-            {canUpdate ? (
+            {canAssignAgents ? (
               <AgentsEditor
                 propertyId={p.id}
                 staff={[...staff, ...d.agents.filter((a) => !staff.some((s) => s.id === a.user_id)).map((a) => ({ id: a.user_id, full_name: `${a.full_name} (inactivo)` }))]}

@@ -87,8 +87,8 @@ describe("captura de leads", () => {
   it("mismo email o teléfono (con/sin 9) → mismo contacto; misma clave → mismo lead", async () => {
     const db = testDb();
     const system = { kind: "anonymous" as const, organizationId: (await db.selectFrom("organizations").select("id").executeTakeFirstOrThrow()).id };
-    const a = await captureLead(db, system, { name: "Ana López", phone: "387 5775468", sourceKey: "web_contact", message: "Hola", idempotencyKey: "form-abc-123" });
-    const again = await captureLead(db, system, { name: "Ana López", phone: "387 5775468", sourceKey: "web_contact", message: "Hola", idempotencyKey: "form-abc-123" });
+    const a = await captureLead(db, system, { name: "Ana López", phone: "387 5775468", email: "ana@mail.com", sourceKey: "web_contact", message: "Hola", idempotencyKey: "form-abc-123" });
+    const again = await captureLead(db, system, { name: "Ana López", phone: "387 5775468", email: "ana@mail.com", sourceKey: "web_contact", message: "Hola", idempotencyKey: "form-abc-123" });
     expect(again).toMatchObject({ leadId: a.leadId, duplicate: true });
 
     const wa = await captureLead(db, system, { name: "Ana", phone: "+5493875775468", phoneIsWhatsapp: true, email: "ANA@mail.com", sourceKey: "whatsapp" });

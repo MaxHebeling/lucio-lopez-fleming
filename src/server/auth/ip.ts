@@ -11,14 +11,37 @@ export function normalizeIp(raw: string | null | undefined): string | null {
   return isIP(s) ? s : null;
 }
 
-/** IP del cliente: primer valor válido de x-forwarded-for, luego x-real-ip. */
-export function clientIpFromHeaders(get: (name: string) => string | null): string | null {
-  const xff = get("x-forwarded-for");
-  if (xff) {
-    for (const part of xff.split(",")) {
-      const ip = normalizeIp(part);
-      if (ip) return ip;
-    }
+type IpEnv = Record<string, string | undefined>;
+
+function firstValid(list: string | null): string | null {
+  for (const part of (list ?? "").split(",")) {
+    const ip = normalizeIp(part);
+    if (ip) return ip;
   }
-  return normalizeIp(get("x-real-ip"));
+  return null;
+}
+
+/**
+ * IP del cliente (rate limits, auditoría, sesiones). `X-Forwarded-For` lo puede escribir el propio cliente, así que
+ * su primer valor nunca se usa en producción:
+ * - Vercel (`VERCEL` definida): `x-vercel-forwarded-for` y luego `x-real-ip`, que fija la plataforma.
+ * - Otro proxy/balanceador: configurar `TRUSTED_PROXY_HOPS` = cantidad de proxies confiables que AGREGAN al
+ *   `X-Forwarded-For`; se toma el valor N-ésimo desde la derecha (el que escribió el primer proxy propio).
+ *   `0` = la app está expuesta directo: ninguna cabecera es confiable (null).
+ * - Desarrollo/test sin configuración: primer valor válido de `X-Forwarded-For`, luego `x-real-ip`.
+ * - Producción fuera de Vercel sin `TRUSTED_PROXY_HOPS`: null (los límites caen a la clave compartida, más estricta).
+ */
+export function clientIpFromHeaders(get: (name: string) => string | null, env: IpEnv = process.env): string | null {
+  if (env.VERCEL) return firstValid(get("x-vercel-forwarded-for")) ?? normalizeIp(get("x-real-ip"));
+  const hopsRaw = env.TRUSTED_PROXY_HOPS?.trim();
+  if (hopsRaw) {
+    const hops = Number(hopsRaw);
+    if (!Number.isInteger(hops) || hops <= 0 || hops > 10) return null;
+    const parts = (get("x-forwarded-for") ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+    const candidate = parts[parts.length - hops];
+    return candidate ? normalizeIp(candidate) : null;
+  }
+  const appEnv = env.APP_ENV ?? "development";
+  if (appEnv !== "development" && appEnv !== "test") return null;
+  return firstValid(get("x-forwarded-for")) ?? normalizeIp(get("x-real-ip"));
 }

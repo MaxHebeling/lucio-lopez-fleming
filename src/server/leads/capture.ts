@@ -2,6 +2,8 @@
  * Captura multicanal de leads: web, WhatsApp, redes, portales, email y carga manual convergen acá.
  * Garantías: contacto único (normalización + dedupe), idempotencia (idempotency_key) y evento lead.created
  * en la misma transacción (ninguna consulta se pierde aunque el aviso falle después).
+ * Datos de contacto no verificados sobre un contacto existente (ver resolveContactForCapture) quedan en
+ * leads.submitted_email / submitted_phone y no en la ficha.
  */
 import { z } from "zod";
 import { sql, type Database } from "../db";
@@ -77,7 +79,7 @@ export async function captureLead(db: Database, actor: Actor, raw: CaptureLeadIn
       }
     }
 
-    const { contactId } = await resolveContactForCapture(trx, actor, {
+    const { contactId, unverified } = await resolveContactForCapture(trx, actor, {
       name: input.name,
       email: input.email,
       phone: input.phone,
@@ -88,11 +90,13 @@ export async function captureLead(db: Database, actor: Actor, raw: CaptureLeadIn
 
     const inserted = await sql<{ id: string }>`
       insert into leads(organization_id, contact_id, source_key, property_id, campaign_id, conversation_id, branch_id,
-        operation_interest, message, utm, external_id, idempotency_key, priority, assigned_user_id, assigned_at)
+        operation_interest, message, utm, external_id, idempotency_key, priority, assigned_user_id, assigned_at,
+        submitted_email, submitted_phone)
       values (${actor.organizationId}, ${contactId}, ${input.sourceKey}, ${propertyId}, ${input.campaignId ?? null},
         ${input.conversationId ?? null}, ${branchId}, ${input.operationInterest ?? null}, ${input.message ?? null},
         ${JSON.stringify(input.utm ?? {})}::jsonb, ${input.externalId ?? null}, ${input.idempotencyKey ?? null},
-        ${input.priority ?? "normal"}, ${assignedUserId}, ${assignedUserId ? new Date() : null})
+        ${input.priority ?? "normal"}, ${assignedUserId}, ${assignedUserId ? new Date() : null},
+        ${unverified.email}, ${unverified.phone})
       on conflict (idempotency_key) do nothing
       returning id`.execute(trx);
 
@@ -107,7 +111,25 @@ export async function captureLead(db: Database, actor: Actor, raw: CaptureLeadIn
       .insertInto("activities")
       .values({ entity_type: "contact", entity_id: contactId, kind: "lead_created", summary: `Nueva consulta (${input.sourceKey})`, metadata: JSON.stringify({ leadId, propertyId }) })
       .execute();
-    await audit(trx, actor, { action: "LEAD_CREATED", entityType: "lead", entityId: leadId, after: { sourceKey: input.sourceKey, propertyId, contactId, assignedUserId } });
+    if (unverified.email || unverified.phone) {
+      // Aviso para revisión humana en la ficha del contacto (y los datos quedan visibles en el lead).
+      await trx
+        .insertInto("activities")
+        .values({
+          entity_type: "contact",
+          entity_id: contactId,
+          kind: "unverified_contact_data",
+          summary: "Consulta con datos de contacto sin verificar: revisalos en el lead antes de agregarlos a la ficha",
+          metadata: JSON.stringify({ leadId, sourceKey: input.sourceKey }),
+        })
+        .execute();
+    }
+    await audit(trx, actor, {
+      action: "LEAD_CREATED",
+      entityType: "lead",
+      entityId: leadId,
+      after: { sourceKey: input.sourceKey, propertyId, contactId, assignedUserId, unverifiedContactData: Boolean(unverified.email || unverified.phone) },
+    });
     await emitEvent(trx, actor, {
       type: "lead.created",
       aggregateType: "lead",

@@ -9,6 +9,7 @@ import {
   getShowcaseProperties,
   getSimilarProperties,
   listPublishedForSitemap,
+  publicTextSearchCondition,
   resetPublicLocationCache,
   resolveLegacyPath,
   searchPublicProperties,
@@ -245,6 +246,30 @@ describe("DTOs públicos de propiedades", () => {
     expect(unknownZone.total).toBe(0);
     // Tarjetas: sin foto fallida como portada, conteo real
     expect(all.items.find((i) => i.code === 9001)?.photoCount).toBe(9);
+  });
+
+  it("búsqueda de texto no revela la calle ni la altura de direcciones ocultas (usa el índice trigram público)", async () => {
+    const db = testDb();
+    // Como en la importación: altura embebida en la calle. 9001 oculta; 9005 pública.
+    await db.updateTable("properties").set({ address_street: "Caseros 468" }).where("code", "=", 9001).execute();
+    await db.updateTable("properties").set({ address_street: "Caseros" }).where("code", "=", 9005).execute();
+    try {
+      for (const q of ["Caseros 468", "Caseros 46", "caseros 4"]) {
+        expect((await searchPublicProperties(db, parseSearchFilters({ q }))).items.map((i) => i.code)).toEqual([]);
+      }
+      // La calle visible (dirección no oculta) sigue siendo buscable
+      expect((await searchPublicProperties(db, parseSearchFilters({ q: "caseros" }))).items.map((i) => i.code)).toEqual([9005]);
+      // El título y la descripción siguen buscando en todas
+      expect((await searchPublicProperties(db, parseSearchFilters({ q: "descripción pública" }))).total).toBe(3);
+
+      const plan = await db.transaction().execute(async (trx) => {
+        await sql`set local enable_seqscan = off`.execute(trx);
+        return sql<{ "QUERY PLAN": string }>`explain select p.id from properties p where ${publicTextSearchCondition("caseros")}`.execute(trx);
+      });
+      expect(plan.rows.map((r) => r["QUERY PLAN"]).join("\n")).toContain("properties_public_search_trgm");
+    } finally {
+      await db.updateTable("properties").set({ address_street: "Mitre" }).where("code", "in", [9001, 9005]).execute();
+    }
   });
 
   it("facetas en vivo por operación, tipo y zona", async () => {

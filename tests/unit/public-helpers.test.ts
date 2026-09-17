@@ -60,6 +60,8 @@ describe("privacidad de la dirección", () => {
     expect(publicStreet("Av. Entre Ríos N° 639", null, true)).toBe("Av. Entre Ríos");
     expect(publicStreet("Ruta 51 km 5", null, true)).toBe("Ruta");
     expect(publicStreet("123", null, true)).toBeNull();
+    expect(publicStreet("Sarmiento 447", null, true)).toBe("Sarmiento");
+    expect(publicStreet("calle Las Heras 1241", "1241", true)).toBe("calle Las Heras");
     expect(publicStreet(null, "5", true)).toBeNull();
   });
   it("sin dirección oculta muestra calle y altura", () => {

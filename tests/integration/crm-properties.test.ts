@@ -1,14 +1,15 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
+import { assignAgents, changePrice, changeStatus, createProperty, duplicateProperty, publishProperty, setOwners, updateProperty } from "@/server/properties/service";
 import { getPropertyDetail, listLocationChildren, listProperties, locationChain, searchOwnerCandidates } from "@/server/properties/queries";
 import { createLocation } from "@/server/properties/locations";
-import { addPropertyImage, deletePropertyMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
+import { addPropertyImage, deletePropertyMedia, removeDeletedPublicMedia, reorderPropertyMedia, setPropertyCover, updateMediaAltText, MAX_IMAGE_EDGE, MAX_IMAGE_BYTES } from "@/server/properties/media";
 import { consumeDirectUpload, createUploadIntent, verifyUploadToken } from "@/server/storage/direct-upload";
 import { authorizeFileAccess } from "@/server/files/access";
 import { setStorageForTests } from "@/server/storage";
 import { AppError } from "@/server/errors";
 import { createOwner, createStaff, testDb } from "../helpers/db";
+import { listAddressLeaks } from "@/server/properties/address-leak";
 import { MemoryStorage } from "../helpers/storage";
 
 const store = new MemoryStorage();
@@ -155,6 +156,82 @@ describe("listado y ficha de propiedades", () => {
   });
 });
 
+describe("agentes y dirección exacta (autorización)", () => {
+  it("asignar agentes exige properties.assign_agents (no alcanza editar datos) y solo usuarios del equipo activos", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const agent = await createStaff(db, ["agente"]);
+    const p = await createProperty(db, admin, input(hood.id));
+    // Un agente con properties.update no puede autoasignarse como responsable de una propiedad ajena
+    await expect(assignAgents(db, agent, p.id, agent.userId)).rejects.toThrow(/permiso/);
+
+    const owner = await createOwner(db);
+    await expect(assignAgents(db, admin, p.id, owner.userId)).rejects.toThrow(/usuario activo del equipo/);
+    const inactive = await createStaff(db, ["agente"]);
+    await db.updateTable("users").set({ is_active: false }).where("id", "=", inactive.userId).execute();
+    await expect(assignAgents(db, admin, p.id, agent.userId, [inactive.userId])).rejects.toThrow(/usuario activo del equipo/);
+    const deleted = await createStaff(db, ["agente"]);
+    await db.updateTable("users").set({ deleted_at: new Date() }).where("id", "=", deleted.userId).execute();
+    await expect(assignAgents(db, admin, p.id, deleted.userId)).rejects.toThrow(/usuario activo del equipo/);
+    await expect(assignAgents(db, admin, p.id, "00000000-0000-4000-8000-000000000000")).rejects.toThrow(/usuario activo del equipo/);
+
+    await assignAgents(db, admin, p.id, agent.userId, [admin.userId]);
+    const rows = await db.selectFrom("property_agents").select(["user_id", "role"]).where("property_id", "=", p.id).orderBy("role").execute();
+    expect(rows).toEqual([
+      { user_id: agent.userId, role: "lead" },
+      { user_id: admin.userId, role: "support" },
+    ]);
+    expect(agent.permissions.has("properties.assign_agents")).toBe(false);
+    expect(admin.permissions.has("properties.assign_agents")).toBe(true);
+  });
+
+  it("mostrar la dirección exacta de una propiedad publicada exige properties.publish", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const agent = await createStaff(db, ["agente"]);
+    const p = await createProperty(db, admin, input(hood.id));
+    await changeStatus(db, admin, p.id, "available");
+    await addPropertyImage(db, admin, p.id, await jpeg(40, 30));
+    await publishProperty(db, admin, p.id);
+
+    await expect(updateProperty(db, agent, p.id, { hideExactAddress: false })).rejects.toThrow(/publicar/);
+    // El formulario reenvía el valor actual: editar otros datos sigue permitido
+    await updateProperty(db, agent, p.id, { bedrooms: 5, hideExactAddress: true });
+    const hidden = await db.selectFrom("properties").select(["bedrooms", "hide_exact_address"]).where("id", "=", p.id).executeTakeFirstOrThrow();
+    expect(hidden).toEqual({ bedrooms: 5, hide_exact_address: true });
+
+    await updateProperty(db, admin, p.id, { hideExactAddress: false });
+    // Ocultarla de nuevo no requiere publicar
+    await updateProperty(db, agent, p.id, { hideExactAddress: true });
+
+    // Sin publicar, el agente puede elegir
+    const draft = await createProperty(db, agent, input(hood.id));
+    await updateProperty(db, agent, draft.id, { hideExactAddress: false });
+  });
+});
+
+describe("revisión de direcciones ocultas mencionadas en el texto", () => {
+  it("lista solo publicadas con dirección oculta cuyo título/descripción menciona calle y altura; sin tocar los datos", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const leak = await createProperty(db, admin, input(hood.id, { title: "calle Las Heras 1241", addressStreet: "Las Heras", addressNumber: "1241" }));
+    const leakInDescription = await createProperty(db, admin, input(hood.id, { description: "Casa sobre Los Ceibos N° 120, ideal familia" }));
+    const clean = await createProperty(db, admin, input(hood.id));
+    const visible = await createProperty(db, admin, input(hood.id, { title: "Los Ceibos 120", hideExactAddress: false }));
+    const draft = await createProperty(db, admin, input(hood.id, { title: "Los Ceibos 120" }));
+    await db.updateTable("properties").set({ is_published: true, status: "available", published_at: new Date() }).where("id", "in", [leak.id, leakInDescription.id, clean.id, visible.id]).execute();
+
+    const list = await listAddressLeaks(db, admin);
+    const ids = list.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining([leak.id, leakInDescription.id]));
+    for (const id of [clean.id, visible.id, draft.id]) expect(ids).not.toContain(id);
+    expect(list.find((l) => l.id === leak.id)).toMatchObject({ code: leak.code, snippet: "las heras 1241" });
+    const row = await db.selectFrom("properties").select("title").where("id", "=", leak.id).executeTakeFirstOrThrow();
+    expect(row.title).toBe("calle Las Heras 1241");
+    await expect(listAddressLeaks(db, { kind: "anonymous", organizationId: admin.organizationId })).rejects.toThrow(/Iniciá sesión/);
+  });
+});
+
 describe("multimedia", () => {
   it("rota según EXIF, quita EXIF/GPS, guarda original privado + webp ≤ 2400 px público y audita", async () => {
     const db = testDb();
@@ -260,6 +337,44 @@ describe("multimedia", () => {
     expect(actions).toEqual(expect.arrayContaining(["PROPERTY_MEDIA_REORDERED", "PROPERTY_MEDIA_COVER_SET", "PROPERTY_MEDIA_UPDATED", "PROPERTY_MEDIA_DELETED"]));
   });
 
+  it("borrar multimedia elimina el objeto del bucket público (el original privado queda); si el storage falla, se reintenta después", async () => {
+    const db = testDb();
+    const { admin, hood } = await salta();
+    const p = await createProperty(db, admin, input(hood.id));
+    const m1 = await addPropertyImage(db, admin, p.id, await jpeg(20, 20));
+    const m2 = await addPropertyImage(db, admin, p.id, await jpeg(20, 20));
+    const filesOf = (mediaId: string) =>
+      db
+        .selectFrom("property_media as m")
+        .innerJoin("files as pub", "pub.id", "m.file_id")
+        .innerJoin("files as orig", "orig.id", "m.original_file_id")
+        .select(["pub.id as pub_id", "pub.bucket as pub_bucket", "pub.storage_key as pub_key", "pub.storage_removed_at", "orig.bucket as orig_bucket", "orig.storage_key as orig_key"])
+        .where("m.id", "=", mediaId)
+        .executeTakeFirstOrThrow();
+
+    const f1 = await filesOf(m1.mediaId);
+    expect(store.objects.has(`${f1.pub_bucket}/${f1.pub_key}`)).toBe(true);
+    await deletePropertyMedia(db, admin, p.id, m1.mediaId);
+    expect(store.objects.has(`${f1.pub_bucket}/${f1.pub_key}`)).toBe(false);
+    expect(store.objects.has(`${f1.orig_bucket}/${f1.orig_key}`)).toBe(true);
+    expect((await filesOf(m1.mediaId)).storage_removed_at).not.toBeNull();
+
+    // Falla del storage: la baja lógica se confirma igual y el objeto queda pendiente
+    const f2 = await filesOf(m2.mediaId);
+    const removeSpy = vi.spyOn(store, "remove").mockRejectedValueOnce(new Error("storage caído"));
+    try {
+      await deletePropertyMedia(db, admin, p.id, m2.mediaId);
+    } finally {
+      removeSpy.mockRestore();
+    }
+    expect(store.objects.has(`${f2.pub_bucket}/${f2.pub_key}`)).toBe(true);
+    expect((await filesOf(m2.mediaId)).storage_removed_at).toBeNull();
+    expect(await removeDeletedPublicMedia(db)).toMatchObject({ removed: 1, failed: 0 });
+    expect(store.objects.has(`${f2.pub_bucket}/${f2.pub_key}`)).toBe(false);
+    expect((await filesOf(m2.mediaId)).storage_removed_at).not.toBeNull();
+    expect(await removeDeletedPublicMedia(db)).toMatchObject({ removed: 0, failed: 0 });
+  });
+
   it("acceso a archivos: públicos sin sesión, originales con properties.read, documentos con read_private, borrados nunca", async () => {
     const db = testDb();
     const { admin, hood } = await salta();
@@ -321,6 +436,22 @@ describe("multimedia", () => {
       await expect(createUploadIntent({ userId: admin.userId, entity: p.id, purpose: "property-media", contentType: "application/x-msdownload", size: 10 })).rejects.toThrow(/Formato/);
     } finally {
       store.direct = false;
+    }
+  });
+
+  it("subida directa: el tamaño se verifica con HEAD antes de descargar; un objeto demasiado grande o inexistente no se lee", async () => {
+    const key = "uploads/tmp/property-media/grande.jpg";
+    await store.put("private", key, new Uint8Array(4096), "image/jpeg");
+    const getSpy = vi.spyOn(store, "get");
+    try {
+      const consume = vi.fn(async () => "no debería llegar");
+      await expect(consumeDirectUpload(key, 1024, consume)).rejects.toThrow(/tamaño máximo/);
+      await expect(consumeDirectUpload("uploads/tmp/property-media/nunca-subido.jpg", 1024, consume)).rejects.toThrow(/No recibimos/);
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(consume).not.toHaveBeenCalled();
+      expect(store.objects.has(`private/${key}`)).toBe(false);
+    } finally {
+      getSpy.mockRestore();
     }
   });
 });

@@ -3,11 +3,12 @@
  * → historial (precio/estado) → auditoría (antes/después) → evento de dominio (propaga a web, portales, redes).
  * Si un portal falla después, el dato del CRM NO se revierte: la sincronización se reintenta aparte.
  */
+import { z } from "zod";
 import { sql, type Database, type Tx } from "../db";
 import { audit, diff } from "../audit";
-import { actorUserId, requirePermission, type Actor } from "../auth/actor";
+import { actorUserId, can, requirePermission, type Actor } from "../auth/actor";
 import { emitEvent } from "../events";
-import { conflict, invalid, notFound } from "../errors";
+import { conflict, forbidden, invalid, notFound } from "../errors";
 import {
   createPropertySchema,
   FIELD_COLUMNS,
@@ -171,6 +172,10 @@ export async function updateProperty(db: Database, actor: Actor, id: string, raw
       if (Object.keys(attrs.errors).length) throw invalid("Revisá los campos del tipo de propiedad", attrs.errors);
       attributes = attrs.value;
     }
+    // Mostrar la dirección exacta de algo ya publicado equivale a publicar un dato nuevo: requiere properties.publish.
+    if (current.is_published && current.hide_exact_address && input.hideExactAddress === false && !can(actor, "properties.publish")) {
+      throw forbidden("Mostrar la dirección exacta de una propiedad publicada requiere permiso para publicar");
+    }
     const cols = toColumns({ ...input, attributes });
     const changes = diff(current as unknown as Record<string, unknown>, cols);
     const changedColumns = Object.keys(changes.after);
@@ -323,10 +328,28 @@ async function markPublications(trx: Tx, propertyId: string, desired: "published
   }
 }
 
+/**
+ * Responsable y apoyo de una propiedad (el responsable recibe los leads de la ficha): permiso propio
+ * `properties.assign_agents` (no alcanza con editar datos) y solo usuarios del equipo activos.
+ */
 export async function assignAgents(db: Database, actor: Actor, id: string, leadUserId: string | null, supportUserIds: string[] = []): Promise<void> {
-  requirePermission(actor, "properties.update");
+  requirePermission(actor, "properties.assign_agents");
   await db.transaction().execute(async (trx) => {
     await loadForUpdate(trx, id);
+    const wanted = [...new Set([...(leadUserId ? [leadUserId] : []), ...supportUserIds])];
+    const uuid = z.uuid();
+    if (wanted.some((u) => !uuid.safeParse(u).success)) throw invalid("Elegí un usuario activo del equipo", { agents: ["Usuario inválido"] });
+    if (wanted.length) {
+      const valid = await trx
+        .selectFrom("users")
+        .select("id")
+        .where("id", "in", wanted)
+        .where("kind", "=", "staff")
+        .where("is_active", "=", true)
+        .where("deleted_at", "is", null)
+        .execute();
+      if (valid.length !== wanted.length) throw invalid("Elegí un usuario activo del equipo", { agents: ["Solo usuarios activos del equipo"] });
+    }
     const before = await trx.selectFrom("property_agents").select(["user_id", "role"]).where("property_id", "=", id).execute();
     await trx.deleteFrom("property_agents").where("property_id", "=", id).execute();
     const rows = [

@@ -10,6 +10,7 @@
  */
 import type { PortalPrepared, PortalProperty } from "../types";
 import { orderedPhotos, primaryOperation } from "../types";
+import { publicStreet } from "../../../properties/public-helpers";
 
 /** Tipo interno → categoría de tipo de inmueble en MLA (árbol público de /categories/MLA1459). */
 export const ML_TYPE_CATEGORY: Record<string, { categoryId: string; name: string } | null> = {
@@ -128,7 +129,8 @@ export function mapToMercadoLibre(p: PortalProperty, cfg: MercadoLibreConfig): P
   if (op.expensesAmount !== null) add("MAINTENANCE_FEE", `${Math.round(op.expensesAmount)} ${op.expensesCurrency ?? op.currency}`);
   if (p.allowsPets !== null) add("IS_SUITABLE_FOR_PETS", p.allowsPets ? "Sí" : "No");
 
-  const street = [p.address.street, p.address.hideExact ? null : p.address.number].filter(Boolean).join(" ");
+  // Misma regla que el sitio: con dirección oculta nunca sale la altura (tampoco la embebida en la calle).
+  const street = publicStreet(p.address.street, p.address.number, p.address.hideExact) ?? "";
   const locality = p.locationChain.find((l) => l.kind === "locality")?.name ?? p.locationChain[0]?.name ?? "";
   const location: MercadoLibreItemDraft["item"]["location"] = {
     address_line: (street || locality).slice(0, 255),

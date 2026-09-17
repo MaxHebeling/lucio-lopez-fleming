@@ -241,12 +241,17 @@ export async function updateMediaAltText(db: Database, actor: Actor, propertyId:
   });
 }
 
-/** Baja lógica. Si era la portada, pasa a serlo la siguiente foto. Los archivos dejan de servirse. */
+/**
+ * Baja lógica. Si era la portada, pasa a serlo la siguiente foto. Los archivos dejan de servirse por /api/files y,
+ * confirmada la transacción, se borra el objeto del bucket PÚBLICO (con s3 + STORAGE_PUBLIC_BASE_URL la URL directa
+ * seguiría funcionando). El original saneado queda en el bucket privado. Si el storage falla, la baja no se revierte:
+ * queda pendiente (files.storage_removed_at null) y se reintenta en la próxima baja o con removeDeletedPublicMedia.
+ */
 export async function deletePropertyMedia(db: Database, actor: Actor, propertyId: string, mediaId: string): Promise<{ newCoverId: string | null }> {
   requirePermission(actor, "properties.manage_media");
   assertUuid(propertyId, "Propiedad");
   assertUuid(mediaId, "Archivo multimedia");
-  return db.transaction().execute(async (trx) => {
+  const result = await db.transaction().execute(async (trx) => {
     await lockProperty(trx, propertyId);
     const m = await loadMedia(trx, propertyId, mediaId);
     const now = new Date();
@@ -266,4 +271,42 @@ export async function deletePropertyMedia(db: Database, actor: Actor, propertyId
     await touchProperty(trx, actor, propertyId);
     return { newCoverId };
   });
+  // Fuera de la transacción: nunca se llama al storage con la fila bloqueada.
+  await removeDeletedPublicMedia(db).catch((e) => log.error("media.public_remove_failed", { propertyId, mediaId, ...errorFields(e) }));
+  return result;
+}
+
+export const PUBLIC_MEDIA_REMOVAL_BATCH = 25;
+
+/**
+ * Borra del bucket público los objetos de multimedia dada de baja que siguen ahí (idempotente: marca
+ * files.storage_removed_at). Solo archivos públicos de property_media sin ninguna otra referencia viva.
+ */
+export async function removeDeletedPublicMedia(db: Database, limit = PUBLIC_MEDIA_REMOVAL_BATCH): Promise<{ removed: number; failed: number }> {
+  const driver = storage();
+  const pending = await db
+    .selectFrom("files as f")
+    .select(["f.id", "f.bucket", "f.storage_key", "f.storage_driver"])
+    .where("f.deleted_at", "is not", null)
+    .where("f.visibility", "=", "public")
+    .where("f.storage_removed_at", "is", null)
+    .where("f.storage_driver", "=", driver.name)
+    .where(({ exists, selectFrom }) => exists(selectFrom("property_media as m").select("m.id").whereRef("m.file_id", "=", "f.id")))
+    .where(({ not, exists, selectFrom }) => not(exists(selectFrom("property_media as m").select("m.id").whereRef("m.file_id", "=", "f.id").where("m.deleted_at", "is", null))))
+    .orderBy("f.deleted_at", "desc")
+    .limit(limit)
+    .execute();
+  let removed = 0;
+  let failed = 0;
+  for (const f of pending) {
+    try {
+      await driver.remove(f.bucket, f.storage_key);
+      await db.updateTable("files").set({ storage_removed_at: new Date() }).where("id", "=", f.id).where("storage_removed_at", "is", null).execute();
+      removed++;
+    } catch (e) {
+      failed++;
+      log.error("media.public_remove_failed", { fileId: f.id, ...errorFields(e) });
+    }
+  }
+  return { removed, failed };
 }
