@@ -7,7 +7,35 @@ import { getDb } from "@/server/db";
 import { runAction } from "@/server/next/action";
 import { recomputeQualityNow } from "@/server/ai/property/quality";
 import { applyOrderSchema, applySuggestedOrder, requestRoomSuggestions, reviewRoomSuggestions, reviewSuggestionSchema, setMediaRoom, setRoomSchema } from "@/server/ai/property/photo-director";
+import { applySeoDraft, discardMarketingDraft, draftIdSchema, generateMarketingDrafts, generateSchema, updateDraftSchema, updateMarketingDraft } from "@/server/ai/property/marketing-director";
 import { revalidatePublicSiteInRequest } from "@/server/site/revalidate";
+
+export async function generateMarketingDraftsAction(input: z.input<typeof generateSchema>) {
+  const r = await runAction("ai.marketing_director.generate", generateSchema, input, (d, actor) => generateMarketingDrafts(getDb(), actor, d));
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function updateMarketingDraftAction(input: z.input<typeof updateDraftSchema>) {
+  const r = await runAction("ai.marketing_director.update", updateDraftSchema, input, (d, actor) => updateMarketingDraft(getDb(), actor, d));
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function discardMarketingDraftAction(input: z.input<typeof draftIdSchema>) {
+  const r = await runAction("ai.marketing_director.discard", draftIdSchema, input, (d, actor) => discardMarketingDraft(getDb(), actor, d));
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function applySeoDraftAction(input: z.input<typeof draftIdSchema>) {
+  const r = await runAction("ai.marketing_director.apply_seo", draftIdSchema, input, (d, actor) => applySeoDraft(getDb(), actor, d));
+  if (r.ok) {
+    refresh();
+    revalidatePublicSiteInRequest();
+  }
+  return r;
+}
 
 const propertyIdSchema = z.object({ propertyId: z.uuid() });
 

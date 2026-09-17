@@ -99,6 +99,8 @@ export async function getInventoryAnalysis(db: Database, actor: Actor, opts: { o
       opportunity: enabled ? inventoryOpportunity({ daysPublished: days, leads, visits: r.visits, qualityScore: r.score, findingCodes: (r.findings ?? []).map((f) => f.code), hasCover: r.has_cover, coverRoom: r.cover_room, priceHidden: r.price_hidden, pageViews }, s) : null,
     };
   });
+  // Primero las oportunidades; después las más antiguas publicadas.
+  items.sort((x, y) => Number(Boolean(y.opportunity)) - Number(Boolean(x.opportunity)) || (y.daysPublished ?? -1) - (x.daysPublished ?? -1) || x.code - y.code);
   const mature = items.filter((i) => i.daysPublished !== null && i.daysPublished >= s.minDaysPublished && i.leads !== null);
   return {
     enabled,

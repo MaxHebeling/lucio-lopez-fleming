@@ -85,7 +85,14 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/crm/p
       <PageHeader
         title="Propiedades"
         description="Buscá por código, título o dirección. Las archivadas se ven filtrando por estado."
-        actions={can(actor, "properties.create") ? <ButtonLink href="/crm/propiedades/nueva">Nueva propiedad</ButtonLink> : null}
+        actions={
+          <>
+            <ButtonLink href="/crm/propiedades/inventario" variant="secondary">
+              Análisis de inventario
+            </ButtonLink>
+            {can(actor, "properties.create") ? <ButtonLink href="/crm/propiedades/nueva">Nueva propiedad</ButtonLink> : null}
+          </>
+        }
       />
 
       {addressLeaks.length ? (

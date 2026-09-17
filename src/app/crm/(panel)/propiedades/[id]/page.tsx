@@ -22,6 +22,8 @@ import { getTourSummary } from "@/server/tours/queries";
 import { getPropertyQuality } from "@/server/ai/property/quality";
 import { getPhotoDirector } from "@/server/ai/property/photo-director";
 import { QualityPanel } from "@/components/ai-property/quality-panel";
+import { getMarketingDirector } from "@/server/ai/property/marketing-director";
+import { MarketingPanel } from "@/components/ai-property/marketing-panel";
 
 export const metadata: Metadata = { title: "Propiedad" };
 
@@ -69,10 +71,11 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     if (e instanceof AppError && e.code === "not_found") notFound();
     throw e;
   });
-  const [tour, quality, director] = await Promise.all([
+  const [tour, quality, director, marketingView] = await Promise.all([
     getTourSummary(db, actor, d.property.id),
     d.property.is_demo ? Promise.resolve({ enabled: false, report: null }) : getPropertyQuality(db, actor, d.property.id),
     getPhotoDirector(db, actor, d.property.id),
+    !d.property.is_demo && can(actor, "marketing.read") ? getMarketingDirector(db, actor, d.property.id) : Promise.resolve(null),
   ]);
   const p = d.property;
   const canUpdate = can(actor, "properties.update");
@@ -96,6 +99,7 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
     ["estado", "Estado"],
     ["multimedia", `Multimedia (${d.media.length})`],
     ["tour", "Tour 360°"],
+    ...(marketingView?.enabled ? [["marketing", "Marketing"]] : []),
     ...(canPrivate ? [["propietarios", "Propietarios"]] : []),
     ["agentes", "Agentes"],
     ...(p.is_demo ? [] : [["publicaciones", "Publicaciones"]]),
@@ -395,6 +399,14 @@ export default async function PropertyDetailPage({ params, searchParams }: PageP
             </div>
           </Card>
         </section>
+
+        {marketingView?.enabled ? (
+          <section id="marketing" className="scroll-mt-28">
+            <Card title="Marketing">
+              <MarketingPanel propertyId={p.id} view={marketingView} />
+            </Card>
+          </section>
+        ) : null}
 
         {canPrivate && d.owners ? (
           <section id="propietarios" className="scroll-mt-28">
