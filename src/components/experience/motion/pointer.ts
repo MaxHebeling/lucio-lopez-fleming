@@ -1,8 +1,9 @@
 import { MOTION, clamp, finePointer, motionEnabled, noop } from "./config";
 
 /**
- * Profundidad del hero: capas `[data-depth]` siguen el puntero ≤ MOTION.heroDepthPx con interpolación.
- * Solo desktop con puntero fino. Un único rAF que se detiene al llegar al reposo.
+ * Profundidad de la portada: capas `[data-depth]` siguen el puntero ≤ MOTION.heroDepthPx con interpolación
+ * (2.5D: la foto y la tipografía se mueven en sentidos opuestos). Solo desktop con puntero fino, nunca con reduced
+ * motion ni en touch. Un único rAF que se detiene al llegar al reposo.
  */
 export function initHeroDepth(root: HTMLElement): () => void {
   if (!motionEnabled() || !finePointer()) return noop;
@@ -72,35 +73,4 @@ export function initMagnetic(): () => void {
     };
   });
   return () => cleanups.forEach((c) => c());
-}
-
-/** Parallax `[data-parallax="0.08"]` ≤ MOTION.parallaxMaxPx. Solo desktop; lecturas y escrituras por frame. */
-export function initParallax(): () => void {
-  if (!motionEnabled() || !finePointer()) return noop;
-  const items = Array.from(document.querySelectorAll<HTMLElement>("[data-parallax]")).map((el) => ({ el, speed: clamp(Number(el.dataset.parallax) || 0.08, -0.4, 0.4) }));
-  if (!items.length) return noop;
-  let raf = 0;
-  const update = () => {
-    raf = 0;
-    const vh = window.innerHeight;
-    const rects = items.map((i) => i.el.getBoundingClientRect());
-    items.forEach(({ el, speed }, i) => {
-      const r = rects[i]!;
-      if (r.bottom < -100 || r.top > vh + 100) return;
-      const y = clamp(-(r.top + r.height / 2 - vh / 2) * speed, -MOTION.parallaxMaxPx, MOTION.parallaxMaxPx);
-      el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`;
-    });
-  };
-  const schedule = () => {
-    if (!raf) raf = requestAnimationFrame(update);
-  };
-  window.addEventListener("scroll", schedule, { passive: true });
-  window.addEventListener("resize", schedule);
-  schedule();
-  return () => {
-    window.removeEventListener("scroll", schedule);
-    window.removeEventListener("resize", schedule);
-    if (raf) cancelAnimationFrame(raf);
-    for (const { el } of items) el.style.transform = "";
-  };
 }

@@ -1,29 +1,41 @@
 import type Lenis from "lenis";
-import { MOTION, finePointer, motionEnabled } from "./config";
+import type { gsap as GsapType } from "gsap";
+import type { ScrollTrigger as ScrollTriggerType } from "gsap/ScrollTrigger";
+import { scenesApply } from "./config";
 
 /**
- * Lenis diferido: import dinámico en idle, solo desktop ≥ 1024 px con puntero fino y sin reduced motion.
- * Singleton idempotente; destroySmoothScroll() limpia todo (rutas "calmas", desmontaje).
+ * Motor de scroll (solo desktop con puntero fino y sin reduced motion): Lenis + GSAP/ScrollTrigger, importados en idle
+ * con `import()` para que nunca entren en el bundle inicial ni en la ruta del LCP. Un único reloj: el ticker de GSAP
+ * mueve Lenis y cada scroll de Lenis actualiza ScrollTrigger. Singleton idempotente; destroySmoothScroll() lo apaga
+ * (rutas "calmas", desmontaje, cambio a reduced motion).
  */
-let lenis: Lenis | null = null;
-let loading: Promise<Lenis | null> | null = null;
+export type Engine = { lenis: Lenis; gsap: typeof GsapType; ScrollTrigger: typeof ScrollTriggerType };
 
-function applies(): boolean {
-  return MOTION.smoothScroll && motionEnabled() && finePointer() && window.matchMedia("(min-width: 1024px)").matches;
-}
+let engine: Engine | null = null;
+let loading: Promise<Engine | null> | null = null;
+let tick: ((time: number) => void) | null = null;
 
-export function initSmoothScroll(): Promise<Lenis | null> {
-  if (lenis) return Promise.resolve(lenis);
+export function initSmoothScroll(): Promise<Engine | null> {
+  if (engine) return Promise.resolve(engine);
   if (loading) return loading;
-  if (!applies()) return Promise.resolve(null);
-  loading = import("lenis")
-    .then(({ default: LenisCtor }) => {
-      if (lenis || !applies()) return lenis;
-      lenis = new LenisCtor({ lerp: 0.12, smoothWheel: true, syncTouch: false, anchors: true, autoRaf: true, allowNestedScroll: true });
-      return lenis;
+  if (!scenesApply()) return Promise.resolve(null);
+  loading = Promise.all([import("lenis"), import("gsap"), import("gsap/ScrollTrigger")])
+    .then(([{ default: LenisCtor }, { gsap }, { ScrollTrigger }]) => {
+      if (engine || !scenesApply()) return engine;
+      gsap.registerPlugin(ScrollTrigger);
+      const lenis = new LenisCtor({ lerp: 0.12, smoothWheel: true, syncTouch: false, anchors: true, autoRaf: false, allowNestedScroll: true });
+      lenis.on("scroll", ScrollTrigger.update);
+      tick = (time: number) => lenis.raf(time * 1000);
+      gsap.ticker.add(tick);
+      gsap.ticker.lagSmoothing(0);
+      engine = { lenis, gsap, ScrollTrigger };
+      // Las fuentes y las fotos cambian alturas: se recalculan los disparadores cuando terminan de cargar.
+      void document.fonts?.ready.then(() => ScrollTrigger.refresh());
+      if (document.readyState !== "complete") window.addEventListener("load", () => ScrollTrigger.refresh(), { once: true });
+      return engine;
     })
     .catch((e: unknown) => {
-      console.error("[motion] no se pudo cargar el desplazamiento suave", e);
+      console.error("[motion] no se pudo cargar el motor de scroll", e);
       return null;
     })
     .finally(() => {
@@ -33,14 +45,32 @@ export function initSmoothScroll(): Promise<Lenis | null> {
 }
 
 export function destroySmoothScroll(): void {
-  lenis?.destroy();
-  lenis = null;
+  if (!engine) return;
+  if (tick) engine.gsap.ticker.remove(tick);
+  tick = null;
+  engine.lenis.destroy();
+  engine = null;
 }
 
 export function pauseSmoothScroll(): void {
-  lenis?.stop();
+  engine?.lenis.stop();
 }
 
 export function resumeSmoothScroll(): void {
-  lenis?.start();
+  engine?.lenis.start();
+}
+
+/**
+ * Portada fija (sticky) cubierta por la escena siguiente: si el foco de teclado vuelve a un control de la portada
+ * (Shift+Tab desde el manifiesto, por ejemplo) se sube hasta arriba para que el foco nunca quede tapado (WCAG 2.4.11).
+ */
+export function initCoverFocus(cover: HTMLElement): () => void {
+  const onFocusIn = (e: FocusEvent) => {
+    if (window.scrollY <= 0 || getComputedStyle(cover).position !== "sticky") return;
+    if (e.target instanceof Element && !e.target.matches(":focus-visible")) return;
+    if (engine) engine.lenis.scrollTo(0, { immediate: true, force: true });
+    else window.scrollTo(0, 0);
+  };
+  cover.addEventListener("focusin", onFocusIn);
+  return () => cover.removeEventListener("focusin", onFocusIn);
 }

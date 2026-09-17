@@ -30,14 +30,26 @@
   --shadow-soft: 0 1px 2px rgb(20 19 18 / 0.06), 0 8px 24px rgb(20 19 18 / 0.06);
   --shadow-lift: 0 2px 4px rgb(20 19 18 / 0.08), 0 18px 48px rgb(20 19 18 / 0.12);
 
-  /* Movimiento: pocas duraciones y pocas curvas, en todo el sitio */
+  --shadow-float: 0 1px 2px rgb(20 19 18 / 0.1), 0 12px 32px rgb(20 19 18 / 0.18);
+
+  /* Superficies: papel translúcido (cabecera con scroll, contacto flotante) y tinta profunda (portadas) */
+  --surface-veil: color-mix(in srgb, var(--paper) 88%, transparent);
+  --surface-ink: #0f0e0d;
+
+  /*
+   * Movimiento: cinco duraciones y dos curvas para todo el sitio.
+   * fast: estados (hover, foco) · ui: botones, menús, acordeones · reveal: bloques que entran
+   * editorial: fotos, líneas de titulares, cambios de escena · cinematic: portada (entrada del hero)
+   */
   --motion-fast: 140ms;
   --motion-ui: 240ms;
   --motion-reveal: 800ms;
-  --motion-cinematic: 1400ms;
+  --motion-editorial: 1100ms;
+  --motion-cinematic: 1800ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
+  --z-float: 30;
   --z-header: 40;
   --z-drawer: 60;
   --z-modal: 80;
