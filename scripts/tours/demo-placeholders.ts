@@ -59,13 +59,21 @@ function panoramaSvg(m: TourManifest, scene: TourManifest["scenes"][number]): st
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${PANO_W}" height="${PANO_H}" viewBox="0 0 ${PANO_W} ${PANO_H}">${parts.join("")}</svg>`;
 }
 
-function coverSvg(m: TourManifest): string {
+function coverSvg(): string {
+  // Portada provisoria sobria: líneas finas de "agrimensura" sobre tinta (la ficha le superpone el título).
+  const lines = Array.from({ length: 18 }, (_, i) => {
+    const x = -200 + i * 120;
+    return `<line x1="${x}" y1="1000" x2="${800 + (x - 800) * 0.25}" y2="420" stroke="#f4f0ea" stroke-opacity="0.09"/>`;
+  }).join("");
+  const rows = Array.from({ length: 8 }, (_, i) => {
+    const y = 420 + Math.pow(i / 7, 1.8) * 580;
+    return `<line x1="0" y1="${y}" x2="1600" y2="${y}" stroke="#f4f0ea" stroke-opacity="0.07"/>`;
+  }).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
-  <rect width="1600" height="1000" fill="#0f0e0d"/>
-  ${Array.from({ length: 13 }, (_, i) => `<line x1="${i * 133}" y1="0" x2="${i * 133}" y2="1000" stroke="#f4f0ea" stroke-opacity="0.06"/>`).join("")}
-  <line x1="0" y1="640" x2="1600" y2="640" stroke="#ae2c25" stroke-width="3"/>
-  <text x="120" y="520" font-family="Georgia, 'Times New Roman', serif" font-size="120" fill="#f4f0ea">${esc(m.tour.name)}</text>
-  <text x="124" y="600" font-family="${FONT}" font-size="30" letter-spacing="6" fill="#f4f0ea" fill-opacity="0.7">IMAGEN PROVISORIA · RENDER PENDIENTE</text>
+  <defs><radialGradient id="g" cx="0.62" cy="0.38" r="0.8"><stop offset="0" stop-color="#3a3734"/><stop offset="1" stop-color="#0f0e0d"/></radialGradient></defs>
+  <rect width="1600" height="1000" fill="url(#g)"/>${lines}${rows}
+  <line x1="0" y1="420" x2="1600" y2="420" stroke="#ae2c25" stroke-width="2" stroke-opacity="0.8"/>
+  <text x="1540" y="80" text-anchor="end" font-family="${FONT}" font-size="22" letter-spacing="6" fill="#f4f0ea" fill-opacity="0.55">IMAGEN PROVISORIA · RENDER PENDIENTE</text>
 </svg>`;
 }
 
@@ -102,4 +110,4 @@ for (const s of m.scenes) {
     return sharp(rolled).extract({ left: PANO_W / 2 - 320, top: PANO_H / 2 - 260, width: 640, height: 400 }).jpeg({ quality: 80 }).toBuffer();
   });
 }
-await write(m.tour.cover, () => sharp(Buffer.from(coverSvg(m))).jpeg({ quality: 82, mozjpeg: true }).toBuffer());
+await write(m.tour.cover, () => sharp(Buffer.from(coverSvg())).jpeg({ quality: 82, mozjpeg: true }).toBuffer());
