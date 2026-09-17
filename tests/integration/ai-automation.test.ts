@@ -193,8 +193,11 @@ describe("reacciones de IA (nada se envía ni se publica)", () => {
     const drafts = await db.selectFrom("property_marketing_drafts").select(["channel", "status", "generated_by"]).where("property_id", "=", p.id).execute();
     expect(drafts.length).toBeGreaterThan(0);
     expect(drafts.every((d) => d.status === "draft" && d.generated_by === "template")).toBe(true);
-    const posts = await db.selectFrom("social_posts").select(["status", "approved_by"]).where("property_id", "=", p.id).execute();
+    const posts = await db.selectFrom("social_posts").select(["status", "approved_by", "template_key"]).where("property_id", "=", p.id).execute();
     expect(posts.every((x) => x.status === "draft" && x.approved_by === null)).toBe(true);
+    // Redes: solo los borradores de la automatización existente (sin duplicar con el director de marketing).
+    expect(posts.some((x) => x.template_key?.startsWith("ai_director_"))).toBe(false);
+    expect(drafts.map((d) => d.channel).sort()).toEqual(["email", "reel_script", "site_seo", "whatsapp"]);
     const rec = await db.selectFrom("sales_recommendations").select(["source", "rule_key", "assigned_user_id", "link"]).where("entity_id", "=", p.id).where("source", "=", "marketing").executeTakeFirstOrThrow();
     expect(rec).toEqual({ source: "marketing", rule_key: "marketing_review", assigned_user_id: agent.userId, link: `/crm/propiedades/${p.id}#marketing` });
     const ev = await db.selectFrom("domain_events").select("id").where("event_type", "=", "property.published").where("aggregate_id", "=", p.id).executeTakeFirstOrThrow();

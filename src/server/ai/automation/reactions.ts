@@ -81,8 +81,9 @@ export async function reactPropertyPublished(ctx: ActionContext) {
   if (!(await isEnabled(ctx.db, MARKETING_FLAG))) return { skipped: "director de marketing apagado", matching: "sales_match_property_published" };
   let drafts = { created: 0, updated: 0 };
   try {
-    // Solo plantillas con datos reales (sin costo de IA): la redacción con IA sigue siendo a pedido desde la ficha.
-    const r = await generateMarketingDrafts(ctx.db, ctx.actor, { propertyId: p.id, mode: "template" });
+    // Solo plantillas con datos reales (sin costo de IA): la redacción con IA sigue siendo a pedido desde la ficha. Las
+    // redes (Instagram/Facebook) ya las arma `property_social_drafts`: acá solo los canales propios, sin duplicar.
+    const r = await generateMarketingDrafts(ctx.db, ctx.actor, { propertyId: p.id, mode: "template", scope: "own" });
     drafts = { created: r.created, updated: r.updated };
   } catch (e) {
     if (e instanceof AppError && (e.code === "forbidden" || e.code === "not_found" || e.code === "unavailable")) return { skipped: e.message };
@@ -106,7 +107,7 @@ export async function reactPropertyPublished(ctx: ActionContext) {
       assignedUserId,
       priority: "low",
       title: `Revisar los borradores de marketing de #${p.code}`,
-      reason: "Se publicó la propiedad y quedaron borradores (SEO, redes, WhatsApp, email y guion de Reel) armados solo con los datos de la ficha. Nada se publica ni se envía sin una persona.",
+      reason: "Se publicó la propiedad y quedaron borradores (SEO, WhatsApp, email, guion de Reel y los de redes) armados solo con los datos de la ficha. Nada se publica ni se envía sin una persona.",
       evidence: ["Propiedad publicada", `${n} ${n === 1 ? "borrador abierto" : "borradores abiertos"}`],
       link: `/crm/propiedades/${p.id}#marketing`,
       fingerprint: suggestionFingerprint(["marketing_review", p.id, p.published_at?.toISOString() ?? ""]),

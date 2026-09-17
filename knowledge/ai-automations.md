@@ -11,7 +11,7 @@ permisos: automations.read, integrations.read, ai.read_usage
 Son automatizaciones de sistema (aparecen en **Automatizaciones** con el nombre «IA: …») que reaccionan a hechos del CRM:
 
 - **Visita finalizada**: sugiere al agente cargar el informe y preparar el agradecimiento, y actualiza la siguiente acción del cliente.
-- **Propiedad publicada**: prepara borradores de marketing con los datos de la ficha (SEO, redes, WhatsApp, email, guion de Reel) y sugiere al responsable revisarlos. Los clientes compatibles los sigue calculando «Ventas: clientes compatibles».
+- **Propiedad publicada**: prepara borradores de marketing con los datos de la ficha (SEO, WhatsApp, email y guion de Reel; los de Instagram y Facebook los sigue armando «Borradores para redes») y sugiere al responsable revisarlos. Los clientes compatibles los sigue calculando «Ventas: clientes compatibles».
 - **Lead nuevo**: deja la siguiente acción en la bandeja del agente asignado (prioridad alta si hay señales fuertes). La calificación la sigue haciendo «Ventas: calificar lead».
 - **Informe de visita confirmado**: propone datos del perfil del comprador como **sugeridos** (nunca confirmados) y el seguimiento sugerido.
 
